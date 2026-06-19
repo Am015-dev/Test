@@ -47,11 +47,13 @@ def test_rerun_same_price_is_idempotent(memory_session):
 
 def test_price_change_appends_one_history_row(memory_session):
     db.upsert_listing_with_history(
-        memory_session, make_listing(source_id="x1", price=200_000),
+        memory_session,
+        make_listing(source_id="x1", price=200_000),
         observed_at=datetime(2026, 6, 1),
     )
     db.upsert_listing_with_history(
-        memory_session, make_listing(source_id="x1", price=185_000),
+        memory_session,
+        make_listing(source_id="x1", price=185_000),
         observed_at=datetime(2026, 6, 2),
     )
     assert _count(memory_session, PriceHistoryRow) == 2

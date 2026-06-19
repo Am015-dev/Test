@@ -22,9 +22,7 @@ DEFAULT_STRATEGY_PATH = REPO_ROOT / "strategy.yaml"
 class Settings(BaseSettings):
     """Operational config, sourced from environment / ``.env``."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     geocoder_user_agent: str = "holargos-scout/1.0 (you@example.com)"
     db_path: str = "data/listings.db"

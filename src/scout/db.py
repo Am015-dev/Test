@@ -153,9 +153,7 @@ def mark_unseen_as_gone(
     for row in rows:
         if (row.source, row.source_id) not in seen_keys:
             row.status = "gone"
-            session.add(
-                StatusHistoryRow(listing_id=row.id, observed_at=now, status="gone")
-            )
+            session.add(StatusHistoryRow(listing_id=row.id, observed_at=now, status="gone"))
             transitioned += 1
     session.flush()
     return transitioned

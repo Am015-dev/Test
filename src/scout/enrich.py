@@ -56,9 +56,7 @@ def gross_yield(est_monthly_rent: int | None, price: int) -> float | None:
     return round((est_monthly_rent * 12) / price, 4)
 
 
-def estimate_monthly_rent(
-    listing: Listing, median_rent_per_m2: float | None
-) -> int | None:
+def estimate_monthly_rent(listing: Listing, median_rent_per_m2: float | None) -> int | None:
     """Prefer a real listed rent (ground-truth comp); else median EUR/m2 * area."""
     if listing.listed_rent:
         return listing.listed_rent
@@ -140,9 +138,7 @@ def geocode(address: str, session=None, settings: Settings | None = None):
         return None, None
 
     if session is not None:
-        cached = session.scalar(
-            select(GeocodeCacheRow).where(GeocodeCacheRow.query == query)
-        )
+        cached = session.scalar(select(GeocodeCacheRow).where(GeocodeCacheRow.query == query))
         if cached is not None:
             return cached.lat, cached.lng
 
@@ -158,11 +154,7 @@ def geocode(address: str, session=None, settings: Settings | None = None):
         lat = lng = None
 
     if session is not None:
-        session.add(
-            GeocodeCacheRow(
-                query=query, lat=lat, lng=lng, observed_at=datetime.utcnow()
-            )
-        )
+        session.add(GeocodeCacheRow(query=query, lat=lat, lng=lng, observed_at=datetime.utcnow()))
         session.flush()
     return lat, lng
 
@@ -184,9 +176,7 @@ def enrich_listing(
     if (listing.lat is None or listing.lng is None) and listing.address and use_network:
         listing.lat, listing.lng = geocode(listing.address, session=session, settings=settings)
 
-    metro = nearest_metro(
-        listing.lat, listing.lng, settings=settings, use_osrm=use_network
-    )
+    metro = nearest_metro(listing.lat, listing.lng, settings=settings, use_osrm=use_network)
     listing.nearest_metro = metro.nearest_metro
     listing.metro_distance_m = metro.metro_distance_m
 

@@ -76,9 +76,7 @@ def compute_market_stats(listings: Iterable[Listing]) -> MarketStats:
 
 
 def _excluded(listing: Listing, reason: str) -> ScoredListing:
-    return ScoredListing(
-        listing=listing, score=0.0, excluded=True, exclusion_reason=reason
-    )
+    return ScoredListing(listing=listing, score=0.0, excluded=True, exclusion_reason=reason)
 
 
 def _yield_signal(listing: Listing, strategy: Strategy) -> float:
@@ -101,9 +99,7 @@ def _price_vs_median_signal(listing: Listing, median_ppm2: float | None) -> floa
     return _clamp01((1.0 - ratio) / 0.3)
 
 
-def _price_drop_signal(
-    listing: Listing, first_price: int | None, strategy: Strategy
-) -> float:
+def _price_drop_signal(listing: Listing, first_price: int | None, strategy: Strategy) -> float:
     if not first_price or first_price <= 0 or listing.price >= first_price:
         return 0.0
     drop_pct = (first_price - listing.price) / first_price
@@ -148,9 +144,7 @@ def score(
 
     # 3. Opportunity flag.
     is_opp = False
-    ppm2 = listing.price_per_m2 or (
-        listing.price / listing.area_m2 if listing.area_m2 else None
-    )
+    ppm2 = listing.price_per_m2 or (listing.price / listing.area_m2 if listing.area_m2 else None)
     if ppm2 and median_ppm2:
         threshold = strategy.opportunity_flag.price_per_m2_below_median_pct * median_ppm2
         is_opp = ppm2 < threshold

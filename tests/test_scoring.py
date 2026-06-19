@@ -69,10 +69,12 @@ def test_price_drop_increases_score(strategy):
 
 
 def test_rented_and_private_add_signal(strategy):
-    plain = score(make_listing(is_currently_rented=False, is_private_seller=False),
-                  _stats(), strategy)
-    flagged = score(make_listing(is_currently_rented=True, is_private_seller=True),
-                    _stats(), strategy)
+    plain = score(
+        make_listing(is_currently_rented=False, is_private_seller=False), _stats(), strategy
+    )
+    flagged = score(
+        make_listing(is_currently_rented=True, is_private_seller=True), _stats(), strategy
+    )
     assert flagged.score > plain.score
     assert flagged.signals["is_currently_rented"] == 1.0
     assert flagged.signals["is_private_seller"] == 1.0

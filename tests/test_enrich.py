@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from scout.enrich import (
     METRO_STATIONS,
-    estimate_monthly_rent,
     enrich_listing,
+    estimate_monthly_rent,
     gross_yield,
     haversine_m,
     nearest_metro,
