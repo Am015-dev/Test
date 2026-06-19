@@ -1,0 +1,28 @@
+# Investor rules & weights. Hot-editable: the pipeline and UI reload this file,
+# so tuning the strategy never requires a code change or redeploy.
+
+search:
+  neighborhoods: [Faneromeni, Ano Cholargos, Plateia Dimokratias, Lofos Tsakou]
+  price_min: 120000
+  price_max: 320000
+  area_min_m2: 45
+
+hard_filters:
+  min_floor: 1               # exclude ground/semi-basement/mezzanine (floor <= 0)
+  max_metro_distance_m: 600
+
+weights:                     # contribution to the 0-100 score
+  gross_yield: 35
+  price_vs_area_median: 25   # cheaper per m2 than the neighborhood median
+  price_drop: 20             # dropped since first_seen
+  is_currently_rented: 10    # proven rent (ground-truth comp)
+  is_private_seller: 10      # negotiation room
+
+opportunity_flag:
+  price_per_m2_below_median_pct: 0.85
+
+# Reference points for yield normalization (transparent heuristic, not ML).
+scoring_reference:
+  yield_floor: 0.02          # 2% gross -> signal 0
+  yield_ceiling: 0.08        # 8% gross -> signal 1
+  max_price_drop_pct: 0.20   # a 20% drop saturates the price_drop signal
