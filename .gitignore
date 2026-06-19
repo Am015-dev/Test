@@ -1,0 +1,24 @@
+# Data store & scraped artifacts
+data/listings.db
+data/listings.db-*
+data/raw/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+venv/
+.env
+
+# Editors
+.vscode/
+.idea/
+.DS_Store
