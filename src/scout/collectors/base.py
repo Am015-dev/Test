@@ -81,9 +81,14 @@ class Collector(ABC):
             logger.warning("playwright not installed; %s.collect() yields nothing", self.source)
             return
 
+        from ..config import get_settings
+
+        ignore_https = get_settings().scrape_ignore_https_errors
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            context = browser.new_context(locale="el-GR", user_agent=USER_AGENT)
+            context = browser.new_context(
+                locale="el-GR", user_agent=USER_AGENT, ignore_https_errors=ignore_https
+            )
             page = context.new_page()
             try:
                 for url in self.search_urls(self.strategy):

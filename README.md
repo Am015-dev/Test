@@ -88,10 +88,27 @@ suite never needs the network or a live portal.
 
 ## Notes on scraping
 
-Portal markup changes and is bot-guarded. Selectors live as class constants in each
-collector, so a redesign is a one-file fix; update the constants and refresh the
-fixtures. Be considerate: the crawler throttles (2–5 s between pages), sets a real
-User-Agent, waits for network-idle, and crawls one source at a time.
+Selectors live as class constants in each collector, so a portal redesign is a
+one-file fix; update the constants and refresh the fixtures. Be considerate: the
+crawler throttles (2–5 s between pages), sets a real User-Agent, waits for
+network-idle, and crawls one source at a time.
+
+Current collector status:
+
+- **XE** — hardened against live markup (cards are `div.common-ad-body` with
+  `data-testid` fields). Verified end-to-end: a live run scrapes, parses, dedups,
+  scores and stores real listings. Known gap: `geo_place_name` is free-text and
+  does not filter server-side (XE needs a numeric `geo_place_id` from its
+  autocomplete API), so results currently span all of Athens and the metro-distance
+  hard filter does the geographic narrowing. `tests/fixtures/xe_card.html` is a real
+  captured card.
+- **Spitogatos, Indomio** — behind a CloudFront/WAF that returns 403 to a plain
+  headless browser, so their selectors are reasonable placeholders, not yet
+  verified against live pages. Update the selector constants + fixtures once you can
+  reach them (e.g. with a non-headless/authenticated session).
+
+Behind a TLS-intercepting proxy, set `SCRAPE_IGNORE_HTTPS_ERRORS=true` (defaults to
+strict TLS).
 
 ## Disclaimer
 

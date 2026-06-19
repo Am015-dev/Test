@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from scout.collectors.spitogatos import SpitogatosCollector
+from scout.collectors.xe import XeCollector
 from scout.config import Strategy
 from scout.normalize import normalize
 
@@ -54,3 +55,24 @@ def test_normalize_drops_unusable_raw():
     # No price/area -> unusable -> dropped.
     raw = {"source": "spitogatos", "source_id": "x", "url": "http://x", "price": None}
     assert normalize(raw) is None
+
+
+def test_parse_xe_real_card():
+    """XE parser against a card captured from XE's live results page."""
+    html = (FIXTURES / "xe_card.html").read_text(encoding="utf-8")
+    raw = XeCollector(Strategy(), save_raw=False).parse_card(
+        html, base_url="https://www.xe.gr/property/results"
+    )
+    assert raw["source"] == "xe"
+    assert raw["source_id"] == "782567"
+    assert raw["url"].startswith("https://www.xe.gr/property/")
+    assert raw["price"] == 1_600_000
+    assert raw["area_m2"] == 257.0  # parsed out of the title
+    assert raw["floor"] == 0.0  # "Ισόγειο,1ος" -> ground-floor entry
+    assert raw["bedrooms"] == 4
+    assert raw["year_built"] == 2021
+    assert raw["neighborhood"]  # non-empty, taken before the "|" separator
+    # Real card normalizes into the canonical schema.
+    listing = normalize(raw)
+    assert listing is not None
+    assert listing.price == 1_600_000

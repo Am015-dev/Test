@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     db_path: str = "data/listings.db"
     osrm_base_url: str = "https://router.project-osrm.org"
 
+    # Set true only behind a TLS-intercepting proxy. Keeps TLS strict by default.
+    scrape_ignore_https_errors: bool = False
+
     # Optional alert sinks (disabled when blank).
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
