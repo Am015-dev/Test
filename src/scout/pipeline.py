@@ -62,6 +62,9 @@ def run(
 
     # 1. Collect + normalize.
     raws = _collect_all(collectors)
+    # Portals that actually returned data this run. Only these are eligible for
+    # retirement below, so a blocked/empty portal never wipes its prior listings.
+    active_sources = {raw["source"] for raw in raws if raw.get("source")}
     listings: list[Listing] = []
     for raw in raws:
         lst = normalize(raw, now=now)
@@ -112,7 +115,9 @@ def run(
             except Exception as exc:
                 logger.warning("store/score failed for %s: %s", lst.dedup_key, exc)
 
-        gone = mark_unseen_as_gone(session, seen_keys, observed_at=now)
+        gone = mark_unseen_as_gone(
+            session, seen_keys, observed_at=now, active_sources=active_sources
+        )
 
     summary = {
         "raw": len(raws),

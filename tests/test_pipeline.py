@@ -18,9 +18,11 @@ from scout.models import Base, ListingRow, PriceHistoryRow
 class FakeCollector(Collector):
     source = "spitogatos"
 
-    def __init__(self, strategy, rows):
+    def __init__(self, strategy, rows, source=None):
         super().__init__(strategy, save_raw=False)
         self._rows = rows
+        if source is not None:
+            self.source = source
 
     def search_urls(self, strategy):
         return []
@@ -45,9 +47,9 @@ def in_memory_db(monkeypatch):
     yield engine
 
 
-def _raw(source_id, price, floor=2.0, area=80.0):
+def _raw(source_id, price, floor=2.0, area=80.0, source="spitogatos"):
     return {
-        "source": "spitogatos",
+        "source": source,
         "source_id": source_id,
         "url": f"https://www.spitogatos.gr/p/{source_id}",
         "title": f"Flat {source_id} Ano Cholargos",
@@ -123,6 +125,38 @@ def test_pipeline_records_price_drop(in_memory_db):
         observed_at=datetime(2026, 6, 2),
     )
     assert _count(in_memory_db, PriceHistoryRow) == 2
+
+
+def test_blocked_portal_does_not_wipe_other_portals_data(in_memory_db):
+    """Regression: a portal returning nothing must not retire prior listings.
+
+    Run 1 collects a spitogatos listing. Run 2: spitogatos returns nothing
+    (blocked) and only xe returns data. The spitogatos listing must stay active.
+    """
+    from scout.pipeline import run
+
+    run(
+        strategy=Strategy(),
+        collectors=[FakeCollector(Strategy(), [_raw("a", 200_000)])],
+        use_network=False,
+        observed_at=datetime(2026, 6, 1),
+    )
+    # Run 2: spitogatos yields nothing; xe brings a fresh listing.
+    run(
+        strategy=Strategy(),
+        collectors=[
+            FakeCollector(Strategy(), [], source="spitogatos"),
+            FakeCollector(Strategy(), [_raw("z", 210_000, source="xe")], source="xe"),
+        ],
+        use_network=False,
+        observed_at=datetime(2026, 6, 2),
+    )
+    with sessionmaker(bind=in_memory_db, future=True)() as s:
+        by_key = {(r.source, r.source_id): r for r in s.scalars(select(ListingRow)).all()}
+        # The spitogatos listing survived the blocked run.
+        assert by_key[("spitogatos", "a")].status == "active"
+        # The new xe listing was stored and is active.
+        assert by_key[("xe", "z")].status == "active"
 
 
 def test_pipeline_excludes_ground_floor(in_memory_db):
