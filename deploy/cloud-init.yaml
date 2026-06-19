@@ -1,0 +1,32 @@
+#cloud-config
+# Holargos Property Scout — fully automated first-boot setup for Oracle Cloud.
+#
+# Paste the entire contents of this file into the OCI instance-creation form:
+#   Advanced options → Management → "Paste cloud-init script"
+#
+# On first boot (as root) this installs Docker, clones the repo, builds the
+# image (Playwright + Chromium), starts Streamlit on port 8501, opens the
+# firewall, and installs the daily-scrape cron. No SSH required.
+#
+# After ~5-10 min (image build) open:  http://<PUBLIC_IP>:8501
+package_update: true
+packages:
+  - git
+  - iptables-persistent
+
+runcmd:
+  # Install Docker engine + compose v2 plugin.
+  - curl -fsSL https://get.docker.com | sh
+  # Fetch the app.
+  - git clone https://github.com/Am015-dev/Test.git /opt/holargos
+  # Operational config (defaults work out of the box).
+  - cp /opt/holargos/.env.example /opt/holargos/.env
+  # Build image and start the always-on Streamlit service.
+  - bash -c 'cd /opt/holargos && docker compose up -d --build'
+  # Open port 8501 (OCI Ubuntu images ship a default REJECT in INPUT).
+  - iptables -I INPUT -p tcp --dport 8501 -j ACCEPT
+  - netfilter-persistent save || true
+  # Daily scrape at 06:00 UTC (09:00 Athens), logs to /var/log/holargos-daily.log.
+  - bash -c '(crontab -l 2>/dev/null; echo "0 6 * * * cd /opt/holargos && docker compose run --rm web python scripts/run_daily.py >> /var/log/holargos-daily.log 2>&1") | crontab -'
+
+final_message: "Holargos Property Scout setup finished after $UPTIME seconds. Streamlit is on port 8501."
