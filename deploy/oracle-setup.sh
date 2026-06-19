@@ -2,13 +2,23 @@
 # One-shot setup for an Oracle Cloud Always Free instance (Ubuntu 22.04).
 # Recommended shape: VM.Standard.A1.Flex (Ampere ARM), 2+ OCPUs, 6+ GB RAM.
 #
-# Usage (as the default ubuntu user, after SSH-ing into the instance):
-#   git clone https://github.com/Am015-dev/Test.git holargos
-#   bash holargos/deploy/oracle-setup.sh
+# The repo is PRIVATE, so cloning needs a read-only GitHub token. Provide it via
+# the GITHUB_TOKEN env var (a classic token with `repo` scope, or a fine-grained
+# token with Contents:Read on Am015-dev/Test):
+#
+#   export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+#   git clone https://$GITHUB_TOKEN@github.com/Am015-dev/Test.git holargos
+#   GITHUB_TOKEN=$GITHUB_TOKEN bash holargos/deploy/oracle-setup.sh
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-REPO_URL="https://github.com/Am015-dev/Test.git"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+if [ -n "$GITHUB_TOKEN" ]; then
+    REPO_URL="https://${GITHUB_TOKEN}@github.com/Am015-dev/Test.git"
+else
+    # Falls back to unauthenticated (works only if the repo is public).
+    REPO_URL="https://github.com/Am015-dev/Test.git"
+fi
 INSTALL_DIR="/opt/holargos"
 
 echo "=== Holargos Property Scout — Oracle Cloud setup ==="

@@ -1,7 +1,17 @@
 #cloud-config
 # Holargos Property Scout — fully automated first-boot setup for Oracle Cloud.
 #
-# Paste the entire contents of this file into the OCI instance-creation form:
+# ┌─ BEFORE YOU PASTE THIS ─────────────────────────────────────┐
+# │ The repo is PRIVATE, so the clone below needs a GitHub token.              │
+# │ 1. Create a read-only Personal Access Token:                              │
+# │    - Classic:  github.com/settings/tokens → Generate (classic) →          │
+# │                tick the `repo` scope.                                      │
+# │    - Fine-grained: github.com/settings/tokens?type=beta → only repo       │
+# │                Am015-dev/Test → Repository permissions → Contents: Read.   │
+# │ 2. Replace the text __GITHUB_TOKEN__ below with that token.               │
+# └────────────────────────────────────────────────┘
+#
+# Paste the entire (edited) contents of this file into the OCI instance form:
 #   Advanced options → Management → "Paste cloud-init script"
 #
 # On first boot (as root) this installs Docker, clones the repo, builds the
@@ -17,8 +27,9 @@ packages:
 runcmd:
   # Install Docker engine + compose v2 plugin.
   - curl -fsSL https://get.docker.com | sh
-  # Fetch the app.
-  - git clone https://github.com/Am015-dev/Test.git /opt/holargos
+  # Fetch the app (private repo → token in the URL; replace __GITHUB_TOKEN__).
+  # The token persists in /opt/holargos/.git/config so future `git pull` works too.
+  - git clone https://__GITHUB_TOKEN__@github.com/Am015-dev/Test.git /opt/holargos
   # Operational config (defaults work out of the box).
   - cp /opt/holargos/.env.example /opt/holargos/.env
   # Build image and start the always-on Streamlit service.
