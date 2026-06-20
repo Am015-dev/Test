@@ -44,9 +44,11 @@ def test_too_far_from_metro_is_excluded(strategy):
     assert result.exclusion_reason == "too far from metro"
 
 
-def test_missing_metro_distance_is_excluded(strategy):
+def test_missing_metro_distance_is_not_excluded(strategy):
+    """Unknown metro distance must not hard-exclude (would blank the dashboard on a
+    geocoding outage). It's kept and scored; the UI flags the distance as unknown."""
     result = score(make_listing(metro_distance_m=None), _stats(), strategy)
-    assert result.excluded
+    assert not result.excluded
 
 
 def test_passing_listing_scores_in_range(strategy):

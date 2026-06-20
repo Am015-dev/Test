@@ -117,8 +117,12 @@ def score(
     floor = listing.floor if listing.floor is not None else -99
     if floor < strategy.hard_filters.min_floor:
         return _excluded(listing, "ground/low floor")
-    metro = listing.metro_distance_m if listing.metro_distance_m is not None else 9999
-    if metro > strategy.hard_filters.max_metro_distance_m:
+    metro = listing.metro_distance_m
+    # Only exclude when we KNOW it's too far. Unknown distance (geocoding
+    # unavailable) must not silently drop the listing under a false "too far"
+    # reason — that empties the whole dashboard whenever geocoding hiccups. Such
+    # listings are kept and surfaced with metro shown as unknown for the user to verify.
+    if metro is not None and metro > strategy.hard_filters.max_metro_distance_m:
         return _excluded(listing, "too far from metro")
 
     # 2. Weighted, normalized signals.
