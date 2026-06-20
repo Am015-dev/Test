@@ -133,9 +133,12 @@ def geocode(address: str, session=None, settings: Settings | None = None):
     from .models import GeocodeCacheRow
 
     settings = settings or get_settings()
-    query = address.strip()
-    if not query:
+    base = address.strip()
+    if not base:
         return None, None
+    # Give Nominatim a well-formed query: a bare Greek neighborhood token geocodes
+    # poorly or to the wrong place. Append the country when not already present.
+    query = base if "ελλ" in base.lower() or "greece" in base.lower() else f"{base}, Greece"
 
     if session is not None:
         cached = session.scalar(select(GeocodeCacheRow).where(GeocodeCacheRow.query == query))
@@ -153,7 +156,9 @@ def geocode(address: str, session=None, settings: Settings | None = None):
     except Exception:
         lat = lng = None
 
-    if session is not None:
+    # Only cache successes. Caching a failure permanently (the table is unique on
+    # query) would leave a listing un-geocoded forever after one transient timeout.
+    if session is not None and lat is not None and lng is not None:
         session.add(GeocodeCacheRow(query=query, lat=lat, lng=lng, observed_at=datetime.utcnow()))
         session.flush()
     return lat, lng

@@ -45,6 +45,52 @@ def test_different_area_does_not_merge():
     assert len(groups) == 2
 
 
+def test_cross_source_match_merges_greek_neighborhoods():
+    """Regression (P0-1): Greek location text must produce tokens so dedup can match."""
+    a = make_listing(
+        source="spitogatos",
+        source_id="1",
+        price=200_000,
+        area_m2=80.0,
+        neighborhood="Χολαργός (Τσακός)",
+        title="Διαμέρισμα",
+        address="Χολαργός (Τσακός)",
+    )
+    b = make_listing(
+        source="xe",
+        source_id="9",
+        price=204_000,
+        area_m2=81.0,
+        neighborhood="Χολαργός (Τσακός)",
+        title="Διαμέρισμα",
+        address="Χολαργός (Τσακός)",
+    )
+    groups = deduplicate([a, b])
+    assert len(groups) == 1
+
+
+def test_same_source_similar_flats_do_not_merge():
+    """Two distinct ads from the SAME source must not be fuzzy-merged away."""
+    a = make_listing(
+        source="xe",
+        source_id="1",
+        price=200_000,
+        area_m2=80.0,
+        neighborhood="Χολαργός (Τσακός)",
+        address="Χολαργός (Τσακός)",
+    )
+    b = make_listing(
+        source="xe",
+        source_id="2",
+        price=201_000,
+        area_m2=80.0,
+        neighborhood="Χολαργός (Τσακός)",
+        address="Χολαργός (Τσακός)",
+    )
+    groups = deduplicate([a, b])
+    assert len(groups) == 2
+
+
 def test_different_location_does_not_merge():
     a = make_listing(
         source="spitogatos",

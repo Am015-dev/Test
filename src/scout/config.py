@@ -61,6 +61,10 @@ class SearchConfig(BaseModel):
     price_min: int = 0
     price_max: int = 10_000_000
     area_min_m2: float = 0.0
+    # Fallback monthly rent estimate (€/m²/month) used to compute gross yield when a
+    # listing has no scraped rent and the neighborhood has no rent comps. Without it
+    # the yield signal (the largest score weight) is zero for every listing.
+    est_rent_eur_per_m2: float = 11.0
 
 
 class HardFilters(BaseModel):

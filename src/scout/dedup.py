@@ -27,7 +27,9 @@ def _norm_text(text: str | None) -> set[str]:
         return set()
     nfkd = unicodedata.normalize("NFD", text.lower())
     stripped = "".join(c for c in nfkd if unicodedata.category(c) != "Mn")
-    tokens = re.findall(r"[a-z0-9]+", stripped)
+    # Include the Greek/Coptic block: the live data is Greek, and a Latin-only
+    # class ([a-z0-9]) matched nothing, silently disabling all cross-source dedup.
+    tokens = re.findall(r"[a-z0-9Ͱ-Ͽ]+", stripped)
     return {t for t in tokens if len(t) > 2}
 
 
@@ -44,6 +46,12 @@ def _location_tokens(listing: Listing) -> set[str]:
 
 
 def _similar(a: Listing, b: Listing) -> bool:
+    # Fuzzy matching is for the SAME flat listed on DIFFERENT portals. Two ads from
+    # the same source are distinct listings (exact source_id dedup already collapses
+    # genuine re-posts); fuzzy-merging them would wrongly drop real, similar flats —
+    # in a single neighborhood many flats share size/price/location tokens.
+    if a.source == b.source:
+        return False
     if abs(a.area_m2 - b.area_m2) > AREA_TOL_M2:
         return False
     hi = max(a.price, b.price)

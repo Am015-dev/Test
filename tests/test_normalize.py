@@ -100,3 +100,24 @@ def test_parse_xe_d_form_url_uses_uuid():
     # Transaction suffix is stripped from the address (kept clean for geocoding).
     assert raw["address"] == "Χολαργός (Τσακός)"
     assert raw["neighborhood"] == "Χολαργός (Τσακός)"
+
+
+def test_xe_area_anchored_and_url_cleaned():
+    """Area must come from the τ.μ. unit (not a leading room count), and the stored
+    URL must drop XE's tracking query string (which carries link-breaking spaces)."""
+    html = (
+        '<div class="common-ad-body"><a data-testid="property-ad-url" '
+        'href="/property/d/poliseis-katoikion/abc-uuid-1/cholargos'
+        '?widget_name=search results sponsored placement&rank_in_widget=2">'
+        '<h3 data-testid="property-ad-title">Διαμέρισμα 2 δωμ. 85 τ.μ.</h3>'
+        '<span data-testid="property-ad-price">200.000&nbsp;€</span>'
+        '<h3 data-testid="property-ad-address">Χολαργός (Τσακός) | Πώληση κατοικίας</h3>'
+        "</a></div>"
+    )
+    raw = XeCollector(Strategy(), save_raw=False).parse_card(
+        html, base_url="https://www.xe.gr/property/results"
+    )
+    assert raw["area_m2"] == 85.0  # the τ.μ. value, not the "2 δωμ." room count
+    assert raw["source_id"] == "abc-uuid-1"
+    assert "?" not in raw["url"] and " " not in raw["url"]
+    assert raw["url"] == "https://www.xe.gr/property/d/poliseis-katoikion/abc-uuid-1/cholargos"

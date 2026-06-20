@@ -19,11 +19,16 @@ from dataclasses import dataclass, field
 from .config import Strategy
 from .models import Listing, ScoredListing
 
+# Below this many price samples a neighborhood median is statistically meaningless
+# (with 1 sample it equals the listing's own €/m², so the signal is always ~0).
+_MIN_NEIGHBORHOOD_SAMPLES = 3
+
 
 @dataclass
 class NeighborhoodStats:
     median_price_per_m2: float | None = None
     median_rent_per_m2: float | None = None
+    price_sample_count: int = 0
 
 
 @dataclass
@@ -34,10 +39,14 @@ class MarketStats:
     overall_median_price_per_m2: float | None = None
 
     def price_per_m2_median_for(self, neighborhood: str | None) -> float | None:
+        # Use the neighborhood median only when it rests on enough samples; small
+        # sub-neighborhoods otherwise compare a listing against (mostly) itself.
         if neighborhood and neighborhood in self.by_neighborhood:
-            v = self.by_neighborhood[neighborhood].median_price_per_m2
-            if v is not None:
-                return v
+            ns = self.by_neighborhood[neighborhood]
+            if ns.median_price_per_m2 is not None and (
+                ns.price_sample_count >= _MIN_NEIGHBORHOOD_SAMPLES
+            ):
+                return ns.median_price_per_m2
         return self.overall_median_price_per_m2
 
 
@@ -67,7 +76,9 @@ def compute_market_stats(listings: Iterable[Listing]) -> MarketStats:
 
     by_n: dict[str, NeighborhoodStats] = {}
     for n, vals in buckets.items():
-        by_n[n] = NeighborhoodStats(median_price_per_m2=statistics.median(vals))
+        by_n[n] = NeighborhoodStats(
+            median_price_per_m2=statistics.median(vals), price_sample_count=len(vals)
+        )
     for n, vals in rent_buckets.items():
         by_n.setdefault(n, NeighborhoodStats()).median_rent_per_m2 = statistics.median(vals)
 

@@ -4,6 +4,7 @@
 search:
   municipality: Cholargos   # server-side geo filter (XE geo_place_id); the area to search
   neighborhoods: [Faneromeni, Ano Cholargos, Plateia Dimokratias, Lofos Tsakou]
+  est_rent_eur_per_m2: 11.0   # baseline monthly rent estimate for gross-yield scoring
   price_min: 120000
   price_max: 320000
   area_min_m2: 45

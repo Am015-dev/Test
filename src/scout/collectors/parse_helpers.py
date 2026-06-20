@@ -75,7 +75,9 @@ def parse_rent(description: str | None) -> tuple[bool, int | None]:
     return rented, rent
 
 
-_PRIVATE_RE = re.compile(r"ιδιωτ|οχι\s+μεσιτ|χωρις\s+μεσιτ|απο\s+ιδιωτη", re.IGNORECASE)
+# Match the seller noun "ιδιώτης/ιδιώτη" (private individual) but NOT the adjective
+# "ιδιωτικό" (private parking/pool/garden), which caused false private-seller badges.
+_PRIVATE_RE = re.compile(r"ιδιωτη|οχι\s+μεσιτ|χωρις\s+μεσιτ", re.IGNORECASE)
 
 
 def parse_private_seller(text: str | None) -> bool:

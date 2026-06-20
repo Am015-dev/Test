@@ -62,14 +62,15 @@ def run(
 
     # 1. Collect + normalize.
     raws = _collect_all(collectors)
-    # Portals that actually returned data this run. Only these are eligible for
-    # retirement below, so a blocked/empty portal never wipes its prior listings.
-    active_sources = {raw["source"] for raw in raws if raw.get("source")}
     listings: list[Listing] = []
     for raw in raws:
         lst = normalize(raw, now=now)
         if lst is not None:
             listings.append(lst)
+    # Portals that produced *usable* listings this run. Only these are eligible for
+    # retirement below, so a portal that returned nothing — or only junk that failed
+    # to normalize — never wipes its previously-collected listings.
+    active_sources = {lst.source for lst in listings}
 
     # 2. Enrich (network steps degrade gracefully). Fail-soft per listing.
     enriched: list[Listing] = []
@@ -80,6 +81,9 @@ def run(
             try:
                 n_stats = prelim_stats.by_neighborhood.get(lst.neighborhood or "")
                 median_rent = n_stats.median_rent_per_m2 if n_stats else None
+                # Fall back to the configured baseline so yield is always computable.
+                if not median_rent:
+                    median_rent = strategy.search.est_rent_eur_per_m2
                 enriched.append(
                     enrich_listing(
                         lst,
@@ -98,7 +102,12 @@ def run(
 
     # 4. Store with history + 5. recompute market stats + 6. rescore active listings.
     market_stats = compute_market_stats(canonical)
-    seen_keys: set[tuple[str, str]] = set()
+    # Every collected listing counts as "seen" — including the non-canonical
+    # duplicates — so a run where the cheaper source flips canonical doesn't leave
+    # the other source's still-live row looking unseen and retire it.
+    seen_keys: set[tuple[str, str]] = {
+        (lst.source, lst.source_id) for g in groups for lst in [g.canonical, *g.duplicates]
+    }
     stored = 0
     with session_scope() as session:
         for lst in canonical:
@@ -144,7 +153,9 @@ def rescore_all(strategy: Strategy | None = None) -> int:
     """Re-score every active listing from the current DB (used by the UI Strategy editor)."""
     strategy = strategy or load_strategy()
     with session_scope() as session:
-        rows = session.scalars(select(ListingRow)).all()
+        # Active rows only: gone listings must not skew the medians the UI scores
+        # against (the pipeline computes stats over active/canonical listings).
+        rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
         listings = [_row_to_listing(r) for r in rows]
         market_stats = compute_market_stats(listings)
         for row, lst in zip(rows, listings, strict=True):

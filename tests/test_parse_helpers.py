@@ -48,6 +48,9 @@ def test_parse_private_seller():
     assert parse_private_seller("Πωλείται από ιδιώτη")
     assert parse_private_seller("όχι μεσίτες")
     assert not parse_private_seller("Μεσιτικό γραφείο ΑΒΓ")
+    # Regression (P2-2): the adjective "ιδιωτικό" (private parking/pool) must NOT
+    # be read as a private seller.
+    assert not parse_private_seller("Διαμέρισμα με ιδιωτικό πάρκινγκ και ιδιωτική πισίνα")
 
 
 def test_parse_int():

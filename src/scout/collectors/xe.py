@@ -45,6 +45,10 @@ logger = logging.getLogger(__name__)
 _ID_RE_D = re.compile(r"/property/d/[^/?#]+/([^/?#]+)")
 _ID_RE_U = re.compile(r"/property/u/([^/?#]+)")
 
+# Area embedded in the title, anchored to the Greek "τ.μ." (or "m²"/"m2") unit so a
+# leading room/bedroom count is never mistaken for the area.
+_AREA_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:τ\.?\s*μ\.?|m²|m2)", re.IGNORECASE)
+
 
 class XeCollector(Collector):
     source = "xe"
@@ -131,21 +135,27 @@ class XeCollector(Collector):
 
         link_node = tree.css_first(self.SEL_LINK)
         href = link_node.attributes.get("href") if link_node else None
-        if href and href.startswith("/"):
-            href = self.BASE + href
+        if href:
+            # Drop XE's tracking query string. It carries unencoded spaces
+            # (e.g. "widget_name=search results sponsored placement") that produce a
+            # malformed, unclickable URL, and points the link at the search results
+            # rather than the canonical listing page. Keep only the path.
+            href = href.split("?")[0]
+            if href.startswith("/"):
+                href = self.BASE + href
 
         m = _ID_RE_D.search(href or "") or _ID_RE_U.search(href or "")
-        if m:
-            source_id = m.group(1)
-        elif href:
-            # Fallback: last path segment, without any query string.
-            source_id = href.split("?")[0].rstrip("/").split("/")[-1] or None
-        else:
-            source_id = None
+        # Fallback to None (not the last path segment, which is a non-unique area
+        # slug like "cholargos" that would collapse many listings onto one id).
+        source_id = m.group(1) if m else None
 
         title = text(self.SEL_TITLE)
-        # Area is embedded in the title, e.g. "Μεζονέτα 257 τ.μ.".
-        area = parse_float(title)
+        # Area is embedded in the title, e.g. "Μεζονέτα 257 τ.μ." — anchor to the
+        # τ.μ./m² unit so we don't grab a leading room count ("2 δωμ. 85 τ.μ." -> 85).
+        area = None
+        if title:
+            m_area = _AREA_RE.search(title)
+            area = parse_float(m_area.group(1)) if m_area else parse_float(title)
         # Neighborhood lives in the address before the " | " separator. The address
         # also carries a transaction suffix ("... | Πώληση κατοικίας") that is noise
         # for geocoding, so keep only the location part before the separator.

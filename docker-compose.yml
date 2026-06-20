@@ -8,7 +8,8 @@ services:
       - holargos-data:/app/data
       - ./src:/app/src:ro
       - ./scripts:/app/scripts:ro
-      - ./strategy.yaml:/app/strategy.yaml:ro
+      # Read-write: the Strategy page saves edits back to this file (live re-score).
+      - ./strategy.yaml:/app/strategy.yaml
     env_file:
       - .env
 
