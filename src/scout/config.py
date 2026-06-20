@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     scrape_retry_backoff_s: float = 8.0
     scrape_cache_ttl_minutes: int = 360
 
+    # Healthcheck: alert when the newest listing hasn't been refreshed in this many
+    # hours (scraping has silently broken — e.g. every area is IP-blocked).
+    health_stale_hours: int = 36
+
     # Optional alert sinks (disabled when blank).
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""

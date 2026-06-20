@@ -89,11 +89,11 @@ def _send_telegram(text: str, settings: Settings) -> bool:
         return False
 
 
-def _send_email(text: str, settings: Settings) -> bool:
+def _send_email(text: str, settings: Settings, subject: str = DIGEST_SUBJECT) -> bool:
     if not (settings.smtp_host and settings.alert_email_to):
         return False
     msg = EmailMessage()
-    msg["Subject"] = DIGEST_SUBJECT
+    msg["Subject"] = subject
     msg["From"] = settings.smtp_user or "scout@localhost"
     msg["To"] = settings.alert_email_to
     msg.set_content(text)
@@ -109,13 +109,18 @@ def _send_email(text: str, settings: Settings) -> bool:
         return False
 
 
+def send_alert(text: str, subject: str = DIGEST_SUBJECT, settings: Settings | None = None) -> bool:
+    """Dispatch an arbitrary message to every configured sink. Returns True if sent."""
+    settings = settings or get_settings()
+    sent = False
+    sent |= _send_telegram(text, settings)
+    sent |= _send_email(text, settings, subject=subject)
+    if not sent:
+        logger.info("alerts: no sink configured; message not sent (this is fine).")
+    return sent
+
+
 def send_digest(settings: Settings | None = None) -> bool:
     """Send the digest via any configured sink. Returns True if anything was sent."""
     settings = settings or get_settings()
-    text = build_digest()
-    sent = False
-    sent |= _send_telegram(text, settings)
-    sent |= _send_email(text, settings)
-    if not sent:
-        logger.info("alerts: no sink configured; digest not sent (this is fine).")
-    return sent
+    return send_alert(build_digest(), subject=DIGEST_SUBJECT, settings=settings)
