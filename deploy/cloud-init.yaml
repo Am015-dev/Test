@@ -37,8 +37,10 @@ runcmd:
   # Open port 8501 (OCI Ubuntu images ship a default REJECT in INPUT).
   - iptables -I INPUT -p tcp --dport 8501 -j ACCEPT
   - netfilter-persistent save || true
-  # Daily scrape at 06:00 UTC (09:00 Athens), logs to /var/log/holargos-daily.log.
-  - bash -c '(crontab -l 2>/dev/null; echo "0 6 * * * cd /opt/holargos && docker compose run --rm web python scripts/run_daily.py >> /var/log/holargos-daily.log 2>&1") | crontab -'
+  # Daily scrape at 06:00 UTC (09:00 Athens): enqueue every configured area, then
+  # drain the queue on this control VM. Extra Oracle worker instances (if added)
+  # also drain it from their own IPs. Logs to /var/log/holargos-daily.log.
+  - bash -c '(crontab -l 2>/dev/null; echo "0 6 * * * cd /opt/holargos && docker compose run --rm web bash -c \"python scripts/enqueue.py && python scripts/worker.py\" >> /var/log/holargos-daily.log 2>&1") | crontab -'
   # Auto-deploy: every 5 min pull main and rebuild IF the code changed, so the live
   # app always tracks the repo with no manual SSH. No-op when already current.
   - bash -c '(crontab -l 2>/dev/null; echo "*/5 * * * * /opt/holargos/deploy/auto-update.sh >> /var/log/holargos-update.log 2>&1") | crontab -'

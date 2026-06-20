@@ -72,6 +72,10 @@ class SearchConfig(BaseModel):
     # support it (XE resolves it to a geo_place_id). The neighborhoods below are
     # sub-areas of this municipality, used for display and per-area scoring.
     municipality: str = "Cholargos"
+    # Extra municipalities to also cover (each becomes its own scrape job for the
+    # worker queue). Empty = just ``municipality``. All areas share the scoring
+    # thesis below, so keep them within the same metro corridor.
+    areas: list[str] = Field(default_factory=list)
     neighborhoods: list[str] = Field(default_factory=list)
     price_min: int = 0
     price_max: int = 10_000_000
@@ -80,6 +84,14 @@ class SearchConfig(BaseModel):
     # listing has no scraped rent and the neighborhood has no rent comps. Without it
     # the yield signal (the largest score weight) is zero for every listing.
     est_rent_eur_per_m2: float = 11.0
+
+    def all_areas(self) -> list[str]:
+        """The municipality plus any extra areas, de-duplicated, order preserved."""
+        seen: dict[str, None] = {}
+        for a in [self.municipality, *self.areas]:
+            if a:
+                seen.setdefault(a, None)
+        return list(seen)
 
 
 class HardFilters(BaseModel):

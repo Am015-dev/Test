@@ -69,7 +69,7 @@ echo "      Container started."
 
 # ── 5. Daily cron job ────────────────────────────────────────────────────────
 echo "[5/6] Installing daily pipeline cron job (06:00 UTC)..."
-CRON_CMD="cd $INSTALL_DIR && docker compose run --rm web python scripts/run_daily.py >> /var/log/holargos-daily.log 2>&1"
+CRON_CMD="cd $INSTALL_DIR && docker compose run --rm web bash -c 'python scripts/enqueue.py && python scripts/worker.py' >> /var/log/holargos-daily.log 2>&1"
 CRON_LINE="0 6 * * * $CRON_CMD"
 # Remove any existing holargos cron line, then add the fresh one.
 ( crontab -l 2>/dev/null | grep -v "holargos" ; echo "$CRON_LINE" ) | crontab -

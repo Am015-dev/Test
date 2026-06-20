@@ -53,6 +53,7 @@ class Listing(BaseModel):
     address: str | None = None
     lat: float | None = None
     lng: float | None = None
+    search_area: str | None = None  # municipality this was collected under
 
     is_private_seller: bool = False
     is_currently_rented: bool = False
@@ -118,6 +119,9 @@ class ListingRow(Base):
     address: Mapped[str | None] = mapped_column(String(512), nullable=True)
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # The municipality this listing was collected under (the scrape job's area).
+    # Scopes per-area retirement so one area's run can't retire another's listings.
+    search_area: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
 
     is_private_seller: Mapped[bool] = mapped_column(Boolean, default=False)
     is_currently_rented: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -185,3 +189,30 @@ class GeocodeCacheRow(Base):
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True)
     observed_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+JobStatus = Literal["pending", "running", "done", "failed"]
+
+
+class ScrapeJobRow(Base):
+    """One unit of scraping work — a single area to collect.
+
+    The shared work queue that lets several workers (each on its own Oracle
+    instance / public IP) drain areas into one database without colliding. A worker
+    claims a ``pending`` job (an atomic status-guarded UPDATE), holds it with a
+    time-boxed ``lease_until``, and marks it ``done``/``failed``. A crashed worker's
+    lease expires and the job is requeued, so work is never silently lost.
+    """
+
+    __tablename__ = "scrape_job"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    area: Mapped[str] = mapped_column(String(128), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    listings_found: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)

@@ -125,10 +125,27 @@ an empty run.
 **Storage** is Postgres (the `db` service in `docker-compose.yml`); set
 `DATABASE_URL` (defaults to the compose DSN). Shared Postgres is the foundation for
 scaling: multiple scraper **workers**, each on its own Oracle Always-Free instance
-(so each has a distinct public IP), write to the one database. To add areas you add
-worker instances rather than hammering a single IP. `collectors.default_collectors`
+(so each has a distinct public IP), write to the one database. `default_collectors`
 is the single seam where additional sources/backends (e.g. a self-hosted FlareSolverr
 for the WAF-blocked portals) plug in.
+
+### Scaling to more areas (the worker queue)
+
+List the municipalities to cover under `search.areas` in `strategy.yaml` (they share
+the scoring thesis, so keep them on the same metro corridor). Each becomes a job in a
+shared `scrape_job` queue:
+
+- `scripts/enqueue.py` — adds one pending job per area (cron, control VM).
+- `scripts/worker.py` — claims pending areas atomically, scrapes each from its own
+  IP, writes to Postgres, marks them done. A crashed worker's lease expires and the
+  area is requeued, so work is never lost. `run_for_area` scopes retirement per area,
+  so concurrent workers never retire each other's listings.
+
+The control VM's daily cron runs `enqueue` then `worker` (drains locally). To scale,
+spin up extra Oracle Always-Free instances, point their `.env` `DATABASE_URL` at the
+control VM's Postgres, and run `docker compose --profile worker up -d` — they drain
+the same queue in parallel, each from a distinct public IP. More areas → more
+instances, never more load on one IP.
 
 ## Disclaimer
 

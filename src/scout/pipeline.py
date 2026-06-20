@@ -51,8 +51,14 @@ def run(
     collectors: list[Collector] | None = None,
     use_network: bool = True,
     observed_at: datetime | None = None,
+    area: str | None = None,
 ) -> dict:
-    """Execute one full pipeline pass. Returns a small run summary."""
+    """Execute one full pipeline pass. Returns a small run summary.
+
+    When ``area`` is set, this pass is scoped to that municipality: collected
+    listings are tagged with it and only that area's listings are eligible for
+    retirement, so concurrent per-area workers don't retire each other's data.
+    """
     strategy = strategy or load_strategy()
     now = observed_at or datetime.utcnow()
     init_db()
@@ -112,6 +118,8 @@ def run(
     with session_scope() as session:
         for lst in canonical:
             try:
+                if area is not None:
+                    lst.search_area = area
                 row = upsert_listing_with_history(session, lst, observed_at=now)
                 seen_keys.add((lst.source, lst.source_id))
                 first_price = _first_price(session, row.id)
@@ -125,7 +133,7 @@ def run(
                 logger.warning("store/score failed for %s: %s", lst.dedup_key, exc)
 
         gone = mark_unseen_as_gone(
-            session, seen_keys, observed_at=now, active_sources=active_sources
+            session, seen_keys, observed_at=now, active_sources=active_sources, area=area
         )
 
     summary = {
@@ -137,6 +145,24 @@ def run(
     }
     logger.info("pipeline run summary: %s", summary)
     return summary
+
+
+def run_for_area(
+    area: str,
+    strategy: Strategy | None = None,
+    use_network: bool = True,
+    observed_at: datetime | None = None,
+) -> dict:
+    """Run the pipeline scoped to a single municipality (one worker job).
+
+    Builds a per-area copy of the strategy (only the municipality differs) so the XE
+    collector resolves that area's geo_place_id; everything else — scoring thesis,
+    filters, weights — is shared across areas.
+    """
+    strategy = strategy or load_strategy()
+    area_strategy = strategy.model_copy(deep=True)
+    area_strategy.search.municipality = area
+    return run(strategy=area_strategy, use_network=use_network, observed_at=observed_at, area=area)
 
 
 def _first_price(session, listing_id: int) -> int | None:

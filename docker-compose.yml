@@ -34,6 +34,22 @@ services:
       timeout: 3s
       retries: 10
 
+  # Scale-out worker (opt-in) for ADDITIONAL Oracle instances — each on its own
+  # public IP. Point DATABASE_URL at the control VM's Postgres and run:
+  #   docker compose run --rm worker            # drain the queue once
+  #   docker compose --profile worker up -d     # keep polling (continuous)
+  worker:
+    build: .
+    profiles: ["worker"]
+    restart: unless-stopped
+    command: ["python", "scripts/worker.py", "--poll", "300"]
+    volumes:
+      - ./src:/app/src:ro
+      - ./scripts:/app/scripts:ro
+      - ./strategy.yaml:/app/strategy.yaml
+    env_file:
+      - .env
+
 volumes:
   holargos-data:
   holargos-pgdata:

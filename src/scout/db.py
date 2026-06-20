@@ -46,6 +46,7 @@ _SNAPSHOT_FIELDS = (
     "address",
     "lat",
     "lng",
+    "search_area",
     "is_private_seller",
     "is_currently_rented",
     "listed_rent",
@@ -145,6 +146,7 @@ def mark_unseen_as_gone(
     seen_keys: set[tuple[str, str]],
     observed_at: datetime | None = None,
     active_sources: set[str] | None = None,
+    area: str | None = None,
 ) -> int:
     """Mark active listings not seen this run as ``gone`` and append status history.
 
@@ -161,7 +163,12 @@ def mark_unseen_as_gone(
     Returns the number transitioned.
     """
     now = observed_at or datetime.utcnow()
-    rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
+    query = select(ListingRow).where(ListingRow.status == "active")
+    # Scope retirement to one area's run so a per-area worker never retires listings
+    # collected for a different area (which it didn't scrape this run).
+    if area is not None:
+        query = query.where(ListingRow.search_area == area)
+    rows = session.scalars(query).all()
     transitioned = 0
     for row in rows:
         if active_sources is not None and row.source not in active_sources:
