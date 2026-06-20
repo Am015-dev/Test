@@ -6,18 +6,26 @@ each result card is a ``div.common-ad-body`` whose fields are exposed via
 and the neighborhood sits in the address before the " | " separator. Keep these as
 class constants so a redesign is a one-file fix; refresh ``tests/fixtures/xe_card.html``
 alongside any change.
+
+Geo filtering: XE filters results server-side by ``geo_place_id`` (a Google Places
+id). We resolve the strategy's ``municipality`` to that id via XE's autocomplete API
+and pass it on the search URL, so results come back already scoped to the target
+area instead of spanning all of Athens. XE only filters at municipality/locality
+granularity — sub-neighborhood ids return nothing — so we resolve the municipality.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterator
 from urllib.parse import urlencode
 
+import requests
 from selectolax.parser import HTMLParser
 
-from ..config import Strategy
-from .base import Collector
+from ..config import Strategy, get_settings
+from .base import USER_AGENT, Collector
 from .parse_helpers import (
     parse_float,
     parse_floor,
@@ -26,9 +34,16 @@ from .parse_helpers import (
     parse_rent,
 )
 
-# Both XE URL forms: /property/u/782567?... and /property/d/athina-...-104?...
-# Capture the path segment after /property/<letter>/, stopping before any query.
-_ID_RE = re.compile(r"/property/[a-z]/([^/?#]+)")
+logger = logging.getLogger(__name__)
+
+# XE has two listing-URL forms; the stable unique id sits in a different segment:
+#   /property/u/782567?...                              -> "782567"
+#   /property/d/<category-slug>/<uuid>/<area-slug>?...   -> the <uuid>
+# The `d` form must skip the category slug (e.g. "poliseis-katoikion") and take the
+# UUID, otherwise every `d` listing collapses onto the same slug id and dedup wipes
+# them down to one record. Try the `d` UUID first, then the `u` numeric id.
+_ID_RE_D = re.compile(r"/property/d/[^/?#]+/([^/?#]+)")
+_ID_RE_U = re.compile(r"/property/u/([^/?#]+)")
 
 
 class XeCollector(Collector):
@@ -45,20 +60,60 @@ class XeCollector(Collector):
     SEL_BEDROOMS = "[data-testid='property-ad-xe xe-bedroom']"
     SEL_YEAR = "[data-testid='property-ad-xe xe-house-construction']"
 
+    AUTOCOMPLETE_URL = "https://www.xe.gr/services/places/autocomplete"
+
+    def _resolve_place_id(self, query: str) -> str | None:
+        """Resolve a place name to XE's ``geo_place_id`` via its autocomplete API.
+
+        Returns the top candidate's id, or ``None`` on any failure so the caller can
+        fall back to an unfiltered search rather than crash. ``verify`` follows the
+        ``SCRAPE_IGNORE_HTTPS_ERRORS`` setting (for TLS-intercepting proxies).
+        """
+        try:
+            resp = requests.get(
+                self.AUTOCOMPLETE_URL,
+                params={"query": query, "country_code": "GR"},
+                headers={"User-Agent": USER_AGENT},
+                timeout=10,
+                verify=not get_settings().scrape_ignore_https_errors,
+            )
+            resp.raise_for_status()
+            candidates = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            logger.warning("xe: place autocomplete failed for %r: %s", query, exc)
+            return None
+        if not candidates:
+            logger.warning("xe: no place match for %r", query)
+            return None
+        place_id = candidates[0].get("place_id")
+        logger.info("xe: resolved %r -> geo_place_id %s", query, place_id)
+        return place_id
+
     def search_urls(self, strategy: Strategy) -> list[str]:
-        # NOTE: ``geo_place_name`` is a free-text param and does NOT filter
-        # server-side — XE resolves areas via a numeric ``geo_place_id`` from its
-        # autocomplete API. Until that lookup is added, results span all of Athens
-        # and the metro-distance hard filter does the geographic narrowing instead.
         s = strategy.search
+        base_params = {
+            "transaction_name": "buy",
+            "item_type": "re_residence",
+            "minimum_price": s.price_min,
+            "maximum_price": s.price_max,
+            "minimum_size": int(s.area_min_m2),
+        }
+
+        # Preferred path: a single search scoped server-side to the municipality.
+        place_id = self._resolve_place_id(s.municipality) if s.municipality else None
+        if place_id:
+            params = {**base_params, "geo_place_id": place_id}
+            return [f"{self.BASE}/property/results?{urlencode(params)}"]
+
+        # Fallback (autocomplete unreachable): legacy free-text per-neighborhood
+        # search. ``geo_place_name`` does NOT filter server-side, so results span all
+        # of Athens and the metro-distance hard filter does the narrowing; kept only
+        # so the collector degrades gracefully instead of returning nothing.
+        logger.warning("xe: geo_place_id unavailable; falling back to geo_place_name search")
         urls = []
         for neighborhood in s.neighborhoods or [""]:
             params = {
-                "transaction_name": "buy",
-                "item_type": "re_residence",
-                "minimum_price": s.price_min,
-                "maximum_price": s.price_max,
-                "minimum_size": int(s.area_min_m2),
+                **base_params,
                 "geo_place_name": neighborhood,
             }
             urls.append(f"{self.BASE}/property/results?{urlencode(params)}")
@@ -79,7 +134,7 @@ class XeCollector(Collector):
         if href and href.startswith("/"):
             href = self.BASE + href
 
-        m = _ID_RE.search(href or "")
+        m = _ID_RE_D.search(href or "") or _ID_RE_U.search(href or "")
         if m:
             source_id = m.group(1)
         elif href:
@@ -91,9 +146,12 @@ class XeCollector(Collector):
         title = text(self.SEL_TITLE)
         # Area is embedded in the title, e.g. "Μεζονέτα 257 τ.μ.".
         area = parse_float(title)
-        # Neighborhood lives in the address before the " | " separator.
-        address = text(self.SEL_ADDRESS)
-        neighborhood = address.split("|")[0].strip() if address else None
+        # Neighborhood lives in the address before the " | " separator. The address
+        # also carries a transaction suffix ("... | Πώληση κατοικίας") that is noise
+        # for geocoding, so keep only the location part before the separator.
+        raw_address = text(self.SEL_ADDRESS)
+        neighborhood = raw_address.split("|")[0].strip() if raw_address else None
+        address = neighborhood
         bedrooms = parse_int(text(self.SEL_BEDROOMS))  # "×4" -> 4
         year = parse_int(text(self.SEL_YEAR))
 

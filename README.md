@@ -97,11 +97,13 @@ Current collector status:
 
 - **XE** — hardened against live markup (cards are `div.common-ad-body` with
   `data-testid` fields). Verified end-to-end: a live run scrapes, parses, dedups,
-  scores and stores real listings. Known gap: `geo_place_name` is free-text and
-  does not filter server-side (XE needs a numeric `geo_place_id` from its
-  autocomplete API), so results currently span all of Athens and the metro-distance
-  hard filter does the geographic narrowing. `tests/fixtures/xe_card.html` is a real
-  captured card.
+  scores and stores real listings. Geo filtering is server-side: the `municipality`
+  in `strategy.yaml` is resolved to a `geo_place_id` via XE's autocomplete API
+  (`/services/places/autocomplete`) and passed on the search URL, so results come
+  back already scoped to the target area instead of spanning all of Athens. If the
+  autocomplete is unreachable the collector falls back to the (unfiltered)
+  `geo_place_name` search so it still returns something. `tests/fixtures/xe_card.html`
+  is a real captured card.
 - **Spitogatos, Indomio** — behind a CloudFront/WAF that returns 403 to a plain
   headless browser, so their selectors are reasonable placeholders, not yet
   verified against live pages. Update the selector constants + fixtures once you can

@@ -53,6 +53,10 @@ class Settings(BaseSettings):
 
 
 class SearchConfig(BaseModel):
+    # Municipality/locality used for server-side geo filtering on portals that
+    # support it (XE resolves it to a geo_place_id). The neighborhoods below are
+    # sub-areas of this municipality, used for display and per-area scoring.
+    municipality: str = "Cholargos"
     neighborhoods: list[str] = Field(default_factory=list)
     price_min: int = 0
     price_max: int = 10_000_000
