@@ -40,7 +40,7 @@ runcmd:
   # Daily scrape at 06:00 UTC (09:00 Athens): enqueue every configured area, then
   # drain the queue on this control VM. Extra Oracle worker instances (if added)
   # also drain it from their own IPs. Logs to /var/log/holargos-daily.log.
-  - bash -c '(crontab -l 2>/dev/null; echo "0 6 * * * cd /opt/holargos && docker compose run --rm web bash -c \"python scripts/enqueue.py && python scripts/worker.py\" >> /var/log/holargos-daily.log 2>&1") | crontab -'
+  - bash -c '(crontab -l 2>/dev/null; echo "0 6 * * * cd /opt/holargos && docker compose run --rm web bash -c \"python scripts/enqueue.py && python scripts/worker.py && python scripts/notify.py\" >> /var/log/holargos-daily.log 2>&1") | crontab -'
   # Auto-deploy: every 5 min pull main and rebuild IF the code changed, so the live
   # app always tracks the repo with no manual SSH. No-op when already current.
   - bash -c '(crontab -l 2>/dev/null; echo "*/5 * * * * /opt/holargos/deploy/auto-update.sh >> /var/log/holargos-update.log 2>&1") | crontab -'

@@ -32,6 +32,7 @@ def _row_to_dict(row: ListingRow, first_price: int | None) -> dict:
         "floor": row.floor,
         "neighborhood": row.neighborhood,
         "address": row.address,
+        "search_area": row.search_area,
         "lat": row.lat,
         "lng": row.lng,
         "is_private_seller": row.is_private_seller,
@@ -85,6 +86,44 @@ def load_listings(include_excluded: bool = True, only_active: bool = True) -> li
             d["is_new"] = r.first_seen is not None and r.first_seen >= cutoff
             out.append(d)
         return out
+
+
+def load_recent_price_drops(hours: int = 24) -> list[dict]:
+    """Listings whose *latest* price change happened within the window and was a cut.
+
+    This is the accurate "dropped today" signal for the digest — unlike the cumulative
+    ``price_dropped`` flag (price below the first-ever price), which would re-report an
+    old drop every day. Each dict carries the listing fields plus ``old_price`` /
+    ``new_price`` / ``drop_pct``.
+    """
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    with session_scope() as session:
+        rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
+        ids = [r.id for r in rows]
+        firsts = _first_prices(session, ids)
+        history = session.scalars(
+            select(PriceHistoryRow)
+            .where(PriceHistoryRow.listing_id.in_(ids or [-1]))
+            .order_by(PriceHistoryRow.listing_id, PriceHistoryRow.observed_at)
+        ).all()
+        by_listing: dict[int, list[PriceHistoryRow]] = {}
+        for h in history:
+            by_listing.setdefault(h.listing_id, []).append(h)
+
+        drops = []
+        for r in rows:
+            hist = by_listing.get(r.id, [])
+            if len(hist) < 2:
+                continue
+            latest, prev = hist[-1], hist[-2]
+            if latest.observed_at >= cutoff and latest.price < prev.price:
+                d = _row_to_dict(r, firsts.get(r.id))
+                d["old_price"] = prev.price
+                d["new_price"] = latest.price
+                d["drop_pct"] = (prev.price - latest.price) / prev.price if prev.price else 0.0
+                drops.append(d)
+        drops.sort(key=lambda d: d["drop_pct"], reverse=True)
+        return drops
 
 
 def load_price_history(listing_id: int) -> list[tuple[datetime, int]]:
