@@ -76,3 +76,27 @@ def test_parse_xe_real_card():
     listing = normalize(raw)
     assert listing is not None
     assert listing.price == 1_600_000
+
+
+def test_parse_xe_d_form_url_uses_uuid():
+    """The /property/d/<category>/<uuid>/ form must yield the UUID, not the slug.
+
+    Regression: every `d` listing previously collapsed onto the category slug
+    ("poliseis-katoikion") and dedup wiped them down to a single record.
+    """
+    uuid = "bdfc1a03-3272-4824-899b-c10ea028e12b"
+    html = (
+        '<div class="common-ad-body"><a data-testid="property-ad-url" '
+        f'href="/property/d/poliseis-katoikion/{uuid}/cholargos-diamerisma">'
+        '<h3 data-testid="property-ad-title">Διαμέρισμα 91 τ.μ.</h3>'
+        '<span data-testid="property-ad-price">200.000&nbsp;€</span>'
+        '<h3 data-testid="property-ad-address">Χολαργός (Τσακός) | Πώληση κατοικίας</h3>'
+        "</a></div>"
+    )
+    raw = XeCollector(Strategy(), save_raw=False).parse_card(
+        html, base_url="https://www.xe.gr/property/results"
+    )
+    assert raw["source_id"] == uuid
+    # Transaction suffix is stripped from the address (kept clean for geocoding).
+    assert raw["address"] == "Χολαργός (Τσακός)"
+    assert raw["neighborhood"] == "Χολαργός (Τσακός)"

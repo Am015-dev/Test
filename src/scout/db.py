@@ -141,16 +141,31 @@ def upsert_listing_with_history(
 
 
 def mark_unseen_as_gone(
-    session: Session, seen_keys: set[tuple[str, str]], observed_at: datetime | None = None
+    session: Session,
+    seen_keys: set[tuple[str, str]],
+    observed_at: datetime | None = None,
+    active_sources: set[str] | None = None,
 ) -> int:
     """Mark active listings not seen this run as ``gone`` and append status history.
 
-    ``seen_keys`` is a set of (source, source_id). Returns the number transitioned.
+    ``seen_keys`` is a set of (source, source_id).
+
+    ``active_sources`` is the set of portals that actually returned data this run.
+    Only listings from those portals are eligible for retirement: a portal that
+    returned nothing (blocked, down, or markup changed) must NOT cause its
+    previously-collected listings to be wiped — otherwise a single failed scrape
+    empties the app. When ``active_sources`` is ``None`` every source is eligible
+    (legacy behavior, used by direct unit tests); when it is empty, nothing is
+    retired.
+
+    Returns the number transitioned.
     """
     now = observed_at or datetime.utcnow()
     rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
     transitioned = 0
     for row in rows:
+        if active_sources is not None and row.source not in active_sources:
+            continue  # this portal produced no results this run — leave its data intact
         if (row.source, row.source_id) not in seen_keys:
             row.status = "gone"
             session.add(StatusHistoryRow(listing_id=row.id, observed_at=now, status="gone"))

@@ -2,6 +2,7 @@
 # so tuning the strategy never requires a code change or redeploy.
 
 search:
+  municipality: Cholargos   # server-side geo filter (XE geo_place_id); the area to search
   neighborhoods: [Faneromeni, Ano Cholargos, Plateia Dimokratias, Lofos Tsakou]
   price_min: 120000
   price_max: 320000

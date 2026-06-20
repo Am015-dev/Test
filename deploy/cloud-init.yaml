@@ -1,7 +1,7 @@
 #cloud-config
 # Holargos Property Scout — fully automated first-boot setup for Oracle Cloud.
 #
-# ┌─ BEFORE YOU PASTE THIS ─────────────────────────────────────┐
+# ┌─ BEFORE YOU PASTE THIS ───────────────────────────────────────────────────┐
 # │ The repo is PRIVATE, so the clone below needs a GitHub token.              │
 # │ 1. Create a read-only Personal Access Token:                              │
 # │    - Classic:  github.com/settings/tokens → Generate (classic) →          │
@@ -9,7 +9,7 @@
 # │    - Fine-grained: github.com/settings/tokens?type=beta → only repo       │
 # │                Am015-dev/Test → Repository permissions → Contents: Read.   │
 # │ 2. Replace the text __GITHUB_TOKEN__ below with that token.               │
-# └────────────────────────────────────────────────┘
+# └───────────────────────────────────────────────────────────────────────────┘
 #
 # Paste the entire (edited) contents of this file into the OCI instance form:
 #   Advanced options → Management → "Paste cloud-init script"

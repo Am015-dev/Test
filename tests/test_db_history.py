@@ -81,6 +81,43 @@ def test_unseen_listing_marked_gone(memory_session):
     assert gone == ["gone"]
 
 
+def test_unseen_skipped_when_source_inactive(memory_session):
+    """A portal that returned nothing this run must not retire its listings."""
+    db.upsert_listing_with_history(
+        memory_session,
+        make_listing(source="spitogatos", source_id="x1"),
+        observed_at=datetime(2026, 6, 1),
+    )
+    db.upsert_listing_with_history(
+        memory_session,
+        make_listing(source="xe", source_id="y1"),
+        observed_at=datetime(2026, 6, 1),
+    )
+    # Only XE returned data this run; spitogatos was blocked (not in active_sources).
+    n = db.mark_unseen_as_gone(
+        memory_session,
+        seen_keys={("xe", "y1")},
+        observed_at=datetime(2026, 6, 2),
+        active_sources={"xe"},
+    )
+    assert n == 0  # spitogatos listing is left intact, xe listing was seen
+    gone = memory_session.scalars(
+        select(StatusHistoryRow.status).where(StatusHistoryRow.status == "gone")
+    ).all()
+    assert gone == []
+
+
+def test_empty_active_sources_retires_nothing(memory_session):
+    """When no portal returned data, nothing is retired (don't wipe the app)."""
+    db.upsert_listing_with_history(
+        memory_session, make_listing(source_id="x1"), observed_at=datetime(2026, 6, 1)
+    )
+    n = db.mark_unseen_as_gone(
+        memory_session, seen_keys=set(), observed_at=datetime(2026, 6, 2), active_sources=set()
+    )
+    assert n == 0
+
+
 def test_gone_then_reappears_goes_active(memory_session):
     db.upsert_listing_with_history(
         memory_session, make_listing(source_id="x1"), observed_at=datetime(2026, 6, 1)
