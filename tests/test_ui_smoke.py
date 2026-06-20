@@ -53,6 +53,7 @@ def _db(tmp_path, monkeypatch):
     def _make(exclude_all: bool):
         import streamlit as st
 
+        monkeypatch.delenv("DATABASE_URL", raising=False)  # force the SQLite fixture path
         monkeypatch.setenv("DB_PATH", str(tmp_path / "ui.db"))
         get_settings.cache_clear()
         st.cache_data.clear()  # get_listings is @st.cache_data — don't leak across tests

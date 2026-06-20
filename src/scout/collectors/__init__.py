@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from ..config import Strategy, get_settings
-from .apify_xe import ApifyXeCollector
+from ..config import Strategy
 from .base import Collector
 from .indomio import IndomioCollector
 from .spitogatos import SpitogatosCollector
@@ -21,18 +20,14 @@ ALL_COLLECTORS: list[type[Collector]] = [
 def default_collectors(strategy: Strategy) -> list[Collector]:
     """The collectors the pipeline runs.
 
-    Prefer the reliable, scalable Apify-backed source when an ``APIFY_TOKEN`` is
-    configured; otherwise fall back to the best-effort direct XE fetch (free, but
-    intermittently throttled by XE from datacenter IPs).
+    XE only for now (the maintained, reachable source). The WAF-blocked portals plug
+    in here later via a FlareSolverr backend; this is the single seam to extend.
     """
-    if get_settings().apify_token:
-        return [ApifyXeCollector(strategy)]
     return [XeCollector(strategy)]
 
 
 __all__ = [
     "Collector",
-    "ApifyXeCollector",
     "SpitogatosCollector",
     "XeCollector",
     "IndomioCollector",

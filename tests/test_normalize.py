@@ -86,11 +86,11 @@ def test_parse_xe_d_form_url_uses_uuid():
     """
     uuid = "bdfc1a03-3272-4824-899b-c10ea028e12b"
     html = (
-        '<div class="common-ad-body"><a data-testid="property-ad-url" '
+        '<div class="common-ad-body"><a '
         f'href="/property/d/poliseis-katoikion/{uuid}/cholargos-diamerisma">'
-        '<h3 data-testid="property-ad-title">Διαμέρισμα 91 τ.μ.</h3>'
-        '<span data-testid="property-ad-price">200.000&nbsp;€</span>'
-        '<h3 data-testid="property-ad-address">Χολαργός (Τσακός) | Πώληση κατοικίας</h3>'
+        '<div class="common-property-ad-title"><h3>Διαμέρισμα 91 τ.μ.</h3></div>'
+        '<span class="property-ad-price">200.000&nbsp;€</span>'
+        '<h3 class="common-property-ad-address">Χολαργός (Τσακός) | Πώληση κατοικίας</h3>'
         "</a></div>"
     )
     raw = XeCollector(Strategy(), save_raw=False).parse_card(
@@ -106,12 +106,12 @@ def test_xe_area_anchored_and_url_cleaned():
     """Area must come from the τ.μ. unit (not a leading room count), and the stored
     URL must drop XE's tracking query string (which carries link-breaking spaces)."""
     html = (
-        '<div class="common-ad-body"><a data-testid="property-ad-url" '
+        '<div class="common-ad-body"><a '
         'href="/property/d/poliseis-katoikion/abc-uuid-1/cholargos'
         '?widget_name=search results sponsored placement&rank_in_widget=2">'
-        '<h3 data-testid="property-ad-title">Διαμέρισμα 2 δωμ. 85 τ.μ.</h3>'
-        '<span data-testid="property-ad-price">200.000&nbsp;€</span>'
-        '<h3 data-testid="property-ad-address">Χολαργός (Τσακός) | Πώληση κατοικίας</h3>'
+        '<div class="common-property-ad-title"><h3>Διαμέρισμα 2 δωμ. 85 τ.μ.</h3></div>'
+        '<span class="property-ad-price">200.000&nbsp;€</span>'
+        '<h3 class="common-property-ad-address">Χολαργός (Τσακός) | Πώληση κατοικίας</h3>'
         "</a></div>"
     )
     raw = XeCollector(Strategy(), save_raw=False).parse_card(

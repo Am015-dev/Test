@@ -112,23 +112,23 @@ Current collector status:
 Behind a TLS-intercepting proxy, set `SCRAPE_IGNORE_HTTPS_ERRORS=true` (defaults to
 strict TLS).
 
-## Reliability & scaling
+## Reliability & scaling (Oracle, free)
 
-Direct scraping (browser or `requests`) is **rate-limited by XE for datacenter IPs**
-— the same search flips between a full page and an empty one regardless of the tool.
-This is an IP/anti-bot constraint, not a parsing bug, so the pipeline is fail-soft and
-never wipes existing data on an empty run, and search pages are retried with backoff.
+XE serves **server-rendered HTML**, so the collector fetches it with a plain
+cookie-persisting `requests` session — **no headless browser** (the image ships no
+Chromium). XE rate-limits per IP: an over-frequent request returns an empty page, so
+the fetcher (a) keeps requests polite/spaced, (b) retries empties with backoff and
+logs a clear block signal, and (c) caches a good page for `SCRAPE_CACHE_TTL_MINUTES`
+so re-runs don't re-hit XE. The pipeline is fail-soft and never wipes existing data on
+an empty run.
 
-For **reliable, scalable** data, set `APIFY_TOKEN` (see `.env.example`). The pipeline
-then sources listings from Apify's maintained xe.gr actor, which runs on Apify's cloud
-with GR residential proxies and anti-bot handling and returns structured JSON. It uses
-the same `geo_place_id` resolution, scales across areas by adding ids, and costs
-~$3.50/1000 listings. Selection is automatic: `collectors.default_collectors` uses the
-Apify source when a token is present and the free direct fetch otherwise.
-
-To scale storage beyond single-file SQLite, set `DATABASE_URL` to a Postgres DSN
-(`pip install ".[postgres]"`; an opt-in `db` service ships in `docker-compose.yml`
-under the `postgres` profile).
+**Storage** is Postgres (the `db` service in `docker-compose.yml`); set
+`DATABASE_URL` (defaults to the compose DSN). Shared Postgres is the foundation for
+scaling: multiple scraper **workers**, each on its own Oracle Always-Free instance
+(so each has a distinct public IP), write to the one database. To add areas you add
+worker instances rather than hammering a single IP. `collectors.default_collectors`
+is the single seam where additional sources/backends (e.g. a self-hosted FlareSolverr
+for the WAF-blocked portals) plug in.
 
 ## Disclaimer
 

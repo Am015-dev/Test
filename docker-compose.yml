@@ -12,13 +12,15 @@ services:
       - ./strategy.yaml:/app/strategy.yaml
     env_file:
       - .env
+    depends_on:
+      db:
+        condition: service_healthy
 
-  # Scale-up storage (opt-in). Start with:  docker compose --profile postgres up -d
-  # then set DATABASE_URL=postgresql+psycopg://holargos:holargos@db:5432/holargos
-  # in .env (and `pip install "psycopg[binary]"` is bundled via the postgres extra).
+  # Shared storage — Postgres on the control VM. This is what lets multiple scraper
+  # workers (added later, each on its own Oracle IP) write to one database.
+  # .env sets: DATABASE_URL=postgresql+psycopg://holargos:holargos@db:5432/holargos
   db:
     image: postgres:16-alpine
-    profiles: ["postgres"]
     restart: unless-stopped
     environment:
       POSTGRES_USER: holargos
@@ -26,6 +28,11 @@ services:
       POSTGRES_DB: holargos
     volumes:
       - holargos-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U holargos"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   holargos-data:

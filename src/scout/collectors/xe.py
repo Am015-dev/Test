@@ -1,11 +1,18 @@
-"""XE.gr collector.
+"""XE.gr collector — browser-free.
 
-Selectors below were hardened against XE's live search-results markup (June 2026):
-each result card is a ``div.common-ad-body`` whose fields are exposed via
-``data-testid`` attributes. Area is embedded in the title ("Μεζονέτα 257 τ.μ.")
-and the neighborhood sits in the address before the " | " separator. Keep these as
-class constants so a redesign is a one-file fix; refresh ``tests/fixtures/xe_card.html``
-alongside any change.
+XE serves its search results as **server-rendered HTML**, so we fetch them with a
+plain cookie-persisting ``requests`` session (realistic browser headers) and parse
+the cards with selectolax — no headless browser. Each card is a
+``div.common-ad-body``; fields are read via **class-based** selectors (the classes
+exist in both the server-rendered and JS-hydrated markup, unlike ``data-testid``
+which only appears after hydration). Area is embedded in the title ("Μεζονέτα 257
+τ.μ.") and the neighborhood sits in the address before the " | " separator. Keep the
+selectors as class constants so a redesign is a one-file fix; refresh
+``tests/fixtures/xe_card.html`` alongside any change.
+
+XE rate-limits per IP: an over-frequent request returns a page with zero cards. The
+fetcher treats that as a transient block and retries with backoff, and caches a good
+page so re-runs within the TTL don't re-hit XE.
 
 Geo filtering: XE filters results server-side by ``geo_place_id`` (a Google Places
 id). We resolve the strategy's ``municipality`` to that id via XE's autocomplete API
@@ -16,16 +23,20 @@ granularity — sub-neighborhood ids return nothing — so we resolve the munici
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import random
 import re
+import time
 from collections.abc import Iterator
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 import requests
 from selectolax.parser import HTMLParser
 
 from ..config import Strategy, get_settings
-from .base import USER_AGENT, Collector
+from .base import RAW_HTML_DIR, USER_AGENT, Collector
 from .parse_helpers import (
     parse_float,
     parse_floor,
@@ -35,6 +46,20 @@ from .parse_helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Realistic browser headers — XE serves the search results as server-rendered HTML
+# to a normal-looking client, so a plain session with these headers gets the cards
+# without a headless browser. A persistent Session keeps XE's cookies across hits.
+BROWSER_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "el-GR,el;q=0.9,en;q=0.8",
+    "Referer": "https://www.xe.gr/property/",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+}
 
 # XE has two listing-URL forms; the stable unique id sits in a different segment:
 #   /property/u/782567?...                              -> "782567"
@@ -55,14 +80,16 @@ class XeCollector(Collector):
     BASE = "https://www.xe.gr"
     CARD_SELECTOR = "div.common-ad-body"
 
-    SEL_LINK = "a[data-testid='property-ad-url']"
-    SEL_TITLE = "[data-testid='property-ad-title']"
-    SEL_PRICE = "[data-testid='property-ad-price']"
-    SEL_PPSQM = "[data-testid='property-ad-price-per-sqm']"
-    SEL_FLOOR = "[data-testid='property-ad-level-container']"
-    SEL_ADDRESS = "[data-testid='property-ad-address']"
-    SEL_BEDROOMS = "[data-testid='property-ad-xe xe-bedroom']"
-    SEL_YEAR = "[data-testid='property-ad-xe xe-house-construction']"
+    # Class-based selectors: these classes are present in BOTH the server-rendered
+    # HTML (what `requests` receives) and the JS-hydrated DOM, so the parser works
+    # without a browser. (The `data-testid` attributes only appear after hydration.)
+    SEL_LINK = "a[href*='/property/']"
+    SEL_TITLE = ".common-property-ad-title"
+    SEL_PRICE = ".property-ad-price"
+    SEL_PPSQM = ".property-ad-price-per-sqm"
+    SEL_FLOOR = ".property-ad-level-container"
+    SEL_ADDRESS = ".common-property-ad-address"
+    SEL_DETAIL = ".property-ad-detail-container"
 
     AUTOCOMPLETE_URL = "https://www.xe.gr/services/places/autocomplete"
 
@@ -123,8 +150,102 @@ class XeCollector(Collector):
             urls.append(f"{self.BASE}/property/results?{urlencode(params)}")
         return urls
 
+    def _new_session(self) -> requests.Session:
+        """A cookie-persisting session warmed up against XE's homepage."""
+        session = requests.Session()
+        session.headers.update(BROWSER_HEADERS)
+        session.verify = not get_settings().scrape_ignore_https_errors
+        try:  # warm-up: pick up XE's cookies before hitting the results endpoint
+            session.get(f"{self.BASE}/property/", timeout=20)
+        except requests.RequestException as exc:
+            logger.warning("xe: warm-up request failed: %s", exc)
+        return session
+
+    def _cache_path(self, url: str):
+        digest = hashlib.md5(url.encode("utf-8")).hexdigest()[:16]  # noqa: S324 (cache key only)
+        return RAW_HTML_DIR / self.source / f"page-{digest}.html"
+
+    def _read_cache(self, url: str, ttl_minutes: int) -> str | None:
+        path = self._cache_path(url)
+        if not path.exists():
+            return None
+        age = datetime.utcnow() - datetime.utcfromtimestamp(path.stat().st_mtime)
+        if age > timedelta(minutes=ttl_minutes):
+            return None
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+    def _write_cache(self, url: str, html: str) -> None:
+        if not self.save_raw:
+            return
+        path = self._cache_path(url)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            path.write_text(html, encoding="utf-8")
+        except OSError as exc:
+            logger.warning("xe: could not cache page: %s", exc)
+
+    def _has_cards(self, html: str) -> bool:
+        return bool(HTMLParser(html).css_first(self.CARD_SELECTOR))
+
+    def _fetch_html(self, session: requests.Session, url: str) -> str | None:
+        """Fetch a results page, retrying transient empty/blocked responses.
+
+        XE rate-limits per IP: an over-frequent request returns a page with zero
+        cards. We treat that as a transient block and retry with growing backoff;
+        a successful page is cached so re-runs within the TTL don't re-hit XE.
+        """
+        settings = get_settings()
+        cached = self._read_cache(url, settings.scrape_cache_ttl_minutes)
+        if cached is not None and self._has_cards(cached):
+            logger.info("xe: served %s from cache", url)
+            return cached
+
+        for attempt in range(1, settings.scrape_max_retries + 1):
+            html = ""
+            try:
+                resp = session.get(url, timeout=30)
+                resp.raise_for_status()
+                html = resp.text
+            except requests.RequestException as exc:
+                logger.warning(
+                    "xe: fetch failed (attempt %d/%d): %s",
+                    attempt,
+                    settings.scrape_max_retries,
+                    exc,
+                )
+            if html and self._has_cards(html):
+                self._write_cache(url, html)
+                return html
+            logger.warning(
+                "xe: empty/blocked page (attempt %d/%d) — backing off",
+                attempt,
+                settings.scrape_max_retries,
+            )
+            if attempt < settings.scrape_max_retries:
+                time.sleep(settings.scrape_retry_backoff_s * attempt + random.uniform(0, 3))
+        logger.warning("xe: gave up on %s after %d attempts", url, settings.scrape_max_retries)
+        return None
+
     def collect(self) -> Iterator[dict]:
-        yield from self._collect_with_playwright()
+        settings = get_settings()
+        session = self._new_session()
+        for url in self.search_urls(self.strategy):
+            html = self._fetch_html(session, url)
+            if not html:
+                continue
+            cards = HTMLParser(html).css(self.CARD_SELECTOR)
+            logger.info("xe: %d cards on %s", len(cards), url)
+            for card in cards:
+                try:
+                    raw = self.parse_card(card.html, base_url=url)
+                    if raw:
+                        yield raw
+                except Exception as exc:  # fail soft per card
+                    logger.warning("xe: card parse error: %s", exc)
+            time.sleep(random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s))
 
     def parse_card(self, html: str, base_url: str) -> dict:
         tree = HTMLParser(html)
@@ -162,8 +283,18 @@ class XeCollector(Collector):
         raw_address = text(self.SEL_ADDRESS)
         neighborhood = raw_address.split("|")[0].strip() if raw_address else None
         address = neighborhood
-        bedrooms = parse_int(text(self.SEL_BEDROOMS))  # "×4" -> 4
-        year = parse_int(text(self.SEL_YEAR))
+
+        # Bedrooms/year sit in icon+value detail boxes (no stable per-field class),
+        # so find the box by its icon class and read its value span.
+        def detail_by_icon(icon_class: str) -> str | None:
+            for box in tree.css(self.SEL_DETAIL):
+                if box.css_first(f"i.{icon_class}"):
+                    span = box.css_first("span")
+                    return span.text(strip=True) if span else None
+            return None
+
+        bedrooms = parse_int(detail_by_icon("xe-bedroom"))  # "×4" -> 4
+        year = parse_int(detail_by_icon("xe-house-construction"))
 
         # Search cards carry no description; rent/private-seller surface on detail pages.
         rented, listed_rent = parse_rent(title)

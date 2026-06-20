@@ -34,12 +34,15 @@ class Settings(BaseSettings):
     # Set true only behind a TLS-intercepting proxy. Keeps TLS strict by default.
     scrape_ignore_https_errors: bool = False
 
-    # Reliable, scalable data source (recommended for production). When apify_token is
-    # set, the Apify-backed collector is used instead of the best-effort direct fetch:
-    # Apify runs the maintained xe.gr actor on its cloud with GR residential proxies,
-    # so it isn't IP-throttled and scales across areas. ~$3.50 / 1000 listings.
-    apify_token: str = ""
-    apify_xe_actor: str = "logiover/xe-gr-real-estate-scraper-greece-property-data"
+    # Polite scraping controls (tuned so a low-frequency daily run stays under XE's
+    # per-IP rate limit). Spacing is randomized between min/max; empty/blocked pages
+    # are retried with growing backoff; fetched pages are cached for the TTL so
+    # re-runs don't re-hit the portal.
+    scrape_request_min_s: float = 2.0
+    scrape_request_max_s: float = 6.0
+    scrape_max_retries: int = 4
+    scrape_retry_backoff_s: float = 8.0
+    scrape_cache_ttl_minutes: int = 360
 
     # Optional alert sinks (disabled when blank).
     telegram_bot_token: str = ""
