@@ -50,6 +50,16 @@ services:
     env_file:
       - .env
 
+  # Self-hosted Cloudflare/WAF bypass (opt-in, free) to reach Spitogatos/Indomio.
+  # Enable with:  docker compose --profile flaresolverr up -d
+  # then set FLARESOLVERR_URL=http://flaresolverr:8191/v1 in .env.
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    profiles: ["flaresolverr"]
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: info
+
 volumes:
   holargos-data:
   holargos-pgdata:

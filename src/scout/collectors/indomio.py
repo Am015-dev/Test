@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 
 from selectolax.parser import HTMLParser
 
-from ..config import Strategy
+from ..config import Strategy, get_settings
 from .base import Collector
 from .parse_helpers import (
     parse_float,
@@ -48,7 +48,11 @@ class IndomioCollector(Collector):
         return urls
 
     def collect(self) -> Iterator[dict]:
-        yield from self._collect_with_playwright()
+        endpoint = get_settings().flaresolverr_url
+        if endpoint:
+            yield from self._collect_via_flaresolverr(endpoint)
+        else:
+            yield from self._collect_with_playwright()
 
     def parse_card(self, html: str, base_url: str) -> dict:
         tree = HTMLParser(html)

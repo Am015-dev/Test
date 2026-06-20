@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..config import Strategy
+from ..config import Strategy, get_settings
 from .base import Collector
 from .indomio import IndomioCollector
 from .spitogatos import SpitogatosCollector
@@ -20,10 +20,13 @@ ALL_COLLECTORS: list[type[Collector]] = [
 def default_collectors(strategy: Strategy) -> list[Collector]:
     """The collectors the pipeline runs.
 
-    XE only for now (the maintained, reachable source). The WAF-blocked portals plug
-    in here later via a FlareSolverr backend; this is the single seam to extend.
+    XE always (reachable over plain HTTP). The WAF-blocked portals are added only
+    when a FlareSolverr endpoint is configured to reach them.
     """
-    return [XeCollector(strategy)]
+    collectors: list[Collector] = [XeCollector(strategy)]
+    if get_settings().flaresolverr_url:
+        collectors += [SpitogatosCollector(strategy), IndomioCollector(strategy)]
+    return collectors
 
 
 __all__ = [

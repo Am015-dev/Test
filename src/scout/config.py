@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # hours (scraping has silently broken — e.g. every area is IP-blocked).
     health_stale_hours: int = 36
 
+    # Self-hosted FlareSolverr endpoint (free Cloudflare/WAF bypass). When set, the
+    # WAF-blocked portals (Spitogatos, Indomio) are scraped through it and added to
+    # the default collectors. e.g. http://flaresolverr:8191/v1
+    flaresolverr_url: str = ""
+
     # Optional alert sinks (disabled when blank).
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""

@@ -104,10 +104,12 @@ Current collector status:
   autocomplete is unreachable the collector falls back to the (unfiltered)
   `geo_place_name` search so it still returns something. `tests/fixtures/xe_card.html`
   is a real captured card.
-- **Spitogatos, Indomio** — behind a CloudFront/WAF that returns 403 to a plain
-  headless browser, so their selectors are reasonable placeholders, not yet
-  verified against live pages. Update the selector constants + fixtures once you can
-  reach them (e.g. with a non-headless/authenticated session).
+- **Spitogatos, Indomio** — behind a CloudFront/WAF that 403s a plain client. Set
+  `FLARESOLVERR_URL` (start the free `flaresolverr` compose service) and they're
+  scraped through it — FlareSolverr drives a real browser and solves the challenge,
+  returning rendered HTML, so they're added to the default collectors automatically.
+  Their within-card selectors are reasonable placeholders; finalize them against the
+  first live capture under `data/raw/` (the rest of the pipeline is unaffected).
 
 Behind a TLS-intercepting proxy, set `SCRAPE_IGNORE_HTTPS_ERRORS=true` (defaults to
 strict TLS).

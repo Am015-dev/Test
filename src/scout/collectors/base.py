@@ -20,6 +20,9 @@ from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 
+import requests
+from selectolax.parser import HTMLParser
+
 from ..config import REPO_ROOT, Strategy
 
 logger = logging.getLogger(__name__)
@@ -126,6 +129,46 @@ class Collector(ABC):
             finally:
                 context.close()
                 browser.close()
+
+    def _fetch_via_flaresolverr(self, url: str, endpoint: str) -> str | None:
+        """Fetch a page through a self-hosted FlareSolverr (free Cloudflare/WAF bypass).
+
+        FlareSolverr drives a real browser, solves the challenge, and returns the
+        rendered HTML — so the WAF-blocked portals become reachable and their
+        JS-hydrated markup (``data-testid`` attributes) is present for the parser.
+        """
+        try:
+            resp = requests.post(
+                endpoint,
+                json={"cmd": "request.get", "url": url, "maxTimeout": 60_000},
+                timeout=90,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            logger.warning("%s: flaresolverr request failed: %s", self.source, exc)
+            return None
+        if data.get("status") != "ok":
+            logger.warning("%s: flaresolverr returned %s", self.source, data.get("message"))
+            return None
+        return (data.get("solution") or {}).get("response")
+
+    def _collect_via_flaresolverr(self, endpoint: str) -> Iterator[dict]:
+        """Crawl search pages through FlareSolverr and parse their cards."""
+        for url in self.search_urls(self.strategy):
+            html = self._fetch_via_flaresolverr(url, endpoint)
+            if not html:
+                continue
+            cards = HTMLParser(html).css(self.CARD_SELECTOR)
+            logger.info("%s: %d cards on %s", self.source, len(cards), url)
+            for card in cards:
+                try:
+                    raw = self.parse_card(card.html, base_url=url)
+                    if raw:
+                        yield raw
+                except Exception as exc:  # fail soft per card
+                    logger.warning("%s: card parse error: %s", self.source, exc)
+            self.polite_delay()
 
     @staticmethod
     def _autoscroll(page, steps: int = 8, pause_ms: int = 400) -> None:
