@@ -159,6 +159,63 @@ def test_blocked_portal_does_not_wipe_other_portals_data(in_memory_db):
         assert by_key[("xe", "z")].status == "active"
 
 
+def test_unscoped_run_does_not_retire_other_areas(in_memory_db):
+    """Regression: a plain run() (area=None) must retire only the default
+    municipality's listings, never other areas' live inventory."""
+    from scout.pipeline import run
+
+    def _run(rows, area, day):
+        run(
+            strategy=Strategy(),
+            collectors=[FakeCollector(Strategy(), rows, source="xe")],
+            use_network=False,
+            observed_at=datetime(2026, 6, day),
+            area=area,
+        )
+
+    _run([_raw("a", 200_000, source="xe")], area="Cholargos", day=1)
+    _run([_raw("b", 210_000, source="xe")], area="Papagou", day=1)
+    # Unscoped run (defaults to municipality "Cholargos") that only re-sees 'a'.
+    _run([_raw("a", 200_000, source="xe")], area=None, day=2)
+
+    with sessionmaker(bind=in_memory_db, future=True)() as s:
+        by_key = {(r.source, r.source_id): r for r in s.scalars(select(ListingRow)).all()}
+        assert by_key[("xe", "a")].status == "active"
+        assert by_key[("xe", "a")].search_area == "Cholargos"
+        # Papagou's listing is in a different area and must survive the Cholargos run.
+        assert by_key[("xe", "b")].status == "active"
+        assert by_key[("xe", "b")].search_area == "Papagou"
+
+
+def test_legacy_null_search_area_backfilled_then_scoped_retired(in_memory_db):
+    """Rows predating per-area tagging (search_area NULL) get tagged on the default
+    municipality's run, so scoped retirement can still reach them once they vanish."""
+    from scout.pipeline import run
+
+    run(
+        strategy=Strategy(),
+        collectors=[FakeCollector(Strategy(), [_raw("a", 200_000, source="xe")], source="xe")],
+        use_network=False,
+        observed_at=datetime(2026, 6, 1),
+        area="Cholargos",
+    )
+    # Simulate a pre-migration row: clear its search_area.
+    with sessionmaker(bind=in_memory_db, future=True)() as s:
+        s.query(ListingRow).update({ListingRow.search_area: None})
+        s.commit()
+    # Unscoped run sees a different xe listing (so 'xe' is active) but not 'a'.
+    run(
+        strategy=Strategy(),
+        collectors=[FakeCollector(Strategy(), [_raw("c", 205_000, source="xe")], source="xe")],
+        use_network=False,
+        observed_at=datetime(2026, 6, 2),
+    )
+    with sessionmaker(bind=in_memory_db, future=True)() as s:
+        by_key = {(r.source, r.source_id): r for r in s.scalars(select(ListingRow)).all()}
+        assert by_key[("xe", "a")].search_area == "Cholargos"  # backfilled
+        assert by_key[("xe", "a")].status == "gone"  # then retired within its area
+
+
 def test_pipeline_excludes_ground_floor(in_memory_db):
     from scout.pipeline import run
 

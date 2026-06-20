@@ -28,6 +28,9 @@ from .models import ScrapeJobRow
 logger = logging.getLogger(__name__)
 
 ACTIVE_STATUSES = ("pending", "running")
+# A job claimed this many times without completing is treated as a poison pill (its
+# work keeps hard-crashing the worker) and failed instead of requeued forever.
+MAX_ATTEMPTS = 5
 
 
 @dataclass(frozen=True)
@@ -61,22 +64,47 @@ def enqueue_areas(areas: list[str], now: datetime | None = None) -> int:
 
 
 def requeue_stale(lease_grace_minutes: int = 0, now: datetime | None = None) -> int:
-    """Return running jobs whose lease has expired (crashed worker) to pending."""
+    """Return running jobs whose lease expired (crashed worker) to pending.
+
+    A job that has burned through ``MAX_ATTEMPTS`` claims without completing is failed
+    instead — a hard crash (OOM/SIGKILL) never runs ``fail_job``, so without this cap
+    it would be reclaimed and re-crash forever, poisoning the queue. Returns the number
+    requeued (not the number failed).
+    """
     now = now or datetime.utcnow()
     cutoff = now - timedelta(minutes=lease_grace_minutes)
     with session_scope() as session:
-        res = session.execute(
+        poisoned = session.execute(
             update(ScrapeJobRow)
-            .where(ScrapeJobRow.status == "running", ScrapeJobRow.lease_until < cutoff)
+            .where(
+                ScrapeJobRow.status == "running",
+                ScrapeJobRow.lease_until < cutoff,
+                ScrapeJobRow.attempts >= MAX_ATTEMPTS,
+            )
+            .values(
+                status="failed",
+                error="exceeded max attempts (worker keeps crashing)",
+                updated_at=now,
+            )
+        ).rowcount
+        requeued = session.execute(
+            update(ScrapeJobRow)
+            .where(
+                ScrapeJobRow.status == "running",
+                ScrapeJobRow.lease_until < cutoff,
+                ScrapeJobRow.attempts < MAX_ATTEMPTS,
+            )
             .values(status="pending", worker_id=None, updated_at=now)
-        )
-        if res.rowcount:
-            logger.warning("requeue: returned %d stale job(s) to pending", res.rowcount)
-        return res.rowcount
+        ).rowcount
+    if poisoned:
+        logger.error("requeue: failed %d poison job(s) (exceeded max attempts)", poisoned)
+    if requeued:
+        logger.warning("requeue: returned %d stale job(s) to pending", requeued)
+    return requeued
 
 
 def claim_job(
-    worker_id: str, lease_minutes: int = 15, now: datetime | None = None
+    worker_id: str, lease_minutes: int = 30, now: datetime | None = None
 ) -> ClaimedJob | None:
     """Atomically claim one pending job, or return None if the queue is empty."""
     now = now or datetime.utcnow()
@@ -109,24 +137,32 @@ def claim_job(
     return None
 
 
-def complete_job(job_id: int, listings_found: int, now: datetime | None = None) -> None:
-    now = now or datetime.utcnow()
+def _close_job(job_id: int, worker_id: str | None, values: dict) -> None:
+    """Close a job out, guarded by ownership so a worker whose lease expired and whose
+    job was reclaimed by another worker can't clobber the new owner's state."""
     with session_scope() as session:
-        session.execute(
-            update(ScrapeJobRow)
-            .where(ScrapeJobRow.id == job_id)
-            .values(status="done", listings_found=listings_found, error=None, updated_at=now)
-        )
+        stmt = update(ScrapeJobRow).where(ScrapeJobRow.id == job_id)
+        if worker_id is not None:
+            stmt = stmt.where(ScrapeJobRow.worker_id == worker_id)
+        session.execute(stmt.values(**values))
 
 
-def fail_job(job_id: int, error: str, now: datetime | None = None) -> None:
+def complete_job(
+    job_id: int, listings_found: int, worker_id: str | None = None, now: datetime | None = None
+) -> None:
     now = now or datetime.utcnow()
-    with session_scope() as session:
-        session.execute(
-            update(ScrapeJobRow)
-            .where(ScrapeJobRow.id == job_id)
-            .values(status="failed", error=error[:512], updated_at=now)
-        )
+    _close_job(
+        job_id,
+        worker_id,
+        {"status": "done", "listings_found": listings_found, "error": None, "updated_at": now},
+    )
+
+
+def fail_job(
+    job_id: int, error: str, worker_id: str | None = None, now: datetime | None = None
+) -> None:
+    now = now or datetime.utcnow()
+    _close_job(job_id, worker_id, {"status": "failed", "error": error[:512], "updated_at": now})
 
 
 def job_stats(now: datetime | None = None) -> dict[str, int]:

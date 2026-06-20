@@ -65,6 +65,28 @@ def test_complete_and_fail(queue_db):
     assert queue.job_stats() == {"done": 1, "failed": 1}
 
 
+def test_complete_job_ignores_non_owner(queue_db):
+    """A worker whose lease expired (job reclaimed by another) can't clobber it."""
+    queue.enqueue_areas(["X"])
+    job = queue.claim_job("w1")
+    queue.complete_job(job.id, listings_found=5, worker_id="w2")  # not the owner -> no-op
+    assert queue.job_stats() == {"running": 1}
+    queue.complete_job(job.id, listings_found=5, worker_id="w1")  # owner -> closes it
+    assert queue.job_stats() == {"done": 1}
+
+
+def test_poison_job_is_failed_after_max_attempts(queue_db):
+    """A job that keeps crashing its worker (lease expiry, never completes) is failed,
+    not requeued forever."""
+    queue.enqueue_areas(["X"])
+    future = datetime.utcnow() + timedelta(hours=1)
+    for _ in range(queue.MAX_ATTEMPTS):
+        assert queue.claim_job("w") is not None
+        queue.requeue_stale(now=future)
+    assert queue.job_stats() == {"failed": 1}
+    assert queue.claim_job("w") is None  # no longer reclaimable
+
+
 def _load_worker():
     spec = importlib.util.spec_from_file_location("worker_mod", REPO_ROOT / "scripts" / "worker.py")
     mod = importlib.util.module_from_spec(spec)

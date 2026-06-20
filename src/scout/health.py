@@ -76,8 +76,11 @@ def check_health(now: datetime | None = None) -> HealthReport:
 
     done = [j for j in recent_jobs if j.status == "done"]
     failed = [j for j in recent_jobs if j.status == "failed"]
-    areas_with_data = sorted({j.area for j in done if (j.listings_found or 0) > 0})
-    areas_zero = sorted({j.area for j in done if not (j.listings_found or 0)})
+    with_data = {j.area for j in done if (j.listings_found or 0) > 0}
+    # An area that returned data in *any* job this window is healthy, even if a later
+    # transient run returned zero — so don't also list it as a zero/partial-trouble area.
+    areas_with_data = sorted(with_data)
+    areas_zero = sorted({j.area for j in done if not (j.listings_found or 0)} - with_data)
     hours_since = round((now - latest_seen).total_seconds() / 3600, 1) if latest_seen else None
 
     report.metrics = {

@@ -11,7 +11,7 @@ import logging
 from collections.abc import Iterable
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from .collectors import default_collectors
 from .collectors.base import Collector
@@ -62,6 +62,12 @@ def run(
     strategy = strategy or load_strategy()
     now = observed_at or datetime.utcnow()
     init_db()
+
+    # A run only ever scrapes ONE municipality (the collector uses it), so retirement
+    # must be scoped to it — otherwise an unscoped run() would retire every *other*
+    # area's still-live listings. Default to the strategy's municipality when no area
+    # was given, so the boot/refresh/cron run() paths are scoped too, not just workers.
+    effective_area = area or strategy.search.municipality
 
     if collectors is None:
         collectors = default_collectors(strategy)
@@ -116,10 +122,19 @@ def run(
     }
     stored = 0
     with session_scope() as session:
+        # One-time backfill: rows created before per-area tagging have search_area
+        # NULL. They all predate multi-area support, so they belong to the default
+        # municipality — tag them on its run so scoped retirement can reach them
+        # (otherwise they'd stay 'active' forever). No-op once none remain.
+        if effective_area == strategy.search.municipality:
+            session.execute(
+                update(ListingRow)
+                .where(ListingRow.search_area.is_(None))
+                .values(search_area=effective_area)
+            )
         for lst in canonical:
             try:
-                if area is not None:
-                    lst.search_area = area
+                lst.search_area = effective_area
                 row = upsert_listing_with_history(session, lst, observed_at=now)
                 seen_keys.add((lst.source, lst.source_id))
                 first_price = _first_price(session, row.id)
@@ -133,7 +148,7 @@ def run(
                 logger.warning("store/score failed for %s: %s", lst.dedup_key, exc)
 
         gone = mark_unseen_as_gone(
-            session, seen_keys, observed_at=now, active_sources=active_sources, area=area
+            session, seen_keys, observed_at=now, active_sources=active_sources, area=effective_area
         )
 
     summary = {

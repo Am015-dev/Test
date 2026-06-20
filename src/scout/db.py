@@ -8,12 +8,14 @@ duplicate history rows are created.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import get_settings
@@ -24,6 +26,8 @@ from .models import (
     PriceHistoryRow,
     StatusHistoryRow,
 )
+
+logger = logging.getLogger(__name__)
 
 _engine: Engine | None = None
 _SessionFactory: sessionmaker[Session] | None = None
@@ -76,20 +80,39 @@ def init_db() -> None:
     engine = get_engine()
     Base.metadata.create_all(engine)
     _ensure_columns(engine, "listing", {"search_area": "VARCHAR(128)"})
+    _ensure_index(engine, "ix_listing_search_area", "listing", "search_area")
 
 
 def _ensure_columns(engine: Engine, table: str, columns: dict[str, str]) -> None:
-    """Add any of ``columns`` (name -> SQL type) missing from ``table``."""
+    """Add any of ``columns`` (name -> SQL type) missing from ``table``.
+
+    Each column is added in its own transaction and a failure is tolerated: several
+    workers may run ``init_db`` at once and race to ``ADD COLUMN``; whoever loses sees
+    "column already exists", which is the desired end state, so we swallow it.
+    """
     inspector = inspect(engine)
     if table not in inspector.get_table_names():
         return
     existing = {c["name"] for c in inspector.get_columns(table)}
-    missing = {name: sqltype for name, sqltype in columns.items() if name not in existing}
-    if not missing:
-        return
-    with engine.begin() as conn:
-        for name, sqltype in missing.items():
-            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}"))
+    for name, sqltype in columns.items():
+        if name in existing:
+            continue
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}"))
+        except (OperationalError, ProgrammingError) as exc:
+            logger.info("migration: ADD COLUMN %s.%s skipped (%s)", table, name, type(exc).__name__)
+
+
+def _ensure_index(engine: Engine, name: str, table: str, column: str) -> None:
+    """Create an index if absent (the model declares one, but ``ADD COLUMN`` on a
+    pre-existing table never materializes it). ``IF NOT EXISTS`` keeps it idempotent
+    and race-safe on both SQLite and Postgres."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({column})"))
+    except (OperationalError, ProgrammingError) as exc:
+        logger.info("migration: CREATE INDEX %s skipped (%s)", name, type(exc).__name__)
 
 
 @contextmanager

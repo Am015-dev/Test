@@ -79,6 +79,18 @@ def test_total_block_is_error(health_db):
     assert any("0 listings" in i for i in report.issues)
 
 
+def test_area_with_data_in_any_job_not_flagged_zero(health_db):
+    """An area that returned data shouldn't also be reported as zero just because a
+    later transient run returned nothing."""
+    now = datetime.utcnow()
+    _add_listing(now)
+    _add_job("Cholargos", "done", listings_found=30, updated_at=now)
+    _add_job("Cholargos", "done", listings_found=0, updated_at=now)  # transient later zero
+    report = check_health(now=now)
+    assert report.status == "ok"
+    assert "Cholargos" not in report.metrics["areas_returned_zero"]
+
+
 def test_partial_zero_is_warn(health_db):
     now = datetime.utcnow()
     _add_listing(now)

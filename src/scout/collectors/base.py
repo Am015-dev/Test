@@ -154,12 +154,23 @@ class Collector(ABC):
         return (data.get("solution") or {}).get("response")
 
     def _collect_via_flaresolverr(self, endpoint: str) -> Iterator[dict]:
-        """Crawl search pages through FlareSolverr and parse their cards."""
+        """Crawl search pages through FlareSolverr and parse their cards.
+
+        Retries a zero-card page with backoff like the other fetch paths, so a
+        transient anti-bot empty doesn't silently report "0 listings today".
+        """
+        from ..config import get_settings
+
+        settings = get_settings()
         for url in self.search_urls(self.strategy):
-            html = self._fetch_via_flaresolverr(url, endpoint)
-            if not html:
-                continue
-            cards = HTMLParser(html).css(self.CARD_SELECTOR)
+            cards = []
+            for attempt in range(1, settings.scrape_max_retries + 1):
+                html = self._fetch_via_flaresolverr(url, endpoint)
+                cards = HTMLParser(html).css(self.CARD_SELECTOR) if html else []
+                if cards:
+                    break
+                if attempt < settings.scrape_max_retries:
+                    time.sleep(settings.scrape_retry_backoff_s * attempt)
             logger.info("%s: %d cards on %s", self.source, len(cards), url)
             for card in cards:
                 try:

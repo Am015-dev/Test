@@ -40,11 +40,14 @@ def drain_once(worker_id: str, lease_minutes: int) -> int:
         logger.info("processing area %r (job %d, attempt %d)", job.area, job.id, job.attempts)
         try:
             summary = run_for_area(job.area)
-            complete_job(job.id, listings_found=summary.get("stored", 0))
+            # Count what the scrape actually *found* (deduped), not what was stored
+            # post-scoring — otherwise a scoring bug looks like an IP block to health.
+            found = summary.get("deduped", summary.get("stored", 0))
+            complete_job(job.id, listings_found=found, worker_id=worker_id)
             logger.info("done area %r: %s", job.area, summary)
         except Exception as exc:  # real error — mark failed; lease-requeue won't apply
             logger.exception("area %r failed", job.area)
-            fail_job(job.id, error=str(exc))
+            fail_job(job.id, error=str(exc), worker_id=worker_id)
         processed += 1
     return processed
 
@@ -52,7 +55,7 @@ def drain_once(worker_id: str, lease_minutes: int) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Holargos scrape worker")
     parser.add_argument("--worker-id", default=f"{socket.gethostname()}-{int(time.time())}")
-    parser.add_argument("--lease-minutes", type=int, default=15)
+    parser.add_argument("--lease-minutes", type=int, default=30)
     parser.add_argument(
         "--poll",
         type=int,
