@@ -31,6 +31,9 @@ USER_AGENT = (
 )
 MIN_DELAY_S = 2.0
 MAX_DELAY_S = 5.0
+# Retry a search page that returns zero cards (transient anti-bot empties).
+MAX_PAGE_ATTEMPTS = 3
+RETRY_BACKOFF_S = 4.0
 
 
 class Collector(ABC):
@@ -92,13 +95,23 @@ class Collector(ABC):
             page = context.new_page()
             try:
                 for url in self.search_urls(self.strategy):
-                    try:
-                        page.goto(url, wait_until="networkidle", timeout=30_000)
-                        self._autoscroll(page)
-                    except Exception as exc:
-                        logger.warning("failed to load %s: %s", url, exc)
-                        continue
-                    cards = page.query_selector_all(self.CARD_SELECTOR)
+                    # Anti-bot pages intermittently return zero results to datacenter
+                    # IPs. Retry with backoff so a transient empty page doesn't become
+                    # "0 listings today" — a real block stays empty after the retries.
+                    cards = []
+                    for attempt in range(1, MAX_PAGE_ATTEMPTS + 1):
+                        try:
+                            page.goto(url, wait_until="networkidle", timeout=30_000)
+                            self._autoscroll(page)
+                        except Exception as exc:
+                            logger.warning("failed to load %s (attempt %d): %s", url, attempt, exc)
+                            cards = []
+                        else:
+                            cards = page.query_selector_all(self.CARD_SELECTOR)
+                        if cards:
+                            break
+                        if attempt < MAX_PAGE_ATTEMPTS:
+                            time.sleep(RETRY_BACKOFF_S * attempt)
                     logger.info("%s: %d cards on %s", self.source, len(cards), url)
                     for card in cards:
                         try:
