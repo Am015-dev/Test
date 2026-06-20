@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -67,8 +67,29 @@ def get_engine() -> Engine:
 
 
 def init_db() -> None:
-    """Create all tables if they don't exist."""
-    Base.metadata.create_all(get_engine())
+    """Create all tables if they don't exist, and apply light forward migrations.
+
+    ``create_all`` adds new *tables* (e.g. ``scrape_job``) but never alters an
+    existing one, so columns added after a DB was first created are patched in here.
+    Idempotent and dialect-agnostic (works on SQLite and Postgres).
+    """
+    engine = get_engine()
+    Base.metadata.create_all(engine)
+    _ensure_columns(engine, "listing", {"search_area": "VARCHAR(128)"})
+
+
+def _ensure_columns(engine: Engine, table: str, columns: dict[str, str]) -> None:
+    """Add any of ``columns`` (name -> SQL type) missing from ``table``."""
+    inspector = inspect(engine)
+    if table not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns(table)}
+    missing = {name: sqltype for name, sqltype in columns.items() if name not in existing}
+    if not missing:
+        return
+    with engine.begin() as conn:
+        for name, sqltype in missing.items():
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}"))
 
 
 @contextmanager
