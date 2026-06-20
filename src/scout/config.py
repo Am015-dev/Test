@@ -26,10 +26,20 @@ class Settings(BaseSettings):
 
     geocoder_user_agent: str = "holargos-scout/1.0 (you@example.com)"
     db_path: str = "data/listings.db"
+    # Full SQLAlchemy URL override. Set this to a Postgres DSN to scale beyond the
+    # default single-file SQLite (e.g. postgresql+psycopg://user:pass@host/db).
+    database_url: str = ""
     osrm_base_url: str = "https://router.project-osrm.org"
 
     # Set true only behind a TLS-intercepting proxy. Keeps TLS strict by default.
     scrape_ignore_https_errors: bool = False
+
+    # Reliable, scalable data source (recommended for production). When apify_token is
+    # set, the Apify-backed collector is used instead of the best-effort direct fetch:
+    # Apify runs the maintained xe.gr actor on its cloud with GR residential proxies,
+    # so it isn't IP-throttled and scales across areas. ~$3.50 / 1000 listings.
+    apify_token: str = ""
+    apify_xe_actor: str = "logiover/xe-gr-real-estate-scraper-greece-property-data"
 
     # Optional alert sinks (disabled when blank).
     telegram_bot_token: str = ""
@@ -42,6 +52,8 @@ class Settings(BaseSettings):
 
     @property
     def db_url(self) -> str:
+        if self.database_url:
+            return self.database_url
         path = Path(self.db_path)
         if not path.is_absolute():
             path = REPO_ROOT / path

@@ -13,5 +13,20 @@ services:
     env_file:
       - .env
 
+  # Scale-up storage (opt-in). Start with:  docker compose --profile postgres up -d
+  # then set DATABASE_URL=postgresql+psycopg://holargos:holargos@db:5432/holargos
+  # in .env (and `pip install "psycopg[binary]"` is bundled via the postgres extra).
+  db:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: holargos
+      POSTGRES_PASSWORD: holargos
+      POSTGRES_DB: holargos
+    volumes:
+      - holargos-pgdata:/var/lib/postgresql/data
+
 volumes:
   holargos-data:
+  holargos-pgdata:

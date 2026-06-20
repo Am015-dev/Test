@@ -13,7 +13,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
-from .collectors import ALL_COLLECTORS
+from .collectors import default_collectors
 from .collectors.base import Collector
 from .config import Strategy, load_strategy
 from .db import (
@@ -58,7 +58,7 @@ def run(
     init_db()
 
     if collectors is None:
-        collectors = [cls(strategy) for cls in ALL_COLLECTORS]
+        collectors = default_collectors(strategy)
 
     # 1. Collect + normalize.
     raws = _collect_all(collectors)

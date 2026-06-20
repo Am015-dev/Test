@@ -112,6 +112,24 @@ Current collector status:
 Behind a TLS-intercepting proxy, set `SCRAPE_IGNORE_HTTPS_ERRORS=true` (defaults to
 strict TLS).
 
+## Reliability & scaling
+
+Direct scraping (browser or `requests`) is **rate-limited by XE for datacenter IPs**
+— the same search flips between a full page and an empty one regardless of the tool.
+This is an IP/anti-bot constraint, not a parsing bug, so the pipeline is fail-soft and
+never wipes existing data on an empty run, and search pages are retried with backoff.
+
+For **reliable, scalable** data, set `APIFY_TOKEN` (see `.env.example`). The pipeline
+then sources listings from Apify's maintained xe.gr actor, which runs on Apify's cloud
+with GR residential proxies and anti-bot handling and returns structured JSON. It uses
+the same `geo_place_id` resolution, scales across areas by adding ids, and costs
+~$3.50/1000 listings. Selection is automatic: `collectors.default_collectors` uses the
+Apify source when a token is present and the free direct fetch otherwise.
+
+To scale storage beyond single-file SQLite, set `DATABASE_URL` to a Postgres DSN
+(`pip install ".[postgres]"`; an opt-in `db` service ships in `docker-compose.yml`
+under the `postgres` profile).
+
 ## Disclaimer
 
 This tool ranks and surfaces listings; it does **not** give financial or legal
