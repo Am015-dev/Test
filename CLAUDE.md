@@ -61,6 +61,22 @@ black --check src/ tests/ scripts/
 
 For DB-touching changes, smoke against real Postgres (see the `holargos-verify` skill).
 
+## Project skills (`.claude/skills/`)
+
+Invoke the matching skill for these recurring tasks (plus the vendored `superpowers`
+general-workflow skills — see `.claude/skills/NOTICE.md`):
+
+| Task | Skill |
+|---|---|
+| Run the test/lint gate + real-Postgres smoke + ship | `holargos-verify` |
+| A live collector returns 0 cards / wrong fields (markup changed) | `repair-collector` |
+| Healthcheck pages WARN/ERROR (stale / blocked / partial) — what to do | `triage-scraper-health` |
+| Add/change a DB column safely (the migration trap) | `db-schema-change` |
+| Add a brand-new portal source | `add-portal` |
+| Bring up the WAF portals (Spitogatos/Indomio) via FlareSolverr | `finalize-portal-selectors` |
+| Add a coverage municipality | `add-coverage-area` |
+| Change scoring weights / filters / thesis | `tune-scoring` |
+
 ## Workflow
 
 - Develop on branch `claude/holargos-property-scout-8yffib`; commit with clear messages;
