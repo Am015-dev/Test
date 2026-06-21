@@ -1,0 +1,18 @@
+{
+  "_note": "Reference copy. The LIVE file Claude Code auto-loads must live at the repo root as /.mcp.json (tooling requirement). Keep this copy in sync; see README.md in this folder.",
+  "mcpServers": {
+    "postgres": {
+      "command": "uvx",
+      "args": ["postgres-mcp", "--access-mode=restricted"],
+      "env": { "DATABASE_URI": "${DATABASE_URI}" }
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"]
+    }
+  }
+}

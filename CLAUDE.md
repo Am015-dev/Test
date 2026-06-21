@@ -77,6 +77,11 @@ general-workflow skills — see `.claude/skills/NOTICE.md`):
 | Add a coverage municipality | `add-coverage-area` |
 | Change scoring weights / filters / thesis | `tune-scoring` |
 
+**MCP servers** (`.claude/mcp/`, live config `/.mcp.json`): `postgres` (read-only DB
+inspection), `playwright` (render WAF/JS portals for selector work), `fetch` (HTML pulls).
+GitHub MCP is provided by the environment. See `.claude/README.md` for the full toolkit
+index (skills + MCP + plugins).
+
 ## Workflow
 
 - Develop on branch `claude/holargos-property-scout-8yffib`; commit with clear messages;
