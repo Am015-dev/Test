@@ -34,8 +34,12 @@ runcmd:
   - cp /opt/holargos/.env.example /opt/holargos/.env
   # Build image and start the always-on Streamlit service.
   - bash -c 'cd /opt/holargos && docker compose up -d --build'
-  # Open port 8501 (OCI Ubuntu images ship a default REJECT in INPUT).
+  # Open ports (OCI Ubuntu images ship a default REJECT in INPUT). 8501 = direct
+  # Streamlit; 80/443 = the optional Caddy reverse proxy (free HTTPS custom domain).
+  # NOTE: you must ALSO allow these in the OCI console (VCN Security List / NSG).
   - iptables -I INPUT -p tcp --dport 8501 -j ACCEPT
+  - iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+  - iptables -I INPUT -p tcp --dport 443 -j ACCEPT
   - netfilter-persistent save || true
   # Daily scrape at 06:00 UTC (09:00 Athens): enqueue every configured area, then
   # drain the queue on this control VM. Extra Oracle worker instances (if added)

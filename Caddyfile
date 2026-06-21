@@ -1,0 +1,20 @@
+# Caddy reverse proxy for the Holargos dashboard.
+#
+# SITE_ADDRESS comes from .env. With a real domain (e.g. a free DuckDNS subdomain
+# pointed at this server's public IP) Caddy automatically obtains and renews a free
+# Let's Encrypt certificate, so the dashboard is served over HTTPS with no port in the
+# URL. Falls back to localhost (no public cert) when SITE_ADDRESS is unset.
+#
+# Streamlit talks WebSockets; Caddy's reverse_proxy upgrades them automatically.
+#
+# SECURITY: the dashboard has no built-in login. To require a password, generate a
+# hash with `docker run --rm caddy:2-alpine caddy hash-password --plaintext 'yourpass'`
+# and uncomment the basic_auth block below (user is "admin"; change as you like).
+
+{$SITE_ADDRESS:localhost} {
+	reverse_proxy web:8501
+
+	# basic_auth {
+	# 	admin <PASTE_BCRYPT_HASH_HERE>
+	# }
+}

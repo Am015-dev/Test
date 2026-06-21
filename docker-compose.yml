@@ -60,6 +60,30 @@ services:
     environment:
       LOG_LEVEL: info
 
+  # Reverse proxy giving the dashboard a real domain + automatic free HTTPS
+  # (Let's Encrypt), instead of http://<ip>:8501. Opt-in:
+  #   1. point a free DuckDNS subdomain at this server's public IP
+  #   2. set SITE_ADDRESS=yourname.duckdns.org in .env
+  #   3. open ports 80 + 443 (OCI security list + iptables), then:
+  #   docker compose --profile proxy up -d
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["proxy"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    env_file:
+      - .env
+    depends_on:
+      - web
+
 volumes:
   holargos-data:
   holargos-pgdata:
+  caddy-data:
+  caddy-config:
