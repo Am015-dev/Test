@@ -30,9 +30,11 @@ runcmd:
   # Fetch the app (private repo → token in the URL; replace __GITHUB_TOKEN__).
   # The token persists in /opt/holargos/.git/config so future `git pull` works too.
   - git clone https://__GITHUB_TOKEN__@github.com/Am015-dev/Test.git /opt/holargos
-  # Operational config (defaults work out of the box).
-  - cp /opt/holargos/.env.example /opt/holargos/.env
-  # Build image and start the always-on Streamlit service.
+  # Converge runtime config: create .env (defaults work out of the box) + install all
+  # cron jobs (auto-update, daily scrape, healthcheck). One source of truth, also run
+  # on every auto-update tick so existing instances stay current without re-provision.
+  - bash /opt/holargos/deploy/reconcile.sh
+  # Build image and start the stack (honours COMPOSE_PROFILES from .env).
   - bash -c 'cd /opt/holargos && docker compose up -d --build'
   # Open ports (OCI Ubuntu images ship a default REJECT in INPUT). 8501 = direct
   # Streamlit; 80/443 = the optional Caddy reverse proxy (free HTTPS custom domain).
@@ -41,14 +43,5 @@ runcmd:
   - iptables -I INPUT -p tcp --dport 80 -j ACCEPT
   - iptables -I INPUT -p tcp --dport 443 -j ACCEPT
   - netfilter-persistent save || true
-  # Daily scrape at 06:00 UTC (09:00 Athens): enqueue every configured area, then
-  # drain the queue on this control VM. Extra Oracle worker instances (if added)
-  # also drain it from their own IPs. Logs to /var/log/holargos-daily.log.
-  - bash -c '(crontab -l 2>/dev/null; echo "0 6 * * * cd /opt/holargos && docker compose run --rm web bash -c \"python scripts/enqueue.py && python scripts/worker.py && python scripts/notify.py\" >> /var/log/holargos-daily.log 2>&1") | crontab -'
-  # Healthcheck twice daily (07:00 & 19:00 UTC): alerts if scraping silently broke.
-  - bash -c '(crontab -l 2>/dev/null; echo "0 7,19 * * * cd /opt/holargos && docker compose run --rm web python scripts/healthcheck.py >> /var/log/holargos-health.log 2>&1") | crontab -'
-  # Auto-deploy: every 5 min pull main and rebuild IF the code changed, so the live
-  # app always tracks the repo with no manual SSH. No-op when already current.
-  - bash -c '(crontab -l 2>/dev/null; echo "*/5 * * * * /opt/holargos/deploy/auto-update.sh >> /var/log/holargos-update.log 2>&1") | crontab -'
 
 final_message: "Holargos Property Scout setup finished after $UPTIME seconds. Streamlit is on port 8501."
