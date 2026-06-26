@@ -80,6 +80,10 @@ general-workflow skills — see `.claude/skills/NOTICE.md`):
 | Daily ops loop (observe → triage → fix → escalate) | `autonomous-ops` |
 | Ship a fix safely: gate → CI → merge → verify autodeploy | `self-deploy-safely` |
 | Weekly data-quality + coverage + dependency sweep | `weekly-review` |
+| Force laziest solution (YAGNI / stdlib first / anti-bloat discipline) | `ponytail` |
+| Review diff for over-engineering — returns delete-list only | `ponytail-review` |
+| Audit whole repo for bloat — ranked delete-list | `ponytail-audit` |
+| Show deferred-shortcut ledger (`ponytail:` comments) | `ponytail-debt` |
 
 **MCP servers** (`.claude/mcp/`, live config `/.mcp.json`): `postgres` (read-only DB
 inspection), `playwright` (render WAF/JS portals for selector work), `fetch` (HTML pulls).
