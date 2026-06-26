@@ -216,3 +216,24 @@ class ScrapeJobRow(Base):
     error: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime)
     updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class HealthReportRow(Base):
+    """One healthcheck snapshot, written after every ``check_health()`` run.
+
+    Persists health state across sessions so the agent can query recent history
+    via the postgres MCP without needing log access::
+
+        SELECT checked_at, status, issues
+        FROM health_report
+        ORDER BY checked_at DESC
+        LIMIT 5;
+    """
+
+    __tablename__ = "health_report"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    checked_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    status: Mapped[str] = mapped_column(String(16))
+    issues: Mapped[str | None] = mapped_column(String(2048), nullable=True)  # JSON list
+    metrics: Mapped[str | None] = mapped_column(String(4096), nullable=True)  # JSON dict

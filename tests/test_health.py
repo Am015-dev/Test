@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -9,8 +10,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import scout.db as db
-from scout.health import check_health
-from scout.models import Base, ListingRow, ScrapeJobRow
+from scout.health import HealthReport, check_health, persist_health_report
+from scout.models import Base, HealthReportRow, ListingRow, ScrapeJobRow
 
 from .conftest import make_listing
 
@@ -99,3 +100,21 @@ def test_partial_zero_is_warn(health_db):
     report = check_health(now=now)
     assert report.status == "warn"
     assert any("Papagou" in i for i in report.issues)
+
+
+def test_persist_health_report(health_db):
+    """persist_health_report writes status, issues, and metrics to the health_report table."""
+    now = datetime.utcnow()
+    report = HealthReport(
+        status="warn",
+        issues=["Something off"],
+        metrics={"active_listings": 5, "hours_since_refresh": 2.5},
+    )
+    persist_health_report(report, checked_at=now)
+
+    with db.session_scope() as session:
+        row = session.query(HealthReportRow).one()
+        assert row.status == "warn"
+        assert "Something off" in json.loads(row.issues)
+        m = json.loads(row.metrics)
+        assert m["active_listings"] == 5
