@@ -31,6 +31,7 @@ collectors → normalize → enrich (geo/metro/yield) → dedup → store(+histo
   idempotent, race-safe forward migrations (`_ensure_columns` / `_ensure_index`).
 - **Alerts** (`alerts.py`, `scripts/notify.py`) + **health** (`health.py`,
   `scripts/healthcheck.py`): config-gated Telegram/email; no-op when unconfigured.
+  Health results are persisted to the `health_report` table after every run.
 
 ## Config
 
@@ -42,7 +43,7 @@ collectors → normalize → enrich (geo/metro/yield) → dedup → store(+histo
 
 ## Conventions
 
-- Python ≥3.11, `from __future__ import annotations`. Line length 100 (black + ruff).
+- Python ≮3.11, `from __future__ import annotations`. Line length 100 (black + ruff).
 - **Fail-soft scraping**: one bad listing/portal logs and is skipped; a run that returns
   nothing must NOT wipe existing data (the `active_sources` guard + per-area scoping).
 - **Idempotent**: running the pipeline twice a day adds no duplicate history.
@@ -76,17 +77,62 @@ general-workflow skills — see `.claude/skills/NOTICE.md`):
 | Bring up the WAF portals (Spitogatos/Indomio) via FlareSolverr | `finalize-portal-selectors` |
 | Add a coverage municipality | `add-coverage-area` |
 | Change scoring weights / filters / thesis | `tune-scoring` |
+| Daily ops loop (observe → triage → fix → escalate) | `autonomous-ops` |
+| Ship a fix safely: gate → CI → merge → verify autodeploy | `self-deploy-safely` |
+| Weekly data-quality + coverage + dependency sweep | `weekly-review` |
 
 **MCP servers** (`.claude/mcp/`, live config `/.mcp.json`): `postgres` (read-only DB
 inspection), `playwright` (render WAF/JS portals for selector work), `fetch` (HTML pulls).
 GitHub MCP is provided by the environment. See `.claude/README.md` for the full toolkit
 index (skills + MCP + plugins).
 
+## Cross-session memory
+
+- **`docs/OPS_LOG.md`** — agent-maintained log; append one entry per ops cycle or
+  notable event. Newest at the top.
+- **`health_report` table** — every `scripts/healthcheck.py` run appends a row.
+  Read via the postgres MCP to see recent system state without needing log access:
+  ```sql
+  SELECT checked_at, status, issues, metrics
+  FROM health_report ORDER BY checked_at DESC LIMIT 5;
+  ```
+- **CI** — use `mcp__github__actions_list` on `main` to get the latest gate result.
+
+## Guardrail allow-list
+
+The agent may do these **without owner sign-off**:
+- CSS selector constant updates in `src/scout/collectors/`
+- Add or fix a test that doesn’t change production behaviour
+- Patch-version dep bump in `pyproject.toml` (x.y.**Z** → x.y.**Z+1**)
+- Add or fix a `scripts/` entrypoint or logging call
+- Re-enqueue failed scrape jobs (`python scripts/enqueue.py`)
+- Document findings in `docs/OPS_LOG.md`
+- Restart a crashed Docker service (log it in OPS_LOG)
+
+The agent **MUST stop and send a Telegram alert** before:
+- DB schema changes (new column / table / index)
+- `strategy.yaml` / scoring / hard-filter changes
+- Secrets rotation or new env vars that affect production
+- Adding a new portal source
+- Topology changes (new Oracle instance, new port, new service)
+- Anything that can delete or retire data
+- Cost-affecting changes
+- Same failure persisting for ≥ 3 consecutive autonomous cycles
+
+Escalate via:
+```python
+from scout.alerts import send_alert
+send_alert(
+    "🆘 Holargos Agent blocked.\nIssue: <issue>\nTried: <action>\nNeed: <decision>"
+)
+```
+
 ## Workflow
 
 - Develop on branch `claude/holargos-property-scout-8yffib`; commit with clear messages;
   fast-forward `main` and push both. Do NOT open a PR unless asked.
 - The Oracle instance auto-deploys `main` every 5 min (`deploy/auto-update.sh`).
+- CI runs on every push via `.github/workflows/ci.yml` (pytest + ruff + black).
 - Commit-message footer lines are added by the harness; don't put the model id in commits.
 
 ## Open backlog (safe to pick up unsupervised)
@@ -104,3 +150,5 @@ index (skills + MCP + plugins).
 5. **XE `SEL_LINK` hardening**: `a[href*='/property/']` + `css_first` could grab a
    non-canonical anchor if a card ever has multiple; prefer the id-regex-matching anchor.
 6. **Dashboard panel** for the `scrape_job` queue + health status.
+7. **Phase B triggers**: scheduled agent ops runs + subscribe to CI/PR activity for
+   event-driven auto-fix. Depends on hosting decision (Oracle stable IP required).

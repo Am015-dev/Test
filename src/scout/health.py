@@ -8,10 +8,14 @@ and reports problems so they can be alerted on (see ``scripts/healthcheck.py``):
 - total block: every scrape job in the last 24h returned 0 listings (all IPs blocked);
 - partial trouble: some areas returned 0, or some jobs failed;
 - empty database.
+
+Results are also persisted to the ``health_report`` table via ``persist_health_report``
+so the agent can read recent state across sessions via the postgres MCP.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -20,7 +24,7 @@ from sqlalchemy import func, select
 
 from .config import get_settings, load_strategy
 from .db import session_scope
-from .models import ListingRow, ScrapeJobRow
+from .models import HealthReportRow, ListingRow, ScrapeJobRow
 
 logger = logging.getLogger(__name__)
 
@@ -123,3 +127,26 @@ def check_health(now: datetime | None = None) -> HealthReport:
 
     logger.info("health: %s — %s", report.status, report.metrics)
     return report
+
+
+def persist_health_report(
+    report: HealthReport, checked_at: datetime | None = None
+) -> None:
+    """Write the report to health_report table for cross-session agent observability.
+
+    Failures are logged but not re-raised — a DB write error must never suppress
+    the alert that ``scripts/healthcheck.py`` is about to send.
+    """
+    now = checked_at or datetime.utcnow()
+    try:
+        with session_scope() as session:
+            session.add(
+                HealthReportRow(
+                    checked_at=now,
+                    status=report.status,
+                    issues=json.dumps(report.issues),
+                    metrics=json.dumps(report.metrics, default=str),
+                )
+            )
+    except Exception:
+        logger.exception("health: failed to persist report to DB")
