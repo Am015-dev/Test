@@ -65,7 +65,12 @@ class Settings(BaseSettings):
     @property
     def db_url(self) -> str:
         if self.database_url:
-            return self.database_url
+            # Normalize the bare postgresql:// scheme (as Railway provides it) to the
+            # psycopg3 driver prefix SQLAlchemy 2.0 requires.
+            url = self.database_url
+            if url.startswith("postgres://") or url.startswith("postgresql://"):
+                url = "postgresql+psycopg://" + url.split("://", 1)[1]
+            return url
         path = Path(self.db_path)
         if not path.is_absolute():
             path = REPO_ROOT / path

@@ -10,7 +10,7 @@ python -c "from scout.db import init_db; init_db()"
     >> /var/log/holargos-daily.log 2>&1 & ) || true
 
 exec streamlit run src/scout/ui/app.py \
-    --server.port=8501 \
+    --server.port="${PORT:-8501}" \
     --server.address=0.0.0.0 \
     --server.headless=true \
     --server.fileWatcherType=none
