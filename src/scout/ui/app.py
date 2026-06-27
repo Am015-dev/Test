@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from scout.config import load_strategy, save_strategy  # noqa: E402
+from scout.config import Strategy, load_strategy, save_strategy  # noqa: E402
 from scout.ui import format as fmt  # noqa: E402
 from scout.ui import queries  # noqa: E402
 
@@ -34,6 +34,11 @@ st.set_page_config(page_title="Holargos Property Scout", page_icon="🏠", layou
 @st.cache_data(ttl=60)
 def get_listings() -> list[dict]:
     return queries.load_listings(include_excluded=True, only_active=True)
+
+
+@st.cache_data(ttl=300)
+def get_strategy() -> Strategy:
+    return load_strategy()
 
 
 @st.cache_data(ttl=60)
@@ -113,20 +118,32 @@ def _top_picks(rows: list[dict]) -> None:
     cols = st.columns(min(3, len(rows)))
     for col, d in zip(cols, rows[:3], strict=False):
         with col.container(border=True):
+            # Header: price + neighborhood
             st.markdown(f"### {fmt.euro(d['price'])}")
+            dom = fmt.days_on_market(d.get("first_seen"), d.get("last_seen"))
+            dom_str = (
+                ("listed today" if dom == 0 else f"{dom}d on market") if dom is not None else ""
+            )
             st.caption(
                 f"{d['neighborhood'] or '—'} · {d['area_m2']:.0f} m² · "
                 f"{fmt.euro_per_m2(d['price_per_m2'])} · floor {_floor_label(d['floor'])}"
+                + (f" · {dom_str}" if dom_str else "")
             )
+
+            # Score bar
             st.progress(min(max(int(d["score"]), 0), 100) / 100, text=f"Score {d['score']:.0f}/100")
-            extras = []
-            if d["gross_yield"] is not None:
-                extras.append(f"📈 {fmt.pct(d['gross_yield'])} yield")
-            extras.append(f"🚇 {_metro_label(d)}")
-            st.write(" · ".join(extras))
+
+            # Badges
             flags = " ".join(fmt.badges(d))
             if flags:
                 st.write(flags)
+
+            # Investment case — the WHY
+            bullets = _investment_bullets(d)
+            if bullets:
+                for b in bullets[:3]:  # top 3 to keep card compact
+                    st.markdown(f"• {b}")
+
             st.link_button("View listing ↗", d["url"], use_container_width=True)
 
 
@@ -144,6 +161,132 @@ def _kpi_header(listings: list[dict]) -> None:
     c[2].metric("Price drops", len(drops))
     c[3].metric("Median €/m²", fmt.euro_per_m2(median_ppm))
     c[4].metric("Cheapest €/m²", fmt.euro_per_m2(cheapest_ppm))
+
+
+# ---- investment-thesis helpers --------------------------------------------
+
+
+def _investment_bullets(d: dict) -> list[str]:
+    """Plain-language reasons why this listing is (or isn't) interesting, ordered by impact."""
+    bullets: list[str] = []
+
+    # Yield + income — most important signal
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    gy = d.get("gross_yield")
+    if gy:
+        annual = monthly * 12 if monthly else None
+        if annual:
+            bullets.append(
+                f"**{gy*100:.1f}% gross yield** → {fmt.euro(monthly)}/mo · {fmt.euro(annual)}/yr"
+            )
+        else:
+            bullets.append(f"**{gy*100:.1f}% gross yield**")
+
+    # Price drop — timing signal
+    fp = d.get("first_price")
+    cp = d.get("price", 0)
+    if fp and cp < fp:
+        drop_pct = (fp - cp) / fp * 100
+        bullets.append(f"**Price dropped {drop_pct:.0f}%** from original {fmt.euro(fp)}")
+
+    # Private seller — saves agent fees
+    if d.get("is_private_seller"):
+        bullets.append("**Private seller** — no agent commission")
+
+    # Currently rented — immediate cashflow
+    if d.get("is_currently_rented"):
+        rent_str = f" at {fmt.euro(d['listed_rent'])}/mo" if d.get("listed_rent") else ""
+        bullets.append(f"**Already rented{rent_str}** — cashflow from day 1")
+
+    # Metro proximity — rental demand driver
+    metro = d.get("metro_distance_m")
+    nearest = d.get("nearest_metro") or "metro"
+    if metro is not None:
+        qualifier = "steps" if metro <= 200 else ("walk" if metro <= 400 else "")
+        if qualifier:
+            bullets.append(f"**{metro} m {qualifier} to {nearest}** (Line 3)")
+        else:
+            bullets.append(f"{metro} m to {nearest}")
+
+    # Timing: days on market
+    dom = fmt.days_on_market(d.get("first_seen"), d.get("last_seen"))
+    if dom is not None:
+        if dom == 0:
+            bullets.append("**Listed today** — act fast")
+        elif dom >= 60:
+            bullets.append(f"**{dom} days on market** — seller likely motivated")
+        elif dom >= 14:
+            bullets.append(f"{dom} days on market")
+
+    return bullets
+
+
+def _score_breakdown(d: dict, strategy: Strategy) -> None:
+    """Render a table showing each signal's contribution to the score."""
+    w = strategy.weights
+    ref = strategy.scoring_reference
+    total_w = w.total() or 1.0
+
+    # Recompute signals from stored fields (mirrors scoring.py, no DB needed)
+    gy = d.get("gross_yield") or 0
+    span = max(ref.yield_ceiling - ref.yield_floor, 1e-9)
+    yield_sig = max(0.0, min(1.0, (gy - ref.yield_floor) / span)) if gy else 0.0
+
+    fp, cp = d.get("first_price"), d.get("price", 0)
+    if fp and fp > 0 and cp < fp:
+        drop_sig = max(0.0, min(1.0, (fp - cp) / fp / max(ref.max_price_drop_pct, 1e-9)))
+    else:
+        drop_sig = 0.0
+
+    rented_sig = 1.0 if d.get("is_currently_rented") else 0.0
+    private_sig = 1.0 if d.get("is_private_seller") else 0.0
+
+    rows = [
+        {
+            "Signal": "Gross yield",
+            "Value": f"{gy*100:.1f}%" if gy else "—",
+            "Score": round(yield_sig * w.gross_yield / total_w * 100, 1),
+            "Max": round(w.gross_yield / total_w * 100, 1),
+        },
+        {
+            "Signal": "Price vs area median",
+            "Value": "See score",
+            "Score": "—",
+            "Max": round(w.price_vs_area_median / total_w * 100, 1),
+        },
+        {
+            "Signal": "Price drop",
+            "Value": f"{(fp-cp)/fp*100:.0f}% drop" if (fp and cp < fp) else "none",
+            "Score": round(drop_sig * w.price_drop / total_w * 100, 1),
+            "Max": round(w.price_drop / total_w * 100, 1),
+        },
+        {
+            "Signal": "Currently rented",
+            "Value": "✅ yes" if d.get("is_currently_rented") else "✗ no",
+            "Score": round(rented_sig * w.is_currently_rented / total_w * 100, 1),
+            "Max": round(w.is_currently_rented / total_w * 100, 1),
+        },
+        {
+            "Signal": "Private seller",
+            "Value": "✅ yes" if d.get("is_private_seller") else "✗ no",
+            "Score": round(private_sig * w.is_private_seller / total_w * 100, 1),
+            "Max": round(w.is_private_seller / total_w * 100, 1),
+        },
+    ]
+    df = pd.DataFrame(rows)
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Score": st.column_config.NumberColumn("Score pts", format="%.1f"),
+            "Max": st.column_config.NumberColumn("Max pts", format="%.1f"),
+        },
+    )
+    st.caption(
+        "Price vs area median is computed from all area listings — accurate once ≥ 3 "
+        "comparables exist per neighborhood."
+    )
 
 
 # ---- pages -----------------------------------------------------------------
@@ -287,45 +430,86 @@ def page_detail(listings: list[dict]) -> None:
     lid = options[choice]
     d = next(x for x in listings if x["id"] == lid)
 
-    cols = st.columns(4)
-    cols[0].metric(
-        "Price",
-        fmt.euro(d["price"]),
-        delta=fmt.euro(d["price"] - d["first_price"]) if d["first_price"] else None,
-    )
+    # --- top metrics row ---
+    fp = d.get("first_price")
+    price_delta = fmt.euro(d["price"] - fp) if fp else None
+    cols = st.columns(5)
+    cols[0].metric("Price", fmt.euro(d["price"]), delta=price_delta, delta_color="inverse")
     cols[1].metric("€/m²", fmt.euro_per_m2(d["price_per_m2"]))
     cols[2].metric("Gross yield", fmt.pct(d["gross_yield"]))
-    cols[3].metric("Days on market", fmt.days_on_market(d["first_seen"], d["last_seen"]))
+    dom = fmt.days_on_market(d.get("first_seen"), d.get("last_seen"))
+    cols[3].metric("Days on market", dom if dom is not None else "—")
+    cols[4].metric("Score", f"{d['score']:.0f} / 100")
 
     st.write(" ".join(fmt.badges(d)) or "_no badges_")
     if d["excluded"]:
         st.error(f"Excluded by hard filter: {d['exclusion_reason']}")
 
-    st.markdown("**Specs**")
-    st.json(
-        {
-            "neighborhood": d["neighborhood"],
-            "area_m2": d["area_m2"],
-            "rooms": d["rooms"],
-            "bedrooms": d["bedrooms"],
-            "floor": d["floor"],
-            "nearest_metro": d["nearest_metro"],
-            "metro_distance_m": d["metro_distance_m"],
-            "is_private_seller": d["is_private_seller"],
-            "is_currently_rented": d["is_currently_rented"],
-            "listed_rent": d["listed_rent"],
-            "est_monthly_rent": d["est_monthly_rent"],
-            "source": d["source"],
-        }
+    # --- investment math ---
+    st.markdown("#### 💰 Investment case")
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if monthly:
+        annual = monthly * 12
+        gy = d.get("gross_yield")
+        math_cols = st.columns(4)
+        math_cols[0].metric("Est. monthly rent", fmt.euro(monthly))
+        math_cols[1].metric("Annual income", fmt.euro(annual))
+        math_cols[2].metric("Purchase price", fmt.euro(d["price"]))
+        math_cols[3].metric("Gross yield", fmt.pct(gy))
+        if fp and d["price"] < fp:
+            drop_pct = (fp - d["price"]) / fp * 100
+            st.info(
+                f"📉 Price dropped **{drop_pct:.0f}%** from {fmt.euro(fp)} to {fmt.euro(d['price'])} "
+                f"(saved {fmt.euro(fp - d['price'])})"
+            )
+    else:
+        st.caption("_No rent data scraped — yield estimate uses the strategy fallback €/m²/month._")
+
+    bullets = _investment_bullets(d)
+    if bullets:
+        for b in bullets:
+            st.markdown(f"• {b}")
+
+    # --- score breakdown ---
+    strategy = get_strategy()
+    st.markdown("#### 📊 Score breakdown")
+    _score_breakdown(d, strategy)
+
+    # --- property specs ---
+    st.markdown("#### 🏗️ Property specs")
+    spec_cols = st.columns(3)
+    spec_cols[0].markdown(
+        f"**Area:** {d['area_m2']:.0f} m²  \n"
+        f"**Rooms:** {d['rooms'] or '—'}  \n"
+        f"**Bedrooms:** {d['bedrooms'] or '—'}  \n"
+        f"**Floor:** {_floor_label(d['floor'])}"
+    )
+    spec_cols[1].markdown(
+        f"**Neighborhood:** {d['neighborhood'] or '—'}  \n"
+        f"**Address:** {d['address'] or '—'}  \n"
+        f"**Nearest metro:** {d.get('nearest_metro') or '—'}  \n"
+        f"**Metro distance:** {_metro_label(d)}"
+    )
+    spec_cols[2].markdown(
+        f"**Source:** {d['source']}  \n"
+        f"**Private seller:** {'✅ yes' if d['is_private_seller'] else '✗ no'}  \n"
+        f"**Currently rented:** {'✅ yes' if d['is_currently_rented'] else '✗ no'}  \n"
+        f"**Listed rent:** {fmt.euro(d.get('listed_rent'))}"
     )
 
-    st.markdown("**Price history**")
+    # --- price history ---
+    st.markdown("#### 📈 Price history")
     history = get_history(lid)
-    if len(history) >= 1:
+    if len(history) >= 2:
         hist_df = pd.DataFrame(history, columns=["observed_at", "price"]).set_index("observed_at")
         st.line_chart(hist_df)
+    elif len(history) == 1:
+        st.caption(
+            f"First recorded price: {fmt.euro(history[0][1])} on {history[0][0]:%Y-%m-%d}. "
+            "Price history builds up over multiple pipeline runs."
+        )
     else:
-        st.caption("No price history yet.")
+        st.caption("No price history yet — runs each day and accumulates over time.")
 
     st.link_button("Open on portal ↗", d["url"])
     watched = st.checkbox("On watchlist", value=d["is_watched"], key=f"watch-{lid}")
