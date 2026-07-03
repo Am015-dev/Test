@@ -22,7 +22,13 @@ DEFAULT_STRATEGY_PATH = REPO_ROOT / "strategy.yaml"
 class Settings(BaseSettings):
     """Operational config, sourced from environment / ``.env``."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # Anchor .env to the repo root (like DEFAULT_STRATEGY_PATH), NOT the process CWD:
+    # a bare ".env" resolves relative to wherever the process was started, so a cron
+    # entry or worker launched from another directory would silently miss DATABASE_URL
+    # and fall back to a private local SQLite, breaking the shared worker queue.
+    model_config = SettingsConfigDict(
+        env_file=str(REPO_ROOT / ".env"), env_file_encoding="utf-8", extra="ignore"
+    )
 
     geocoder_user_agent: str = "holargos-scout/1.0 (you@example.com)"
     db_path: str = "data/listings.db"

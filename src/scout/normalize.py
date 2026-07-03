@@ -33,7 +33,10 @@ def normalize(raw: dict, now: datetime | None = None) -> Listing | None:
     if not source or not source_id or not url:
         logger.debug("dropping raw without source/source_id/url: %s", raw)
         return None
-    if not price or not area or area <= 0:
+    # Validate the SIGN, not just truthiness: `not price` rejects 0/None but a garbled
+    # negative price (bool(-50000) is True) would sail through and later produce a
+    # negative €/m² that clamps to a maxed-out "priced well below market" signal.
+    if not price or price <= 0 or not area or area <= 0:
         logger.debug("dropping %s:%s without usable price/area", source, source_id)
         return None
 

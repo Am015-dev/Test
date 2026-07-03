@@ -28,29 +28,39 @@ def _strip_accents(text: str) -> str:
 
 
 def parse_floor(label: str | None) -> float | None:
-    """Map a Greek floor label to a number. Returns None if unparseable."""
+    """Map a Greek floor label to a number. Returns None if unparseable.
+
+    A combined/maisonette label concatenates segments, e.g. "Ισόγειο,1ος" (ground +
+    1st). An explicit numeric floor is more specific than the ground/basement word,
+    so prefer it — otherwise the word match short-circuits and the numbered level is
+    silently lost (a ground+1st maisonette would read as floor 0 and be wrongly
+    dropped by the ground-floor hard filter). Multiple ordinals -> the highest level.
+    """
     if not label:
         return None
     norm = _strip_accents(label).lower().strip()
+
+    # "ρετιρέ" (penthouse) and maisonette labels carry a numeric floor — prefer it.
+    ordinals = [int(n) for n in _ORDINAL_RE.findall(norm)]
+    if ordinals:
+        return float(max(ordinals))
 
     for word, value in _FLOOR_WORD_MAP.items():
         if _strip_accents(word).lower() in norm:
             return value
 
-    # "ρετιρέ" (penthouse) often carries a numeric floor — keep the number.
-    m = _ORDINAL_RE.search(norm)
-    if m:
-        try:
-            return float(int(m.group(1)))
-        except ValueError:
-            return None
     return None
 
 
-_RENTED_HINT_RE = re.compile(r"μισθωμ[έε]ν|ενοικιασμ[έε]ν|αποδοσ", re.IGNORECASE)
-# Any euro amount in the text, e.g. "850 €". We pick a plausible monthly rent
-# (a year like "2027" carries no € and is naturally excluded).
-_EURO_AMOUNT_RE = re.compile(r"(\d{2,5})\s*€")
+# "μισθωμένο"/"ενοικιασμένο" = currently let. The "απόδοση" (yield) alternative was
+# dropped: it never matched real accented text AND a "great yield" sales pitch on a
+# *vacant* flat is not evidence it is currently rented — matching it would flip
+# is_currently_rented on false positives.
+_RENTED_HINT_RE = re.compile(r"μισθωμ[έε]ν|ενοικιασμ[έε]ν", re.IGNORECASE)
+# A euro amount, e.g. "850 €" or "1.200 €". Capture the WHOLE punctuated run so Greek
+# thousands separators aren't truncated ("1.200 €" must read 1200, not 200); a year
+# like "2027" carries no € and is naturally excluded.
+_EURO_AMOUNT_RE = re.compile(r"(\d[\d.,]*)\s*€")
 # A monthly rent sits in this band; anything larger is a sale price, anything
 # smaller is noise.
 _MIN_RENT, _MAX_RENT = 100, 5000
@@ -68,7 +78,14 @@ def parse_rent(description: str | None) -> tuple[bool, int | None]:
     rent = None
     if rented:
         for raw in _EURO_AMOUNT_RE.findall(description):
-            amount = int(raw)
+            # Strip Greek thousands separators the same way parse_int does, so a full
+            # sale price (e.g. "92.500") reads 92500 (out of band, skipped) rather than
+            # a stray "500" fragment that could be mistaken for the rent.
+            digits = re.sub(r"[.,\s]", "", raw)
+            try:
+                amount = int(digits)
+            except ValueError:
+                continue
             if _MIN_RENT <= amount <= _MAX_RENT:
                 rent = amount
                 break
@@ -115,3 +132,16 @@ def parse_float(text: str | None) -> float | None:
         return float(m.group(0).replace(",", "."))
     except ValueError:
         return None
+
+
+def source_id_from_url(url: str | None) -> str | None:
+    """Derive a stable listing id from a URL's last path segment.
+
+    Strips the query string and fragment first: portal search links carry tracking
+    params (``?from=search_list&position=3``) that vary by page/crawl, so leaving them
+    in makes the same listing look new every run and breaks de-duplication.
+    """
+    if not url:
+        return None
+    clean = url.split("?", 1)[0].split("#", 1)[0]
+    return clean.rstrip("/").split("/")[-1] or None

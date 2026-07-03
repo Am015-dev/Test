@@ -67,6 +67,9 @@ def check_health(now: datetime | None = None) -> HealthReport:
             )
             or 0
         )
+        # Total across ALL statuses, so "never recorded" (empty DB) is distinguished
+        # from "recorded, but everything has since gone" (active==0 but rows exist).
+        total_listings = session.scalar(select(func.count()).select_from(ListingRow)) or 0
         latest_seen = session.scalar(
             select(func.max(ListingRow.last_seen)).where(ListingRow.status == "active")
         )
@@ -100,7 +103,7 @@ def check_health(now: datetime | None = None) -> HealthReport:
     # --- checks -------------------------------------------------------------
     if active == 0:
         report._escalate("error", "Database has no active listings.")
-    if latest_seen is None:
+    if total_listings == 0:
         report._escalate("error", "No listing has ever been recorded.")
     elif hours_since is not None and hours_since > settings.health_stale_hours:
         report._escalate(
@@ -109,11 +112,15 @@ def check_health(now: datetime | None = None) -> HealthReport:
             f"(threshold {settings.health_stale_hours}h) — scraping is likely broken.",
         )
 
-    if recent_jobs and not areas_with_data:
+    # Gate the "all IP-blocked" alarm on jobs that actually COMPLETED with zero data.
+    # `recent_jobs` includes pending/running jobs (just enqueued, not run yet) and
+    # failed jobs (a crash, not a "0 listings" result); firing on those cries wolf on
+    # every enqueue→worker cycle and misreports crashes as IP blocks.
+    if done and not areas_with_data:
         report._escalate(
             "error",
-            "Every scrape job in the last 24h returned 0 listings — likely IP-blocked "
-            "on all areas. Add a worker on another Oracle instance / IP.",
+            "Every completed scrape job in the last 24h returned 0 listings — likely "
+            "IP-blocked on all areas. Add a worker on another Oracle instance / IP.",
         )
     elif areas_zero:
         report._escalate("warn", f"Some areas returned 0 listings: {areas_zero}.")
@@ -129,9 +136,37 @@ def check_health(now: datetime | None = None) -> HealthReport:
     return report
 
 
-def persist_health_report(
-    report: HealthReport, checked_at: datetime | None = None
-) -> None:
+# Bounds that keep the serialized JSON inside HealthReportRow's String columns
+# (issues=2048, metrics=4096) even for large multi-area configs, so a wide "all areas
+# zero" event — exactly the outage worth reviewing later — still persists on Postgres
+# (which enforces VARCHAR length) instead of silently failing the insert.
+_MAX_LIST_ITEMS = 25
+_MAX_ISSUES = 8
+_MAX_ISSUE_LEN = 220
+
+
+def _bounded_metrics(metrics: dict) -> dict:
+    """Cap the length of any list-valued metric with a '+N more' marker."""
+    bounded: dict = {}
+    for key, value in metrics.items():
+        if isinstance(value, list) and len(value) > _MAX_LIST_ITEMS:
+            extra = len(value) - _MAX_LIST_ITEMS
+            bounded[key] = value[:_MAX_LIST_ITEMS] + [f"+{extra} more"]
+        else:
+            bounded[key] = value
+    return bounded
+
+
+def _bounded_issues(issues: list[str]) -> list[str]:
+    """Cap the number of issues and the length of each (they can embed area lists)."""
+    trimmed = [i if len(i) <= _MAX_ISSUE_LEN else i[: _MAX_ISSUE_LEN - 1] + "…" for i in issues]
+    if len(trimmed) > _MAX_ISSUES:
+        extra = len(trimmed) - _MAX_ISSUES
+        trimmed = trimmed[:_MAX_ISSUES] + [f"+{extra} more issue(s)"]
+    return trimmed
+
+
+def persist_health_report(report: HealthReport, checked_at: datetime | None = None) -> None:
     """Write the report to health_report table for cross-session agent observability.
 
     Failures are logged but not re-raised — a DB write error must never suppress
@@ -144,8 +179,8 @@ def persist_health_report(
                 HealthReportRow(
                     checked_at=now,
                     status=report.status,
-                    issues=json.dumps(report.issues),
-                    metrics=json.dumps(report.metrics, default=str),
+                    issues=json.dumps(_bounded_issues(report.issues)),
+                    metrics=json.dumps(_bounded_metrics(report.metrics), default=str),
                 )
             )
     except Exception:

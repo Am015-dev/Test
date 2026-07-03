@@ -91,6 +91,32 @@ def test_same_source_similar_flats_do_not_merge():
     assert len(groups) == 2
 
 
+def test_distinct_streets_in_same_neighborhood_do_not_merge():
+    """Regression: two different flats on different streets in the same sub-neighborhood
+    with coincidentally similar size/price must not be merged (which would silently drop
+    one). Cross-source street-level detail disambiguates them."""
+    a = make_listing(
+        source="spitogatos",
+        source_id="1",
+        price=200_000,
+        area_m2=70.0,
+        neighborhood="Faneromeni",
+        address="Aristotelous 12, Faneromeni",
+        title="Bright 2-bed near the square",
+    )
+    b = make_listing(
+        source="indomio",
+        source_id="9",
+        price=205_000,
+        area_m2=71.0,
+        neighborhood="Faneromeni",
+        address="Ipsilantou 88, Faneromeni",
+        title="Renovated flat with parking",
+    )
+    groups = deduplicate([a, b])
+    assert len(groups) == 2
+
+
 def test_different_location_does_not_merge():
     a = make_listing(
         source="spitogatos",

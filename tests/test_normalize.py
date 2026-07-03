@@ -57,6 +57,19 @@ def test_normalize_drops_unusable_raw():
     assert normalize(raw) is None
 
 
+def test_normalize_drops_negative_price():
+    """Regression: a garbled negative price must be dropped (truthiness let it through
+    before), else it produces a maxed-out false 'below market' signal downstream."""
+    raw = {
+        "source": "xe",
+        "source_id": "neg1",
+        "url": "http://x",
+        "price": -50000,
+        "area_m2": 60.0,
+    }
+    assert normalize(raw) is None
+
+
 def test_parse_xe_real_card():
     """XE parser against a card captured from XE's live results page."""
     html = (FIXTURES / "xe_card.html").read_text(encoding="utf-8")
@@ -68,7 +81,7 @@ def test_parse_xe_real_card():
     assert raw["url"].startswith("https://www.xe.gr/property/")
     assert raw["price"] == 1_600_000
     assert raw["area_m2"] == 257.0  # parsed out of the title
-    assert raw["floor"] == 0.0  # "Ισόγειο,1ος" -> ground-floor entry
+    assert raw["floor"] == 1.0  # "Ισόγειο,1ος" maisonette -> its upper (1st) level
     assert raw["bedrooms"] == 4
     assert raw["year_built"] == 2021
     assert raw["neighborhood"]  # non-empty, taken before the "|" separator

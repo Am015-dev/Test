@@ -216,6 +216,89 @@ def test_legacy_null_search_area_backfilled_then_scoped_retired(in_memory_db):
         assert by_key[("xe", "a")].status == "gone"  # then retired within its area
 
 
+def test_per_area_worker_does_not_steal_null_tagged_rows(in_memory_db):
+    """Regression (CRITICAL): a per-area worker runs as run_for_area does — it sets the
+    strategy municipality equal to its area AND passes area=<that area>. The one-time
+    legacy backfill must NOT fire for it, or it would re-tag another area's NULL-tagged
+    live rows to itself and retire them in the same pass."""
+    from scout.pipeline import run
+
+    # Seed a Cholargos listing, then simulate it as a pre-migration (NULL search_area) row.
+    run(
+        strategy=Strategy(),
+        collectors=[FakeCollector(Strategy(), [_raw("a", 200_000, source="xe")], source="xe")],
+        use_network=False,
+        observed_at=datetime(2026, 6, 1),
+        area="Cholargos",
+    )
+    with sessionmaker(bind=in_memory_db, future=True)() as s:
+        s.query(ListingRow).update({ListingRow.search_area: None})
+        s.commit()
+
+    # A Papagou worker (run_for_area semantics: municipality mutated to "Papagou").
+    papagou = Strategy()
+    papagou.search.municipality = "Papagou"
+    run(
+        strategy=papagou,
+        collectors=[FakeCollector(papagou, [_raw("b", 210_000, source="xe")], source="xe")],
+        use_network=False,
+        observed_at=datetime(2026, 6, 2),
+        area="Papagou",
+    )
+
+    with sessionmaker(bind=in_memory_db, future=True)() as s:
+        by_key = {(r.source, r.source_id): r for r in s.scalars(select(ListingRow)).all()}
+        # The legacy Cholargos row was neither re-tagged to Papagou nor retired.
+        assert by_key[("xe", "a")].status == "active"
+        assert by_key[("xe", "a")].search_area != "Papagou"
+
+
+def test_one_bad_flush_does_not_crash_run_or_lose_good_listings(in_memory_db, monkeypatch):
+    """Regression (CRITICAL): a single failed flush (duplicate-key race) must not poison
+    the session and roll back the whole run. The good listings around it still persist
+    and run() returns its summary instead of raising."""
+    import scout.pipeline as pipeline
+
+    real_upsert = pipeline.upsert_listing_with_history
+
+    def flaky_upsert(session, listing, observed_at=None):
+        row = real_upsert(session, listing, observed_at=observed_at)
+        if listing.source_id == "bad":
+            # Force a UNIQUE(source, source_id) violation on flush — the exact
+            # duplicate-key race the per-listing SAVEPOINT must contain.
+            session.add(
+                ListingRow(
+                    source=listing.source,
+                    source_id=listing.source_id,
+                    url="u",
+                    price=1,
+                    area_m2=1.0,
+                    first_seen=observed_at,
+                    last_seen=observed_at,
+                    status="active",
+                )
+            )
+            session.flush()
+        return row
+
+    monkeypatch.setattr(pipeline, "upsert_listing_with_history", flaky_upsert)
+
+    rows = [_raw("good1", 200_000), _raw("bad", 210_000), _raw("good2", 220_000)]
+    summary = pipeline.run(
+        strategy=Strategy(),
+        collectors=[FakeCollector(Strategy(), rows)],
+        use_network=False,
+        observed_at=datetime(2026, 6, 1),
+    )
+
+    assert summary["stored"] == 2  # both good listings stored; the bad one skipped
+    with sessionmaker(bind=in_memory_db, future=True)() as s:
+        keys = {(r.source, r.source_id) for r in s.scalars(select(ListingRow)).all()}
+    assert ("spitogatos", "good1") in keys
+    assert ("spitogatos", "good2") in keys
+    assert ("spitogatos", "bad") not in keys
+
+
 def test_pipeline_excludes_ground_floor(in_memory_db):
     from scout.pipeline import run
 
