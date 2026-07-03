@@ -156,3 +156,9 @@ send_alert(
 6. **Dashboard panel** for the `scrape_job` queue + health status.
 7. **Phase B triggers**: scheduled agent ops runs + subscribe to CI/PR activity for
    event-driven auto-fix. Depends on hosting decision (Oracle stable IP required).
+
+<!-- BEGIN fable-god-mode v0.1.0 mode=god -->
+## Fable God Mode (managed — re-run the installer to change; do not hand-edit)
+- Default discipline for multi-step tasks: the `fable-god-mode` skill (10-80-10 — plan at full power, delegate the verbose middle to cheaper Claude subagents, review at full power). The user may skip it for any task or session by saying so.
+- Installed 2026-07-03 · scope: this project (Am015-dev/Test) · skill lives in `.claude/skills/fable-god-mode/`.
+<!-- END fable-god-mode -->
