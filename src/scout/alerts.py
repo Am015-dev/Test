@@ -42,13 +42,16 @@ def _net_yield_for(d: dict) -> float | None:
 
 def _line(d: dict) -> str:
     area = d.get("search_area") or d.get("neighborhood") or "—"
+    gap = d.get("value_gap_pct")
+    # Lead with the headline signal: how far below the model's fair value it's priced.
+    gap_str = f" · {gap * 100:+.0f}% vs fair" if gap is not None else ""
     gy = d.get("gross_yield")
     gy_str = f" · {gy * 100:.1f}% gross" if gy else ""
     ny = _net_yield_for(d)
     ny_str = f" · {ny * 100:.1f}% net" if ny is not None else ""
     return (
         f"  • [{d['score']:.0f}] {fmt.euro(d['price'])} · "
-        f"{fmt.euro_per_m2(d['price_per_m2'])} · {area}{gy_str}{ny_str} · {d['url']}"
+        f"{fmt.euro_per_m2(d['price_per_m2'])} · {area}{gap_str}{gy_str}{ny_str} · {d['url']}"
     )
 
 

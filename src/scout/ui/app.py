@@ -332,13 +332,22 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
 
     gap = d.get("value_gap_pct")
     target = max(getattr(ref, "target_undervaluation", 0.20), 1e-9)
-    under_sig = max(0.0, min(1.0, gap / target)) if gap is not None else 0.0
+    if gap is not None:
+        under_sig = max(0.0, min(1.0, gap / target))
+        under_value = f"{gap*100:+.0f}% vs fair"
+        under_score = round(under_sig * w.undervaluation / total_w * 100, 1)
+    else:
+        # No hedonic fit for this area: the real scorer falls back to €/m²-vs-median,
+        # which the UI can't decompose here (it lacks the market medians). Show "—"
+        # rather than a misleading 0 that wouldn't reconcile with the total score.
+        under_value = "via €/m² fallback"
+        under_score = "—"
 
     rows = [
         {
             "Signal": "Undervaluation",
-            "Value": f"{gap*100:+.0f}% vs fair" if gap is not None else "no model",
-            "Score": round(under_sig * w.undervaluation / total_w * 100, 1),
+            "Value": under_value,
+            "Score": under_score,
             "Max": round(w.undervaluation / total_w * 100, 1),
         },
         {
@@ -1018,10 +1027,18 @@ def main() -> None:
 
     last_up = _last_updated(listings)
     if last_up is not None:
+        sources = sorted({d["source"] for d in listings if d.get("source")})
+        src_label = ", ".join(s.upper() for s in sources) if sources else "—"
         st.caption(
             f"🕒 Data last updated **{last_up:%Y-%m-%d %H:%M} UTC** · "
-            f"{len(listings)} active listings"
+            f"{len(listings)} active listings · source: {src_label}"
         )
+        if len(sources) <= 1:
+            st.caption(
+                "ℹ️ Coverage is currently a single portal (XE.gr) — a slice of the market, "
+                "not every listing. Additional portals (Spitogatos, Indomio) are supported "
+                "and can be enabled to broaden coverage."
+            )
     else:
         st.caption("🕒 No data yet — press **Refresh now** or wait for the daily run.")
 
