@@ -28,6 +28,43 @@ EARTH_RADIUS_M = 6_371_000
 # Multiplier to approximate walking distance from straight-line (street grid detour).
 WALK_DETOUR_FACTOR = 1.3
 
+# Approximate centroids of Cholargos' sub-neighborhoods (WGS84). Used as a free,
+# offline geocoding fallback when per-listing geocoding is unavailable — Nominatim
+# 403s cloud/proxy IPs, which would otherwise leave every listing without a location
+# (no map point, no metro distance). Keyed by accent-stripped substring so they match
+# XE's labels like "Χολαργός (Άνω Χολαργός)". Order matters: more specific first, the
+# bare-Cholargos town centroid last as a catch-all.
+_NEIGHBORHOOD_CENTROIDS: tuple[tuple[str, tuple[float, float]], ...] = (
+    ("ano cholargos", (38.0035, 23.7925)),
+    ("ανω χολαργος", (38.0035, 23.7925)),
+    ("τσακ", (38.0028, 23.8006)),  # Τσακός / Λόφος Τσακού (SE, toward Papagou)
+    ("tsak", (38.0028, 23.8006)),
+    ("δημοκρατ", (37.9998, 23.7952)),  # Πλατεία Δημοκρατίας (central, by the station)
+    ("dimokrat", (37.9998, 23.7952)),
+    ("φανερωμ", (38.0018, 23.7935)),  # Φανερωμένη
+    ("faneromen", (38.0018, 23.7935)),
+    ("χολαργ", (38.0003, 23.7950)),  # bare Cholargos town centre (catch-all)
+    ("cholargos", (38.0003, 23.7950)),
+)
+
+
+def neighborhood_centroid(neighborhood: str | None) -> tuple[float | None, float | None]:
+    """Best-effort (lat, lng) for a Cholargos sub-neighborhood label, else (None, None).
+
+    Accent- and case-insensitive substring match, so both Greek and Latin labels work.
+    Deliberately coarse: a centroid is a fallback for the map and a metro-distance
+    estimate, not a precise per-listing fix.
+    """
+    if not neighborhood:
+        return None, None
+    from unicodedata import category, normalize
+
+    norm = "".join(c for c in normalize("NFD", neighborhood.lower()) if category(c) != "Mn").strip()
+    for key, coords in _NEIGHBORHOOD_CENTROIDS:
+        if key in norm:
+            return coords
+    return None, None
+
 
 @dataclass
 class MetroResult:
@@ -180,6 +217,12 @@ def enrich_listing(
 
     if (listing.lat is None or listing.lng is None) and listing.address and use_network:
         listing.lat, listing.lng = geocode(listing.address, session=session, settings=settings)
+
+    # Free, offline fallback when per-listing geocoding didn't resolve (e.g. Nominatim
+    # 403s cloud IPs): place the listing at its neighborhood centroid so the map and
+    # metro distance still work instead of showing "unknown" for every listing.
+    if listing.lat is None or listing.lng is None:
+        listing.lat, listing.lng = neighborhood_centroid(listing.neighborhood)
 
     metro = nearest_metro(listing.lat, listing.lng, settings=settings, use_osrm=use_network)
     listing.nearest_metro = metro.nearest_metro

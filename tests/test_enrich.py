@@ -9,10 +9,38 @@ from scout.enrich import (
     gross_yield,
     haversine_m,
     nearest_metro,
+    neighborhood_centroid,
     price_per_m2,
 )
 
 from .conftest import make_listing
+
+
+def test_neighborhood_centroid_matches_greek_and_latin():
+    # XE's real label form.
+    lat, lng = neighborhood_centroid("Χολαργός (Άνω Χολαργός)")
+    assert lat is not None and 37.9 < lat < 38.1 and 23.7 < lng < 23.9
+    # Latin transliteration resolves too.
+    assert neighborhood_centroid("Ano Cholargos") == neighborhood_centroid(
+        "Χολαργός (Άνω Χολαργός)"
+    )
+    # Bare-Cholargos catch-all still returns a point.
+    assert neighborhood_centroid("Χολαργός") != (None, None)
+    # Unknown / empty -> no guess.
+    assert neighborhood_centroid("Kolonaki") == (None, None)
+    assert neighborhood_centroid(None) == (None, None)
+
+
+def test_enrich_falls_back_to_centroid_when_ungeocoded():
+    """No lat/lng and no network -> the neighborhood centroid still yields a metro
+    distance instead of leaving the listing unlocated."""
+    lst = make_listing(
+        lat=None, lng=None, neighborhood="Χολαργός (Πλατεία Δημοκρατίας)", metro_distance_m=None
+    )
+    enriched = enrich_listing(lst, use_network=False)
+    assert enriched.lat is not None and enriched.lng is not None
+    assert enriched.metro_distance_m is not None
+    assert enriched.nearest_metro in METRO_STATIONS
 
 
 def test_haversine_zero_distance():
