@@ -61,6 +61,57 @@ def test_digest_includes_opportunities_new_and_cuts(seeded_db):
     assert "-10%" in text and "300" in text and "270" in text
 
 
+def test_digest_leads_with_hot_deals_and_net_yield(seeded_db):
+    """The new fresh opportunity is a 'hot deal' and each line carries a net yield."""
+    text = alerts.build_digest()
+    assert "🔥 HOT DEALS TODAY (1)" in text
+    # Net yield (after costs) appears on listing lines, alongside gross.
+    assert "net" in text and "gross" in text
+    # Hot deals lead the actionable content — before the TOP OPPORTUNITIES section.
+    assert text.index("HOT DEALS") < text.index("TOP OPPORTUNITIES")
+
+
+def test_opportunity_is_always_hot(seeded_db):
+    from scout.config import Settings
+
+    # Even with a punishing bar, an opportunity-flagged new listing is still hot
+    # (the opportunity flag short-circuits the score/net-yield thresholds).
+    settings = Settings(digest_hot_min_score=99.0, digest_hot_min_net_yield=0.5)
+    text = alerts.build_digest(settings)
+    assert "HOT DEALS TODAY (1)" in text
+
+
+def test_hot_deal_excludes_non_opportunity_below_bar(seeded_db, monkeypatch):
+    """With the opportunity flag off and a high bar, a mediocre new listing isn't hot."""
+    import scout.alerts as alerts_mod
+
+    def only_mediocre():
+        return [
+            {
+                "score": 20.0,
+                "price": 200_000,
+                "price_per_m2": 2500.0,
+                "area_m2": 80.0,
+                "neighborhood": "Cholargos",
+                "search_area": "Cholargos",
+                "url": "http://x",
+                "is_new": True,
+                "is_opportunity": False,
+                "excluded": False,
+                "gross_yield": 0.03,
+                "est_monthly_rent": 500,
+                "is_private_seller": False,
+                "is_watched": False,
+            }
+        ]
+
+    monkeypatch.setattr(alerts_mod, "load_listings", only_mediocre)
+    monkeypatch.setattr(alerts_mod, "load_recent_price_drops", lambda hours=24: [])
+    text = alerts.build_digest()
+    assert "HOT DEALS" not in text
+    assert "NEW TODAY (1)" in text
+
+
 def test_recent_price_drops_ignores_old_cuts(seeded_db, monkeypatch):
     from scout.ui.queries import load_recent_price_drops
 
