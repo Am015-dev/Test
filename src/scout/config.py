@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     alert_email_to: str = ""
 
+    # Daily-digest "hot deal" thresholds. A new listing clearing EITHER bar is
+    # highlighted at the top of the digest. Tunable per investor without code.
+    digest_hot_min_score: float = 55.0
+    digest_hot_min_net_yield: float = 0.04  # 4% net yield after costs
+
     @property
     def db_url(self) -> str:
         if self.database_url:
