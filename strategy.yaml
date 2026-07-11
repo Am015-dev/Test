@@ -3,26 +3,14 @@
 
 search:
   municipality: Cholargos   # anchor area (XE geo_place_id); scraped first
-  # Full northern suburbs of Athens (North Athens regional unit). Each becomes its own
-  # scrape job; all share the scoring thesis below. Names resolve via XE autocomplete.
+  # Northern suburbs on Metro LINE 3 (the modern metro) only — Line 1/ISAP suburbs
+  # (Kifisia, Marousi, Nea Ionia) and no-rail suburbs are deliberately excluded, since
+  # the thesis wants genuine metro proximity. The per-listing metro-distance filter is
+  # the real gate; these are the areas where listings can actually pass it.
   areas:
     - Papagou
     - Agia Paraskevi
     - Chalandri
-    - Marousi
-    - Kifisia
-    - Nea Ionia
-    - Vrilissia
-    - Metamorfosi
-    - Penteli
-    - Nea Penteli
-    - Melissia
-    - Pefki
-    - Lykovrysi
-    - Psychiko
-    - Filothei
-    - Nea Erythraia
-    - Ekali
   neighborhoods: [Faneromeni, Ano Cholargos, Plateia Dimokratias, Lofos Tsakou]
   est_rent_eur_per_m2: 11.0   # baseline monthly rent estimate for gross-yield scoring
   price_min: 120000

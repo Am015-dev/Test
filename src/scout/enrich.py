@@ -16,12 +16,18 @@ import requests
 from .config import Settings, get_settings
 from .models import Listing
 
-# Holargos-line (Metro Line 3) stations relevant to the strategy area.
+# Metro **Line 3** (blue) stations along the north-east corridor that serves the target
+# suburbs. Deliberately Line 3 only — the strategy counts the modern metro (Lines 2/3),
+# NOT the Line 1 / ISAP electric railway (Kifisia, Marousi, Nea Ionia), so listings out
+# there correctly fall outside the max-metro-distance filter.
 METRO_STATIONS: dict[str, tuple[float, float]] = {
-    "Holargos": (37.9997, 23.7960),
-    "Nomismatokopio": (38.0060, 23.8090),
-    "Ethniki Amyna": (37.9943, 23.7855),
-    "Agia Paraskevi": (38.0167, 23.8230),
+    "Katehaki": (37.9869, 23.7776),
+    "Ethniki Amyna": (37.9946, 23.7856),
+    "Holargos": (37.9998, 23.7963),
+    "Nomismatokopio": (38.0058, 23.8090),
+    "Agia Paraskevi": (38.0166, 23.8229),
+    "Chalandri": (38.0216, 23.8186),
+    "Doukissis Plakentias": (38.0331, 23.8330),
 }
 
 EARTH_RADIUS_M = 6_371_000
