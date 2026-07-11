@@ -48,7 +48,11 @@ class ValuationModel:
     medians: dict
     areas: list[str]
     ref_year: int
-    r2: float = field(default=0.0)
+    r2: float = field(default=0.0)  # in-sample fit (optimistic; shown for reference only)
+    # Cross-validated (out-of-sample) R² — the HONEST predictive power. Confidence is
+    # gated on this, not on r2: an area can fit its own points well (high r2) yet predict
+    # held-out ones no better than the median (low cv_r2 = overfit noise).
+    cv_r2: float = field(default=0.0)
     # Std-dev of the log-price residuals — the model's own noise. Turned into a ± band
     # around each fair-value estimate so uncertainty is shown, never hidden.
     residual_std: float = field(default=0.0)
@@ -56,10 +60,13 @@ class ValuationModel:
 
     @property
     def is_confident(self) -> bool:
-        """Whether fair-value numbers are solid enough to show as a figure (vs rank-only)."""
+        """Whether fair-value numbers are solid enough to show as a figure (vs rank-only).
+
+        Gated on the OUT-OF-SAMPLE cv_r2 so an overfit area (high in-sample r2, low
+        cv_r2) is honestly treated as low-confidence — no false precision."""
         return (
             self.beta is not None
-            and self.r2 >= _MIN_CONFIDENT_R2
+            and self.cv_r2 >= _MIN_CONFIDENT_R2
             and self.n_samples >= _MIN_SAMPLES
         )
 
@@ -140,10 +147,9 @@ def fit_and_apply_by_area(listings: list[Listing]) -> dict[str, ValuationModel]:
     return models
 
 
-def fit_valuation_model(listings: list[Listing]) -> ValuationModel | None:
-    rows = [lst for lst in listings if _usable(lst)]
-    if len(rows) < _MIN_SAMPLES:
-        return None
+def _build_model(rows: list[Listing]) -> tuple[ValuationModel, np.ndarray, np.ndarray]:
+    """Fit the OLS core over ``rows`` (medians imputed FROM these rows, so folds don't
+    leak). Returns the model plus its design matrix and log-price target."""
     ref_year = datetime.utcnow().year
 
     def _med(values: list[float], default: float) -> float:
@@ -169,15 +175,54 @@ def fit_valuation_model(listings: list[Listing]) -> ValuationModel | None:
     y = np.array(targets)
     beta, *_ = np.linalg.lstsq(x, y, rcond=None)
     model.beta = beta
+    return model, x, y
 
-    # In-sample R² and the residual spread — a confidence read the UI gates display on
-    # (see is_confident / price_band), so a weak fit shows a wide band or no number
-    # rather than false precision.
-    pred = x @ beta
+
+def _cross_val_r2(rows: list[Listing], folds: int = 5) -> float:
+    """Honest out-of-sample R² via k-fold CV: for each fold, fit on the rest (medians
+    refit per-fold, so no leakage) and score the held-out fold against a median baseline.
+    Deterministic (index-striped folds — no RNG, which would break workflow resume)."""
+    if len(rows) < _MIN_SAMPLES:
+        return 0.0
+    # Sort by source_id before striping so folds don't inherit any DB-insertion-order
+    # correlation (e.g. rows added in price order) — a deterministic stand-in for a
+    # random shuffle, giving a stable honest number without an RNG.
+    ordered = sorted(rows, key=lambda r: r.source_id or "")
+    buckets: list[list[Listing]] = [[] for _ in range(folds)]
+    for i, r in enumerate(ordered):
+        buckets[i % folds].append(r)
+    ss_res, ss_base = 0.0, 0.0
+    for f in range(folds):
+        test = buckets[f]
+        train = [r for j in range(folds) if j != f for r in buckets[j]]
+        if len(train) < _MIN_SAMPLES or not test:
+            continue
+        m, _, _ = _build_model(train)
+        med = statistics.median([math.log(r.price) for r in train])
+        for r in test:
+            p = m.predict_price(r)
+            if p:
+                ss_res += (math.log(p) - math.log(r.price)) ** 2
+                ss_base += (med - math.log(r.price)) ** 2
+    return 1.0 - ss_res / ss_base if ss_base > 0 else 0.0
+
+
+def fit_valuation_model(listings: list[Listing]) -> ValuationModel | None:
+    rows = [lst for lst in listings if _usable(lst)]
+    if len(rows) < _MIN_SAMPLES:
+        return None
+
+    model, x, y = _build_model(rows)
+
+    # In-sample R² and the residual spread (for the ± band). Confidence, however, is
+    # gated on the CROSS-VALIDATED R² below — the honest out-of-sample number — so an
+    # overfit area doesn't present false precision.
+    pred = x @ model.beta
     resid = y - pred
     ss_res = float(np.sum(resid**2))
     ss_tot = float(np.sum((y - np.mean(y)) ** 2))
     model.r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
     model.residual_std = float(np.std(resid)) if len(resid) else 0.0
     model.n_samples = len(rows)
+    model.cv_r2 = _cross_val_r2(rows)
     return model

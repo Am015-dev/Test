@@ -141,6 +141,9 @@ def test_app_renders_fair_value_views(tmp_path, monkeypatch):
     # The confidence banner is a success or warning box (fitted path), not the info stub.
     banner_text = " ".join(b.value for b in [*at.success, *at.warning])
     assert "Fair-value model" in banner_text
-    # The ranked table carries the new columns.
+    # The product listing-card grid renders (custom HTML, not a bare dataframe).
+    md = " ".join(m.value for m in at.markdown)
+    assert "ph-grid" in md and "ph-card" in md
+    # The table view is still available (inside the expander) with the model columns.
     cols = list(at.dataframe[0].value.columns)
     assert "Fair value" in cols and "Value gap" in cols

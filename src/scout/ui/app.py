@@ -31,8 +31,11 @@ from scout.scoring import (
     energy_liability_multiplier,
     newness_score,
 )  # noqa: E402
+from scout.ui import (
+    components,  # noqa: E402
+    queries,  # noqa: E402
+)
 from scout.ui import format as fmt  # noqa: E402
-from scout.ui import queries  # noqa: E402
 from scout.ui.theme import inject_css  # noqa: E402
 
 st.set_page_config(page_title="Holargos Property Scout", page_icon="🏠", layout="wide")
@@ -91,14 +94,15 @@ def _valuation_banner() -> dict:
     scope = f"{n_areas} area-specific models over {n} comparables"
     if o["is_confident"]:
         st.success(
-            f"**Fair-value model:** {scope}, weighted R²={r2:.2f}. Each estimate is shown "
-            f"with its area's ± range (typ. {band})."
+            f"**Fair-value model:** {scope}, out-of-sample R²={r2:.2f}. Each estimate is "
+            f"shown with its area's ± range (typ. {band})."
         )
     else:
         st.warning(
-            f"**Fair-value model:** {scope}, weighted R²={r2:.2f} — some submarkets are "
-            f"still thin, so estimates there are *indicative* (typ. range {band}). Use the "
-            "ranking to shortlist, then verify each listing; don't treat the € figure as exact."
+            f"**Fair-value model:** {scope}, out-of-sample R²={r2:.2f} — some submarkets "
+            f"don't predict held-out sales reliably, so their fair values are *indicative* "
+            f"(typ. range {band}). Rank on them to shortlist, then verify each listing; "
+            "don't treat the € figure as exact."
         )
     return v
 
@@ -652,10 +656,11 @@ def page_opportunities(listings: list[dict]) -> None:
 
     rows = sorted([d for d in eligible if keep(d)], key=lambda d: d["score"], reverse=True)
 
-    _top_picks(rows)
     st.markdown(f"**{len(rows)}** opportunities match your filters (of {len(eligible)} eligible)")
     if rows:
-        _table(rows)
+        components.listing_grid(rows)
+        with st.expander("Table view (sort / export)"):
+            _table(rows)
     else:
         st.info("No listings match the current filters. Widen them in the sidebar.")
 
@@ -670,7 +675,7 @@ def page_today(listings: list[dict]) -> None:
         st.info("Nothing new in the last 24 h. See **Opportunities** for the full list.")
         return
     _top_picks(today)
-    _table(today)
+    components.listing_grid(today)
 
 
 def page_map(listings: list[dict]) -> None:

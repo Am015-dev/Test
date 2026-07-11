@@ -199,9 +199,11 @@ def load_valuation_summary() -> dict:
             "overall": {"is_confident": False, "n": len(listings)},
         }
 
+    # Report the HONEST out-of-sample cv_r2 (not the optimistic in-sample r2), so the UI
+    # never overstates how much to trust a fair-value figure.
     areas = {
         area: {
-            "r2": round(m.r2, 3),
+            "r2": round(m.cv_r2, 3),
             "residual_std": m.residual_std,
             "is_confident": m.is_confident,
             "n": m.n_samples,
@@ -209,9 +211,9 @@ def load_valuation_summary() -> dict:
         for area, m in models.items()
     }
     total_n = sum(m.n_samples for m in models.values()) or 1
-    # Sample-weighted mean R² and a conservative (widest) residual band across areas.
+    # Sample-weighted mean out-of-sample R² and a conservative (widest) residual band.
     overall = {
-        "r2": round(sum(m.r2 * m.n_samples for m in models.values()) / total_n, 3),
+        "r2": round(sum(m.cv_r2 * m.n_samples for m in models.values()) / total_n, 3),
         "residual_std": max(m.residual_std for m in models.values()),
         "is_confident": all(m.is_confident for m in models.values()),
         "n": total_n,

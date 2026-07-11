@@ -271,9 +271,99 @@ a:hover {{ color: var(--hg-accent-2); }}
     border-radius: 9px;
 }}
 
-/* Hide the default Streamlit chrome for a cleaner, product-like frame. */
-#MainMenu, [data-testid="stDecoration"] {{ visibility: hidden; }}
-footer {{ visibility: hidden; }}
+/* Hide ALL default Streamlit chrome for a clean, product-like frame. */
+#MainMenu, [data-testid="stDecoration"], [data-testid="stStatusWidget"] {{ display: none !important; }}
+[data-testid="stToolbar"], [data-testid="stToolbarActions"] {{ display: none !important; }}
+[data-testid="stAppDeployButton"], .stDeployButton, [data-testid="stHeader"] {{ display: none !important; }}
+header[data-testid="stHeader"] {{ display: none !important; }}
+footer {{ visibility: hidden; height: 0; }}
+[data-testid="stMainBlockContainer"] {{ padding-top: 2.2rem; }}
+
+/* ------------------------------------------------------------------ *
+ * Listing card grid — the product view (replaces the raw dataframe).
+ * ------------------------------------------------------------------ */
+.ph-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 18px;
+    margin: 8px 0 4px;
+}}
+.ph-card {{
+    background: var(--hg-surface);
+    border: 1px solid var(--hg-line);
+    border-radius: 16px;
+    padding: 18px 18px 14px;
+    box-shadow: var(--hg-shadow);
+    display: flex; flex-direction: column; gap: 12px;
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}}
+.ph-card:hover {{ transform: translateY(-3px); box-shadow: var(--hg-shadow-h); border-color: #CBD5E1; }}
+.ph-card-head {{ display: flex; align-items: center; gap: 14px; }}
+.ph-score {{
+    flex: 0 0 auto; width: 52px; height: 52px; border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: hsl(var(--hue), 62%, 94%); color: hsl(var(--hue), 70%, 28%);
+    border: 1px solid hsl(var(--hue), 55%, 84%);
+}}
+.ph-score span {{ font-size: 1.25rem; font-weight: 750; line-height: 1; }}
+.ph-score small {{ font-size: .56rem; text-transform: uppercase; letter-spacing: .06em; opacity: .8; }}
+.ph-price-wrap {{ flex: 1 1 auto; min-width: 0; }}
+.ph-price {{ font-size: 1.5rem; font-weight: 750; color: var(--hg-ink); line-height: 1.1; }}
+.ph-ppm2 {{ font-size: .82rem; color: var(--hg-muted); margin-top: 2px; }}
+.ph-arch {{
+    flex: 0 0 auto; font-size: .68rem; font-weight: 650; padding: 4px 9px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: .03em; white-space: nowrap;
+}}
+.ph-arch-new {{ background: #DCFCE7; color: #15803D; }}
+.ph-arch-reno {{ background: #DBEAFE; color: #1D4ED8; }}
+.ph-arch-modern {{ background: #E0F2FE; color: #0369A1; }}
+.ph-arch-dated {{ background: #F1F5F9; color: #64748B; }}
+.ph-arch-liability {{ background: #FEE2E2; color: #B91C1C; }}
+.ph-arch-std {{ background: #F1F5F9; color: #64748B; }}
+.ph-hood {{ font-size: .9rem; color: var(--hg-ink-soft); font-weight: 550; margin-top: -2px; }}
+.ph-specs {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+.ph-spec {{ font-size: .76rem; color: var(--hg-ink-soft); background: var(--hg-canvas);
+    border: 1px solid var(--hg-line-2); border-radius: 7px; padding: 3px 8px; }}
+.ph-pill {{ font-size: .72rem; font-weight: 650; border-radius: 7px; padding: 3px 8px; }}
+.ph-en-good {{ background: #DCFCE7; color: #15803D; }}
+.ph-en-mid {{ background: #FEF9C3; color: #A16207; }}
+.ph-en-poor {{ background: #FFEDD5; color: #C2410C; }}
+.ph-en-bad {{ background: #FEE2E2; color: #B91C1C; }}
+.ph-en-unknown {{ background: #F1F5F9; color: #64748B; }}
+.ph-signals {{ display: flex; gap: 8px; border-top: 1px solid var(--hg-line-2);
+    border-bottom: 1px solid var(--hg-line-2); padding: 10px 0; }}
+.ph-sig {{ flex: 1; display: flex; flex-direction: column; gap: 1px; }}
+.ph-sig b {{ font-size: 1rem; font-weight: 700; color: var(--hg-ink); }}
+.ph-sig span {{ font-size: .66rem; color: var(--hg-muted); text-transform: uppercase; letter-spacing: .03em; }}
+.ph-sig-pos b {{ color: #15803D; }}
+.ph-sig-neg b {{ color: #B91C1C; }}
+.ph-card-foot {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; }}
+.ph-badges {{ display: flex; flex-wrap: wrap; gap: 5px; }}
+.ph-badge {{ font-size: .66rem; font-weight: 600; color: var(--hg-accent);
+    background: #ECFDF5; border-radius: 6px; padding: 3px 7px; }}
+.ph-cta {{ flex: 0 0 auto; font-size: .8rem; font-weight: 650; color: #fff !important;
+    background: var(--hg-accent); border-radius: 9px; padding: 7px 13px; text-decoration: none !important;
+    white-space: nowrap; transition: background .15s ease; }}
+.ph-cta:hover {{ background: var(--hg-accent-2); }}
+
+/* ------------------------------------------------------------------ *
+ * Sidebar navigation — turn the default radio into a clean nav menu.
+ * ------------------------------------------------------------------ */
+[data-testid="stSidebar"] [role="radiogroup"] {{ gap: 2px; }}
+[data-testid="stSidebar"] [role="radiogroup"] label {{
+    display: flex; align-items: center; width: 100%;
+    padding: 9px 12px; border-radius: 9px; cursor: pointer;
+    font-size: .92rem; font-weight: 550; color: var(--hg-ink-soft);
+    transition: background .12s ease, color .12s ease;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover {{ background: #E7EDF4; }}
+/* hide the radio dot itself */
+[data-testid="stSidebar"] [role="radiogroup"] label > div:first-child {{ display: none; }}
+/* selected item — teal pill */
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {{
+    background: var(--hg-accent); color: #fff;
+}}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {{ color: #fff; font-weight: 650; }}
 </style>
 """
 

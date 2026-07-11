@@ -1,0 +1,139 @@
+"""Custom HTML components — the product surface.
+
+Streamlit's default dataframe reads as a spreadsheet; a property tool needs designed
+*listing cards*. These render each listing as a card in a responsive grid via a single
+``st.markdown(unsafe_allow_html=True)`` blob, so the page looks like a real proptech
+product rather than an internal dashboard. Styling lives in ``theme.py`` (the ``ph-*``
+classes); this module only builds the markup from listing dicts.
+"""
+
+from __future__ import annotations
+
+import html as _html
+
+import streamlit as st
+
+from . import format as fmt
+
+# Energy class -> pill colour bucket (good / mid / poor / liability).
+_ENERGY_BUCKET = {
+    "A+": "good",
+    "Α+": "good",
+    "A": "good",
+    "Α": "good",
+    "B+": "good",
+    "Β+": "good",
+    "B": "good",
+    "Β": "good",
+    "C": "mid",
+    "Γ": "mid",
+    "D": "mid",
+    "Δ": "mid",
+    "E": "poor",
+    "Ε": "poor",
+    "F": "poor",
+    "Ζ": "poor",
+    "G": "bad",
+    "Η": "bad",
+    "H": "bad",
+}
+_ARCHETYPE_CLASS = {
+    "New build": "new",
+    "Renovated": "reno",
+    "Modern": "modern",
+    "Dated": "dated",
+    "Energy liability": "liability",
+    "Standard": "std",
+}
+
+
+def _score_hue(score: float) -> int:
+    """0 (red) → 120 (green) hue for the score chip, clamped."""
+    return int(max(0.0, min(1.0, score / 70.0)) * 130)
+
+
+def _esc(v) -> str:
+    return _html.escape(str(v)) if v is not None else ""
+
+
+def _card_html(d: dict) -> str:
+    score = round(d.get("score") or 0)
+    hue = _score_hue(score)
+    price = fmt.euro(d.get("price"))
+    ppm2 = fmt.euro_per_m2(d.get("price_per_m2"))
+    hood = _esc(d.get("neighborhood") or d.get("search_area") or "—")
+
+    archetype = d.get("archetype") or "Standard"
+    arch_cls = _ARCHETYPE_CLASS.get(archetype, "std")
+
+    energy = d.get("energy_class")
+    en_cls = _ENERGY_BUCKET.get((energy or "").strip().upper(), "unknown")
+    en_pill = f'<span class="ph-pill ph-en-{en_cls}">⚡ {_esc(energy)}</span>' if energy else ""
+
+    # Spec chips
+    specs = []
+    if d.get("area_m2"):
+        specs.append(f'<span class="ph-spec">{d["area_m2"]:.0f} m²</span>')
+    if d.get("bedrooms"):
+        specs.append(f'<span class="ph-spec">{_esc(d["bedrooms"])} bd</span>')
+    fl = d.get("floor")
+    if fl is not None:
+        specs.append(f'<span class="ph-spec">Fl {fl:.0f}</span>')
+    built = d.get("renovated_year") or d.get("year_built")
+    if built:
+        specs.append(f'<span class="ph-spec">{_esc(built)}</span>')
+    if en_pill:
+        specs.append(en_pill)
+
+    # Signal row: value gap, yield, metro
+    signals = []
+    gap = d.get("value_gap_pct")
+    if gap is not None:
+        gcls = "pos" if gap > 0.02 else ("neg" if gap < -0.02 else "neutral")
+        signals.append(
+            f'<div class="ph-sig ph-sig-{gcls}"><b>{gap * 100:+.0f}%</b><span>vs fair value</span></div>'
+        )
+    gy = d.get("gross_yield")
+    if gy:
+        signals.append(f'<div class="ph-sig"><b>{gy * 100:.1f}%</b><span>gross yield</span></div>')
+    metro = d.get("metro_distance_m")
+    if metro is not None:
+        signals.append(f'<div class="ph-sig"><b>{metro} m</b><span>to metro</span></div>')
+
+    badges = "".join(
+        f'<span class="ph-badge">{_esc(b)}</span>'
+        for b in fmt.badges(d)
+        if "NEW BUILD" not in b
+        and "RENOVATED" not in b
+        and "MODERN" not in b
+        and "DATED" not in b
+        and "LIABILITY" not in b  # archetype shown as its own pill
+    )
+    url = _esc(d.get("url") or "#")
+
+    return f"""
+<div class="ph-card">
+  <div class="ph-card-head">
+    <div class="ph-score" style="--hue:{hue}"><span>{score}</span><small>score</small></div>
+    <div class="ph-price-wrap">
+      <div class="ph-price">{price}</div>
+      <div class="ph-ppm2">{ppm2}</div>
+    </div>
+    <span class="ph-arch ph-arch-{arch_cls}">{_esc(archetype)}</span>
+  </div>
+  <div class="ph-hood">📍 {hood}</div>
+  <div class="ph-specs">{"".join(specs)}</div>
+  <div class="ph-signals">{"".join(signals)}</div>
+  <div class="ph-card-foot">
+    <div class="ph-badges">{badges}</div>
+    <a class="ph-cta" href="{url}" target="_blank" rel="noopener">View listing ↗</a>
+  </div>
+</div>"""
+
+
+def listing_grid(rows: list[dict]) -> None:
+    """Render listings as a responsive card grid (the product view, not a dataframe)."""
+    if not rows:
+        return
+    cards = "".join(_card_html(d) for d in rows)
+    st.markdown(f'<div class="ph-grid">{cards}</div>', unsafe_allow_html=True)
