@@ -117,6 +117,58 @@ def _price_drop_signal(listing: Listing, first_price: int | None, strategy: Stra
     return _clamp01(drop_pct / max(strategy.scoring_reference.max_price_drop_pct, 1e-9))
 
 
+def newness_score(year_built: int | None, renovated_year: int | None, ref) -> float:
+    """Newness 0..1 from the later of build / renovation year. Unknown -> 0. Public so
+    the UI can show the same value it scores on without re-deriving the logic."""
+    years = [y for y in (year_built, renovated_year) if y]
+    if not years:
+        return 0.0
+    span = max(ref.build_year_ceiling - ref.build_year_floor, 1e-9)
+    return _clamp01((max(years) - ref.build_year_floor) / span)
+
+
+def _newness_signal(listing: Listing, strategy: Strategy) -> float:
+    """Newer stock scores higher. Uses the later of build year / renovation year, so a
+    fully renovated older flat counts as effectively new. Unknown year -> 0 (no bonus).
+    """
+    return newness_score(listing.year_built, listing.renovated_year, strategy.scoring_reference)
+
+
+# Greek (and Latin) energy-performance certificate classes -> 0..1. A+/A rent higher and
+# are future-proof against tightening EU efficiency rules; Ε/Ζ/Η are a holding liability.
+_ENERGY_SCORE = {
+    "A+": 1.0,
+    "Α+": 1.0,
+    "A": 0.92,
+    "Α": 0.92,
+    "B+": 0.84,
+    "Β+": 0.84,
+    "B": 0.78,
+    "Β": 0.78,
+    "C": 0.6,
+    "Γ": 0.6,
+    "D": 0.42,
+    "Δ": 0.42,
+    "E": 0.26,
+    "Ε": 0.26,
+    "F": 0.12,
+    "Ζ": 0.12,
+    "G": 0.0,
+    "Η": 0.0,
+}
+
+
+def energy_class_score(energy_class: str | None) -> float:
+    """Energy class -> 0..1. Unknown / exempt / pending -> 0. Public so the UI can show
+    the same value it scores on."""
+    return _ENERGY_SCORE.get((energy_class or "").strip().upper(), 0.0)
+
+
+def _energy_signal(listing: Listing) -> float:
+    """Map the energy class to 0..1. Unknown / exempt / pending -> 0 (no bonus)."""
+    return energy_class_score(listing.energy_class)
+
+
 def score(
     listing: Listing,
     market_stats: MarketStats,
@@ -144,6 +196,8 @@ def score(
     signals = {
         "gross_yield": _yield_signal(listing, strategy),
         "price_vs_area_median": _price_vs_median_signal(listing, median_ppm2),
+        "newness": _newness_signal(listing, strategy),
+        "energy_class": _energy_signal(listing),
         "price_drop": _price_drop_signal(listing, first_price, strategy),
         "is_currently_rented": 1.0 if listing.is_currently_rented else 0.0,
         "is_private_seller": 1.0 if listing.is_private_seller else 0.0,
@@ -152,6 +206,8 @@ def score(
     weights = {
         "gross_yield": w.gross_yield,
         "price_vs_area_median": w.price_vs_area_median,
+        "newness": w.newness,
+        "energy_class": w.energy_class,
         "price_drop": w.price_drop,
         "is_currently_rented": w.is_currently_rented,
         "is_private_seller": w.is_private_seller,

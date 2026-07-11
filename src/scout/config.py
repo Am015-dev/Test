@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     scrape_retry_backoff_s: float = 8.0
     scrape_cache_ttl_minutes: int = 360
 
+    # Fetch each listing's detail page for the rich investment signals the search cards
+    # lack (year built, energy class, bedrooms, full description → rent/rented/private).
+    # This is the difference between "cheap old flats with a made-up yield" and real
+    # analysis. It costs one extra request per listing (cached, throttled); cap it per
+    # area to bound a single-node daily run (0 = no cap — best on the worker queue).
+    scrape_detail_pages: bool = True
+    scrape_detail_max_per_area: int = 0
+
     # Healthcheck: alert when the newest listing hasn't been refreshed in this many
     # hours (scraping has silently broken — e.g. every area is IP-blocked).
     health_stale_hours: int = 36
@@ -125,16 +133,20 @@ class HardFilters(BaseModel):
 
 
 class Weights(BaseModel):
-    gross_yield: float = 35
-    price_vs_area_median: float = 25
-    price_drop: float = 20
-    is_currently_rented: float = 10
-    is_private_seller: float = 10
+    gross_yield: float = 30
+    price_vs_area_median: float = 18
+    newness: float = 16  # build/renovation year — new stock rents better, costs less to hold
+    energy_class: float = 8  # A/B rent higher and are future-proof vs EU efficiency rules
+    price_drop: float = 12
+    is_currently_rented: float = 8
+    is_private_seller: float = 8
 
     def total(self) -> float:
         return (
             self.gross_yield
             + self.price_vs_area_median
+            + self.newness
+            + self.energy_class
             + self.price_drop
             + self.is_currently_rented
             + self.is_private_seller
@@ -149,6 +161,10 @@ class ScoringReference(BaseModel):
     yield_floor: float = 0.02
     yield_ceiling: float = 0.08
     max_price_drop_pct: float = 0.20
+    # Newness normalization: a build/renovation year at/below the floor scores 0, at/above
+    # the ceiling scores 1 (linear between). Unknown year is treated as neutral-low.
+    build_year_floor: int = 1980
+    build_year_ceiling: int = 2015
 
 
 class Strategy(BaseModel):

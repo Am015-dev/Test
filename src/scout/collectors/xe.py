@@ -24,6 +24,7 @@ granularity — sub-neighborhood ids return nothing — so we resolve the munici
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import random
 import re
@@ -73,6 +74,67 @@ _ID_RE_U = re.compile(r"/property/u/([^/?#]+)")
 # Area embedded in the title, anchored to the Greek "τ.μ." (or "m²"/"m2") unit so a
 # leading room/bedroom count is never mistaken for the area.
 _AREA_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:τ\.?\s*μ\.?|m²|m2)", re.IGNORECASE)
+
+# Detail pages embed a schema.org JSON-LD block; this is far more reliable than
+# scraping hydrated HTML. Pull the RealEstateListing script out of the page.
+_LD_JSON_RE = re.compile(
+    r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.S
+)
+
+
+def _feature_value(name: str) -> tuple[str, str] | None:
+    """Split a JSON-LD feature string 'Έτος κατασκευής: 1984' into (key, value)."""
+    if ":" not in name:
+        return None
+    key, value = name.split(":", 1)
+    return key.strip(), value.strip()
+
+
+def parse_detail_jsonld(html: str) -> dict:
+    """Extract the rich investment fields from a listing detail page's JSON-LD.
+
+    Returns any of ``year_built, bedrooms, area_m2, energy_class, heating,
+    description`` that are present. Fails soft (returns ``{}`` on missing/garbled
+    data) so a bad detail page never breaks the run — the card fields still stand.
+    """
+    out: dict = {}
+    for block in _LD_JSON_RE.findall(html):
+        try:
+            data = json.loads(block)
+        except (ValueError, TypeError):
+            continue
+        for node in data if isinstance(data, list) else [data]:
+            if not isinstance(node, dict) or node.get("@type") != "RealEstateListing":
+                continue
+            entity = node.get("mainEntity") or {}
+            year = entity.get("yearBuilt")
+            if year is not None:
+                out["year_built"] = parse_int(str(year))
+            rooms = entity.get("numberOfRooms")
+            if isinstance(rooms, dict):
+                rooms = rooms.get("value")
+            if rooms is not None:
+                out["bedrooms"] = parse_int(str(rooms))
+            size = entity.get("floorSize")
+            if isinstance(size, dict) and size.get("value") is not None:
+                area = parse_float(str(size["value"]))
+                if area:
+                    out["area_m2"] = area
+            for feat in entity.get("amenityFeature") or []:
+                kv = _feature_value(feat.get("name", "") if isinstance(feat, dict) else "")
+                if not kv:
+                    continue
+                key, value = kv
+                if "Ενεργειακή" in key and value:
+                    out["energy_class"] = value
+                elif key.startswith("Θέρμανση") and value:
+                    out["heating"] = value
+                elif "Έτος κατασκευής" in key and "year_built" not in out:
+                    out["year_built"] = parse_int(value)
+            desc = node.get("description")
+            if desc:
+                out["description"] = desc
+    return out
 
 
 class XeCollector(Collector):
@@ -229,22 +291,83 @@ class XeCollector(Collector):
         logger.warning("xe: gave up on %s after %d attempts", url, settings.scrape_max_retries)
         return None
 
+    @staticmethod
+    def _has_jsonld(html: str) -> bool:
+        return "RealEstateListing" in html
+
+    def _fetch_detail(self, session: requests.Session, url: str) -> str | None:
+        """Fetch a listing detail page (cached; one retry). Returns HTML or None."""
+        settings = get_settings()
+        cached = self._read_cache(url, settings.scrape_cache_ttl_minutes)
+        if cached is not None and self._has_jsonld(cached):
+            return cached
+        for attempt in range(1, 3):
+            html = ""
+            try:
+                resp = session.get(url, timeout=30)
+                resp.raise_for_status()
+                html = resp.text
+            except requests.RequestException as exc:
+                logger.warning("xe: detail fetch failed (%d/2) for %s: %s", attempt, url, exc)
+            if html and self._has_jsonld(html):
+                self._write_cache(url, html)
+                return html
+            if attempt < 2:
+                time.sleep(settings.scrape_retry_backoff_s)
+        return None
+
+    def _enrich_from_detail(self, session: requests.Session, raw: dict) -> None:
+        """Merge a listing's detail-page JSON-LD (year, energy, bedrooms, description
+        → rent/rented/private) into ``raw``. Fail-soft: a bad fetch leaves card fields."""
+        html = self._fetch_detail(session, raw["url"])
+        if not html:
+            return
+        try:
+            detail = parse_detail_jsonld(html)
+        except Exception as exc:
+            logger.warning("xe: detail parse error for %s: %s", raw.get("url"), exc)
+            return
+        for key in ("year_built", "bedrooms", "energy_class", "heating"):
+            if detail.get(key) is not None:
+                raw[key] = detail[key]
+        if detail.get("area_m2") and not raw.get("area_m2"):
+            raw["area_m2"] = detail["area_m2"]
+        desc = detail.get("description")
+        if desc:
+            rented, listed_rent = parse_rent(desc)
+            if rented:
+                raw["is_currently_rented"] = True
+            if listed_rent:
+                raw["listed_rent"] = listed_rent
+            if parse_private_seller(desc):
+                raw["is_private_seller"] = True
+
     def collect(self) -> Iterator[dict]:
         settings = get_settings()
         session = self._new_session()
+        cap = settings.scrape_detail_max_per_area
         for url in self.search_urls(self.strategy):
             html = self._fetch_html(session, url)
             if not html:
                 continue
             cards = HTMLParser(html).css(self.CARD_SELECTOR)
             logger.info("xe: %d cards on %s", len(cards), url)
+            enriched = 0
             for card in cards:
                 try:
                     raw = self.parse_card(card.html, base_url=url)
-                    if raw:
-                        yield raw
                 except Exception as exc:  # fail soft per card
                     logger.warning("xe: card parse error: %s", exc)
+                    continue
+                if not raw:
+                    continue
+                if settings.scrape_detail_pages and raw.get("url") and (cap == 0 or enriched < cap):
+                    self._enrich_from_detail(session, raw)
+                    enriched += 1
+                    time.sleep(
+                        random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s)
+                    )
+                yield raw
             time.sleep(random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s))
 
     def parse_card(self, html: str, base_url: str) -> dict:
