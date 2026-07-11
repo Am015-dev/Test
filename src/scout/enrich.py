@@ -159,12 +159,21 @@ def nearest_metro(
     return MetroResult(best_name, int(round(dist)))
 
 
+# Circuit breaker: Nominatim 403s cloud/proxy IPs, and it does so persistently (it's
+# IP-based). Without this, a region-wide run pays a doomed network round-trip for every
+# single listing (hundreds × seconds). After the first failure we stop calling the web
+# geocoder for the rest of the process and fall straight through to the offline centroid
+# fallback. On a host where Nominatim works, it never trips.
+_web_geocode_available = True
+
+
 def geocode(address: str, session=None, settings: Settings | None = None):
     """Geocode an address via Nominatim, caching in ``geocode_cache``.
 
     ``session`` is an optional SQLAlchemy session for caching. Returns (lat, lng)
     or (None, None). Respects Nominatim's 1 req/s policy implicitly via caching.
     """
+    global _web_geocode_available
     from sqlalchemy import select
 
     from .models import GeocodeCacheRow
@@ -182,6 +191,10 @@ def geocode(address: str, session=None, settings: Settings | None = None):
         if cached is not None:
             return cached.lat, cached.lng
 
+    # A cache miss with the web geocoder already known-blocked: skip the round-trip.
+    if not _web_geocode_available:
+        return None, None
+
     lat = lng = None
     try:
         from geopy.geocoders import Nominatim
@@ -191,6 +204,8 @@ def geocode(address: str, session=None, settings: Settings | None = None):
         if loc:
             lat, lng = loc.latitude, loc.longitude
     except Exception:
+        # Trip the breaker: on cloud hosts this is a persistent 403, not transient.
+        _web_geocode_available = False
         lat = lng = None
 
     # Only cache successes. Caching a failure permanently (the table is unique on
