@@ -26,6 +26,8 @@ from .dedup import deduplicate
 from .enrich import enrich_listing
 from .models import Listing, ListingRow, PriceHistoryRow
 from .normalize import normalize
+from .rent_comps import compute_rent_comps
+from .rent_comps import rent_for as rent_comps_for
 from .scoring import compute_market_stats, score
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,29 @@ def _collect_all(collectors: Iterable[Collector]) -> list[dict]:
         except Exception as exc:  # one dead portal must not kill the run
             logger.warning("collector %s failed: %s", collector.source, exc)
     return raws
+
+
+def _fetch_rent_comps(collectors: Iterable[Collector]) -> dict[str, float]:
+    """Scrape the area's rental market from any collector that supports it and reduce it
+    to neighbourhood → median €/m²/month. Fail-soft: returns {} on any failure so yield
+    falls back to sale-listing rents / the configured baseline."""
+    rows: list[dict] = []
+    for collector in collectors:
+        fetch = getattr(collector, "collect_rent_rows", None)
+        if not callable(fetch):
+            continue
+        try:
+            rows.extend(fetch())
+        except Exception as exc:
+            logger.warning("rent comps: %s failed: %s", collector.source, exc)
+    comps = compute_rent_comps(rows)
+    if comps:
+        logger.info(
+            "rent comps: %d neighbourhoods, overall %.1f €/m²/mo",
+            len(comps) - 1,
+            comps.get("__overall__", 0.0),
+        )
+    return comps
 
 
 def run(
@@ -91,15 +116,24 @@ def run(
     # to normalize — never wipes its previously-collected listings.
     active_sources = {lst.source for lst in listings}
 
+    # 1b. Real rent comparables: scrape the area's RENTAL market so gross yield uses an
+    # actual local €/m²/month median per neighbourhood, not a flat guess. Fail-soft.
+    rent_comps: dict[str, float] = {}
+    if use_network:
+        rent_comps = _fetch_rent_comps(collectors)
+
     # 2. Enrich (network steps degrade gracefully). Fail-soft per listing.
     enriched: list[Listing] = []
     with session_scope() as session:
-        # First pass to build rent comps from any listed rents.
+        # Fallback rent comps from any sale listings that stated a rent (rare).
         prelim_stats = compute_market_stats(listings)
         for lst in listings:
             try:
-                n_stats = prelim_stats.by_neighborhood.get(lst.neighborhood or "")
-                median_rent = n_stats.median_rent_per_m2 if n_stats else None
+                # Prefer the real rental-market median for this neighbourhood/area.
+                median_rent = rent_comps_for(rent_comps, lst.neighborhood)
+                if not median_rent:
+                    n_stats = prelim_stats.by_neighborhood.get(lst.neighborhood or "")
+                    median_rent = n_stats.median_rent_per_m2 if n_stats else None
                 # Fall back to the configured baseline so yield is always computable.
                 if not median_rent:
                     median_rent = strategy.search.est_rent_eur_per_m2

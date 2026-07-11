@@ -204,15 +204,18 @@ class XeCollector(Collector):
         logger.info("xe: resolved %r -> geo_place_id %s", query, place_id)
         return place_id
 
-    def search_urls(self, strategy: Strategy) -> list[str]:
+    def search_urls(self, strategy: Strategy, transaction: str = "buy") -> list[str]:
         s = strategy.search
-        base_params = {
-            "transaction_name": "buy",
+        base_params: dict = {
+            "transaction_name": transaction,
             "item_type": "re_residence",
-            "minimum_price": s.price_min,
-            "maximum_price": s.price_max,
             "minimum_size": int(s.area_min_m2),
         }
+        # The sale price band (€120k–320k) is meaningless for rentals — omit it so the
+        # rent-comps search isn't filtered to nonsensical "€120k/month" rentals.
+        if transaction == "buy":
+            base_params["minimum_price"] = s.price_min
+            base_params["maximum_price"] = s.price_max
 
         # Preferred path: a single search scoped server-side to the municipality.
         place_id = self._resolve_place_id(s.municipality) if s.municipality else None
@@ -366,6 +369,30 @@ class XeCollector(Collector):
                 raw["listed_rent"] = listed_rent
             if parse_private_seller(desc):
                 raw["is_private_seller"] = True
+
+    def collect_rent_rows(self) -> Iterator[dict]:
+        """Scrape RENTAL cards (no detail fetch) for rent comps: yields
+        ``{rent, area_m2, neighborhood}``. Card price is the monthly rent here."""
+        settings = get_settings()
+        session = self._new_session()
+        for url in self.search_urls(self.strategy, transaction="rent"):
+            html = self._fetch_html(session, url)
+            if not html:
+                continue
+            cards = HTMLParser(html).css(self.CARD_SELECTOR)
+            logger.info("xe: %d rental cards on %s", len(cards), url)
+            for card in cards:
+                try:
+                    raw = self.parse_card(card.html, base_url=url)
+                except Exception:
+                    continue
+                if raw and raw.get("price") and raw.get("area_m2"):
+                    yield {
+                        "rent": raw["price"],
+                        "area_m2": raw["area_m2"],
+                        "neighborhood": raw.get("neighborhood"),
+                    }
+            time.sleep(random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s))
 
     def collect(self) -> Iterator[dict]:
         settings = get_settings()
