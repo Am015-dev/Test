@@ -31,6 +31,33 @@ def test_neighborhood_centroid_matches_greek_and_latin():
     assert neighborhood_centroid(None) == (None, None)
 
 
+def test_geocode_circuit_breaker_trips_and_skips(monkeypatch):
+    """After the first web-geocoder failure the breaker trips, so later listings skip
+    the doomed network round-trip (what makes a region-wide run fast on cloud hosts)."""
+    import geopy.geocoders
+
+    import scout.enrich as en
+
+    monkeypatch.setattr(en, "_web_geocode_available", True)
+    calls = {"n": 0}
+
+    class _Boom:
+        def __init__(self, **kw):
+            pass
+
+        def geocode(self, query):
+            calls["n"] += 1
+            raise RuntimeError("HTTP 403")
+
+    monkeypatch.setattr(geopy.geocoders, "Nominatim", _Boom)
+
+    assert en.geocode("Somewhere") == (None, None)  # attempts once, fails, trips breaker
+    assert calls["n"] == 1
+    assert en._web_geocode_available is False
+    assert en.geocode("Elsewhere") == (None, None)  # skipped, no new network call
+    assert calls["n"] == 1
+
+
 def test_enrich_falls_back_to_centroid_when_ungeocoded():
     """No lat/lng and no network -> the neighborhood centroid still yields a metro
     distance instead of leaving the listing unlocated."""
