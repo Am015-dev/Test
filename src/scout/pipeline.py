@@ -29,7 +29,7 @@ from .normalize import normalize
 from .rent_comps import compute_rent_comps
 from .rent_comps import rent_for as rent_comps_for
 from .scoring import compute_market_stats, score
-from .valuation import apply_valuations, fit_valuation_model
+from .valuation import fit_and_apply_by_area
 
 logger = logging.getLogger(__name__)
 
@@ -158,20 +158,21 @@ def run(
     groups = deduplicate(enriched)
     canonical = [g.canonical for g in groups]
 
-    # 3b. Hedonic valuation: fit a fair-price model over this batch and annotate each
-    # listing with predicted_price + value_gap_pct. This is what lets scoring tell a
-    # genuine bargain (priced below what its own attributes justify) from a flat that is
-    # merely cheap because it's old/small/low. Fails soft: too few comps → None → the
-    # undervaluation signal falls back to the naive €/m²-vs-median.
-    val_model = fit_valuation_model(canonical)
-    if val_model:
+    # 3b. Hedonic valuation: fit a fair-price model PER AREA and annotate each listing
+    # with predicted_price + value_gap_pct. This is what lets scoring tell a genuine
+    # bargain (priced below what its own attributes justify) from a flat that is merely
+    # cheap because it's old/small/low. Per-area fits are far more accurate than one
+    # pooled model (R²≈0.7-0.8 vs ≈0.3). Fails soft: too few comps → the undervaluation
+    # signal falls back to the naive €/m²-vs-median.
+    val_models = fit_and_apply_by_area(canonical)
+    for area, m in val_models.items():
         logger.info(
-            "valuation model: fitted on %d comps, R²=%.2f, %d areas",
-            sum(1 for lst in canonical if lst.price and lst.area_m2),
-            val_model.r2,
-            len(val_model.areas),
+            "valuation model [%s]: %d comps, R²=%.2f, ±%.0f%% band",
+            area or "(default)",
+            m.n_samples,
+            m.r2,
+            (2.718281828**m.residual_std - 1) * 100,
         )
-    apply_valuations(canonical, val_model)
 
     # 4. Store with history + 5. recompute market stats + 6. rescore active listings.
     market_stats = compute_market_stats(canonical)
@@ -278,9 +279,10 @@ def rescore_all(strategy: Strategy | None = None) -> int:
         # against (the pipeline computes stats over active/canonical listings).
         rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
         listings = [_row_to_listing(r) for r in rows]
-        # Refit the hedonic model over the current active set so the undervaluation
-        # signal (and the Fair value / Value gap the UI shows) reflect the live market.
-        apply_valuations(listings, fit_valuation_model(listings))
+        # Refit the hedonic model PER AREA over the current active set so the
+        # undervaluation signal (and the Fair value / Value gap the UI shows) reflect the
+        # live market with per-submarket accuracy.
+        fit_and_apply_by_area(listings)
         market_stats = compute_market_stats(listings)
         for row, lst in zip(rows, listings, strict=True):
             first_price = _first_price(session, row.id)

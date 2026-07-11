@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scout.valuation import apply_valuations, fit_valuation_model
+from scout.valuation import apply_valuations, fit_and_apply_by_area, fit_valuation_model
 
 from .conftest import make_listing
 
@@ -76,3 +76,75 @@ def test_fair_priced_listing_has_near_zero_gap():
     # Every comp is exactly on the fair line, so gaps cluster tightly around zero.
     assert all(abs(lst.value_gap_pct) < 0.05 for lst in listings)
     assert model.r2 > 0.95  # a clean size→price relationship fits almost perfectly
+
+
+def test_clean_fit_is_confident_with_tight_band():
+    listings = _fair_market(40)
+    model = fit_valuation_model(listings)
+    assert model.is_confident  # R² well above the confidence floor
+    band = model.price_band(listings[0])
+    assert band is not None
+    lo, hi = band
+    # A clean fit → a tight band around the point estimate (near-degenerate here since
+    # residual noise ≈ 0, so lo ≈ point ≈ hi to within rounding).
+    point = model.predict_price(listings[0])
+    assert lo <= round(point) <= hi + 1
+    assert (hi - lo) / point < 0.2  # residual noise is tiny here
+
+
+def test_fit_by_area_fits_each_submarket_separately():
+    # Two areas priced at very different €/m²; a pooled model would blur them, per-area
+    # models price each correctly and flag a within-area bargain.
+    listings = []
+    for i in range(30):
+        area = 50.0 + (i % 40)
+        listings.append(
+            make_listing(
+                source_id=f"a{i}",
+                area_m2=area,
+                price=int(2000 * area),
+                search_area="Cheap",
+                neighborhood="Cheap",
+                floor=2.0,
+                year_built=2000,
+            )
+        )
+    for i in range(30):
+        area = 50.0 + (i % 40)
+        listings.append(
+            make_listing(
+                source_id=f"b{i}",
+                area_m2=area,
+                price=int(5000 * area),
+                search_area="Pricey",
+                neighborhood="Pricey",
+                floor=2.0,
+                year_built=2000,
+            )
+        )
+    models = fit_and_apply_by_area(listings)
+    assert set(models) == {"Cheap", "Pricey"}
+    # Each area's model learned its own price level, so a listing on-line has ~0 gap.
+    assert all(abs(x.value_gap_pct) < 0.1 for x in listings)
+    # Each model is priced near its own market, not the pooled ~3500 €/m² average.
+    cheap_fair = models["Cheap"].predict_price(
+        make_listing(area_m2=70.0, price=1, search_area="Cheap", floor=2.0, year_built=2000)
+    )
+    assert 2000 * 70 * 0.9 < cheap_fair < 2000 * 70 * 1.1
+
+
+def test_noisy_fit_is_not_confident():
+    # Same-size flats priced randomly-ish → no attribute explains price → weak R².
+    listings = []
+    for i in range(40):
+        price = 150_000 + (i * 9973 % 200_000)  # deterministic scatter, no size signal
+        listings.append(
+            make_listing(
+                source_id=f"n{i}", area_m2=75.0, price=price, price_per_m2=price / 75.0, **_ATTRS
+            )
+        )
+    model = fit_valuation_model(listings)
+    assert model is not None
+    assert not model.is_confident  # honestly refuses to claim precision
+    lo, hi = model.price_band(listings[0])
+    assert (hi - lo) / model.predict_price(listings[0]) > 0.2  # wide band signals low trust

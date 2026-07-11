@@ -64,6 +64,39 @@ def get_recent_health() -> list[dict]:
     return queries.load_recent_health(10)
 
 
+@st.cache_data(ttl=120)
+def get_valuation_summary() -> dict:
+    return queries.load_valuation_summary()
+
+
+def _valuation_banner() -> dict:
+    """Show — honestly — how much to trust the fair-value numbers, and return the summary
+    so callers can render ± bands. Never implies more precision than the fit supports."""
+    v = get_valuation_summary()
+    if not v.get("fitted"):
+        st.info(
+            "**Fair-value model:** not enough comparable listings yet to price properties "
+            "against their attributes — showing raw €/m² signals only."
+        )
+        return v
+    o = v["overall"]
+    r2, n, n_areas = o["r2"], o["n"], o.get("n_areas", 1)
+    band = f"±{(pow(2.718281828, o['residual_std']) - 1) * 100:.0f}%"
+    scope = f"{n_areas} area-specific models over {n} comparables"
+    if o["is_confident"]:
+        st.success(
+            f"**Fair-value model:** {scope}, weighted R²={r2:.2f}. Each estimate is shown "
+            f"with its area's ± range (typ. {band})."
+        )
+    else:
+        st.warning(
+            f"**Fair-value model:** {scope}, weighted R²={r2:.2f} — some submarkets are "
+            f"still thin, so estimates there are *indicative* (typ. range {band}). Use the "
+            "ranking to shortlist, then verify each listing; don't treat the € figure as exact."
+        )
+    return v
+
+
 def _last_updated(listings: list[dict]) -> datetime | None:
     """Most recent time any listing was seen by the pipeline."""
     seens = [d["last_seen"] for d in listings if d["last_seen"]]
@@ -363,6 +396,45 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
     )
 
 
+def _fair_value_block(d: dict) -> None:
+    """Asking price vs the model's fair value, shown WITH a ±1σ range so the estimate is
+    never presented as more precise than the fit supports. Only calls it 'undervalued'
+    when the discount exceeds the model's own noise band."""
+    fair = d.get("predicted_price")
+    gap = d.get("value_gap_pct")
+    if not fair or gap is None:
+        return
+    v = get_valuation_summary()
+    # Use THIS listing's submarket band (fall back to the widest overall band).
+    area_info = v.get("areas", {}).get(d.get("search_area") or "", {})
+    sigma = area_info.get("residual_std") or v.get("overall", {}).get("residual_std") or 0.0
+    area_confident = area_info.get("is_confident", v.get("overall", {}).get("is_confident", False))
+    lo = int(round(fair * pow(2.718281828, -sigma)))
+    hi = int(round(fair * pow(2.718281828, sigma)))
+    ask = d.get("price", 0)
+
+    st.markdown("#### 💰 Fair value vs asking")
+    cols = st.columns(3)
+    cols[0].metric("Asking", fmt.euro(ask))
+    cols[1].metric("Model fair value", fmt.euro(fair), delta=f"{gap*100:+.0f}% vs asking")
+    cols[2].metric("Fair range (±1σ)", f"{fmt.euro(lo)} – {fmt.euro(hi)}")
+
+    # Only a discount BEYOND the model's noise earns a confident "undervalued" call.
+    beyond_noise = ask < lo
+    if gap > 0 and beyond_noise and area_confident:
+        st.success(
+            "Priced **below** the model's fair range — a genuine mispricing signal, not "
+            "just a cheap flat."
+        )
+    elif gap > 0:
+        st.caption(
+            "Priced below the point estimate, but *within* the model's uncertainty band — "
+            "suggestive, not conclusive. Verify the listing before acting."
+        )
+    elif ask > hi:
+        st.warning("Priced **above** the model's fair range — looks overpriced for its attributes.")
+
+
 def _net_return_and_financing(d: dict, lid: int) -> None:
     """Net yield after Greek buying + operating costs, and a mortgage/cash-on-cash model.
 
@@ -466,6 +538,7 @@ def _comparables(d: dict, listings: list[dict]) -> None:
 
 def page_opportunities(listings: list[dict]) -> None:
     st.subheader("Opportunities")
+    _valuation_banner()
 
     if not listings:
         st.info(
@@ -666,6 +739,9 @@ def page_detail(listings: list[dict]) -> None:
     if bullets:
         for b in bullets:
             st.markdown(f"• {b}")
+
+    # --- fair value vs asking (with honest uncertainty) ---
+    _fair_value_block(d)
 
     # --- net return (after Greek costs) + financing ---
     _net_return_and_financing(d, lid)

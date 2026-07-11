@@ -174,6 +174,50 @@ def load_recent_health(limit: int = 20) -> list[dict]:
         return []
 
 
+def load_valuation_summary() -> dict:
+    """Fit the hedonic model PER AREA over the current active set and report confidence.
+
+    Returns an ``areas`` map (``area -> {r2, residual_std, is_confident, n}``) plus an
+    ``overall`` aggregate, so the UI can be honest: a per-area ± band and a confidence
+    read that matches how the stored valuations were actually produced (per submarket),
+    never one pooled number that understates the real fit. ``residual_std`` per area lets
+    the UI turn each listing's stored ``predicted_price`` into a ±1σ range with no schema
+    change."""
+    from ..pipeline import _row_to_listing
+    from ..valuation import fit_and_apply_by_area
+
+    with session_scope() as session:
+        rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
+        listings = [_row_to_listing(r) for r in rows]
+    models = fit_and_apply_by_area(listings)
+    if not models:
+        return {
+            "fitted": False,
+            "areas": {},
+            "overall": {"is_confident": False, "n": len(listings)},
+        }
+
+    areas = {
+        area: {
+            "r2": round(m.r2, 3),
+            "residual_std": m.residual_std,
+            "is_confident": m.is_confident,
+            "n": m.n_samples,
+        }
+        for area, m in models.items()
+    }
+    total_n = sum(m.n_samples for m in models.values()) or 1
+    # Sample-weighted mean R² and a conservative (widest) residual band across areas.
+    overall = {
+        "r2": round(sum(m.r2 * m.n_samples for m in models.values()) / total_n, 3),
+        "residual_std": max(m.residual_std for m in models.values()),
+        "is_confident": all(m.is_confident for m in models.values()),
+        "n": total_n,
+        "n_areas": len(models),
+    }
+    return {"fitted": True, "areas": areas, "overall": overall}
+
+
 def load_all_price_history() -> list[dict]:
     """Every price observation across all listings, for the market price index.
 

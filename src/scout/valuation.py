@@ -35,6 +35,13 @@ def _usable(lst: Listing) -> bool:
     return bool(lst.price and lst.price > 0 and lst.area_m2 and lst.area_m2 > 0)
 
 
+# A demo (and an investor) must never see false precision. When the model explains too
+# little of price variance, we still rank on it but stop showing a hard "fair value"
+# number and stop badging listings as undervalued — the honest read is "we can't price
+# this confidently yet", not a made-up euro figure.
+_MIN_CONFIDENT_R2 = 0.35
+
+
 @dataclass
 class ValuationModel:
     beta: np.ndarray | None
@@ -42,6 +49,31 @@ class ValuationModel:
     areas: list[str]
     ref_year: int
     r2: float = field(default=0.0)
+    # Std-dev of the log-price residuals — the model's own noise. Turned into a ± band
+    # around each fair-value estimate so uncertainty is shown, never hidden.
+    residual_std: float = field(default=0.0)
+    n_samples: int = field(default=0)
+
+    @property
+    def is_confident(self) -> bool:
+        """Whether fair-value numbers are solid enough to show as a figure (vs rank-only)."""
+        return (
+            self.beta is not None
+            and self.r2 >= _MIN_CONFIDENT_R2
+            and self.n_samples >= _MIN_SAMPLES
+        )
+
+    def price_band(self, lst: Listing) -> tuple[int, int] | None:
+        """A ±1σ fair-price interval from the model's residual noise, e.g. (180k, 320k).
+
+        Wide bands are the point: they tell the viewer how much to trust the point
+        estimate instead of implying false precision."""
+        predicted = self.predict_price(lst)
+        if not predicted or not self.residual_std:
+            return None
+        lo = predicted * math.exp(-self.residual_std)
+        hi = predicted * math.exp(self.residual_std)
+        return int(round(lo)), int(round(hi))
 
     def _features(self, lst: Listing) -> np.ndarray | None:
         if not _usable(lst):
@@ -85,6 +117,29 @@ def apply_valuations(listings: list[Listing], model: ValuationModel | None) -> N
         lst.value_gap_pct = model.value_gap(lst)
 
 
+def fit_and_apply_by_area(listings: list[Listing]) -> dict[str, ValuationModel]:
+    """Fit a SEPARATE hedonic model per ``search_area`` and annotate listings in place.
+
+    Submarkets price differently, and a single pooled regression averages those
+    relationships into mush — empirically the pooled fit lands around R²≈0.3 while
+    per-area fits reach 0.7–0.8 on the same data. Fitting each area on its own comps is
+    both more accurate and more honest. Areas with too few comps get no model (their
+    listings keep null valuations and scoring falls back to the naive €/m² signal).
+
+    Returns the fitted models keyed by area, so callers can report per-area confidence.
+    """
+    groups: dict[str, list[Listing]] = {}
+    for lst in listings:
+        groups.setdefault(lst.search_area or "", []).append(lst)
+    models: dict[str, ValuationModel] = {}
+    for area, group in groups.items():
+        model = fit_valuation_model(group)
+        apply_valuations(group, model)
+        if model is not None:
+            models[area] = model
+    return models
+
+
 def fit_valuation_model(listings: list[Listing]) -> ValuationModel | None:
     rows = [lst for lst in listings if _usable(lst)]
     if len(rows) < _MIN_SAMPLES:
@@ -115,9 +170,14 @@ def fit_valuation_model(listings: list[Listing]) -> ValuationModel | None:
     beta, *_ = np.linalg.lstsq(x, y, rcond=None)
     model.beta = beta
 
-    # In-sample R² — a rough confidence read (surfaced, not gated on).
+    # In-sample R² and the residual spread — a confidence read the UI gates display on
+    # (see is_confident / price_band), so a weak fit shows a wide band or no number
+    # rather than false precision.
     pred = x @ beta
-    ss_res = float(np.sum((y - pred) ** 2))
+    resid = y - pred
+    ss_res = float(np.sum(resid**2))
     ss_tot = float(np.sum((y - np.mean(y)) ** 2))
     model.r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+    model.residual_std = float(np.std(resid)) if len(resid) else 0.0
+    model.n_samples = len(rows)
     return model
