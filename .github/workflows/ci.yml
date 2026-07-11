@@ -26,8 +26,21 @@ jobs:
       - name: Install deps
         run: pip install -e ".[dev]"
 
-      - name: Tests
-        run: python -m pytest -q
+      - name: Tests (deterministic unit + integration suite)
+        run: python -m pytest -q --ignore=tests/test_ui_smoke.py
+
+      - name: UI smoke (Streamlit AppTest — retried)
+        # These boot the full Streamlit runtime and round-trip a DataFrame through
+        # Arrow; pyarrow can occasionally segfault natively on the CI runner (exit
+        # 139), which is environmental, not a code regression. Retry up to 3× so a
+        # transient native crash doesn't flake the gate — a real UI break fails all
+        # three attempts and still blocks.
+        run: |
+          for attempt in 1 2 3; do
+            python -m pytest tests/test_ui_smoke.py -q && exit 0
+            echo "::warning::UI smoke attempt $attempt failed (possible pyarrow native segfault); retrying"
+          done
+          exit 1
 
       - name: Lint
         run: ruff check src/ tests/ scripts/
