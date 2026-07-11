@@ -2,7 +2,27 @@
 # so tuning the strategy never requires a code change or redeploy.
 
 search:
-  municipality: Cholargos   # server-side geo filter (XE geo_place_id); the area to search
+  municipality: Cholargos   # anchor area (XE geo_place_id); scraped first
+  # Full northern suburbs of Athens (North Athens regional unit). Each becomes its own
+  # scrape job; all share the scoring thesis below. Names resolve via XE autocomplete.
+  areas:
+    - Papagou
+    - Agia Paraskevi
+    - Chalandri
+    - Marousi
+    - Kifisia
+    - Nea Ionia
+    - Vrilissia
+    - Metamorfosi
+    - Penteli
+    - Nea Penteli
+    - Melissia
+    - Pefki
+    - Lykovrysi
+    - Psychiko
+    - Filothei
+    - Nea Erythraia
+    - Ekali
   neighborhoods: [Faneromeni, Ano Cholargos, Plateia Dimokratias, Lofos Tsakou]
   est_rent_eur_per_m2: 11.0   # baseline monthly rent estimate for gross-yield scoring
   price_min: 120000
