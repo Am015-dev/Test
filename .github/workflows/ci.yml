@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel an in-progress run when a newer commit is pushed to the same ref, so stale
+# runs don't pile up or waste minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gate:
     runs-on: ubuntu-latest
@@ -28,3 +34,8 @@ jobs:
 
       - name: Format check
         run: black --check src/ tests/ scripts/
+
+      - name: Readiness smoke (schema + doctor)
+        run: |
+          python -c "from scout.db import init_db; init_db()"
+          python scripts/doctor.py
