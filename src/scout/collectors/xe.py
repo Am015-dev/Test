@@ -94,6 +94,7 @@ def _feature_value(name: str) -> tuple[str, str] | None:
 # The detail page embeds the listing's location as a small privacy bounding box under
 # ``property_location.coordinates`` (HTML-escaped JSON). The box CENTRE is the listing's
 # real position — precise enough for an accurate walking distance to the nearest metro.
+_OG_IMAGE_RE = re.compile(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']')
 _COORDS_RE = re.compile(r"property_location\.coordinates\"\s*:\s*(\{.*?\}\s*\})")
 _LAT_RE = re.compile(r"\"lat\"\s*:\s*(-?\d+\.\d+)")
 _LON_RE = re.compile(r"\"lon\"\s*:\s*(-?\d+\.\d+)")
@@ -350,6 +351,10 @@ class XeCollector(Collector):
         lat, lng = parse_detail_coordinates(html)
         if lat is not None and lng is not None:
             raw["lat"], raw["lng"] = lat, lng
+        if not raw.get("image_url"):
+            m_img = _OG_IMAGE_RE.search(html)
+            if m_img:
+                raw["image_url"] = unescape(m_img.group(1))
         try:
             detail = parse_detail_jsonld(html)
         except Exception as exc:

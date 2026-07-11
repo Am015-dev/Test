@@ -305,12 +305,25 @@ footer {{ visibility: hidden; height: 0; }}
     background: var(--hg-surface);
     border: 1px solid var(--hg-line);
     border-radius: 16px;
-    padding: 18px 18px 14px;
     box-shadow: var(--hg-shadow);
-    display: flex; flex-direction: column; gap: 12px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
     transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
 }}
+.ph-body {{ padding: 15px 18px 14px; display: flex; flex-direction: column; gap: 12px; }}
 .ph-card:hover {{ transform: translateY(-3px); box-shadow: var(--hg-shadow-h); border-color: #CBD5E1; }}
+
+/* Photo header: gradient placeholder (always visible) + real image on top. */
+.ph-photo {{
+    display: block; position: relative; height: 168px; width: 100%;
+    background: linear-gradient(135deg, #64748B, #94A3B8);
+}}
+.ph-photo-new {{ background: linear-gradient(135deg, #15803D, #4ADE80); }}
+.ph-photo-reno {{ background: linear-gradient(135deg, #1D4ED8, #60A5FA); }}
+.ph-photo-modern {{ background: linear-gradient(135deg, #0369A1, #38BDF8); }}
+.ph-photo-liability {{ background: linear-gradient(135deg, #B91C1C, #F87171); }}
+.ph-photo-dated, .ph-photo-std {{ background: linear-gradient(135deg, #64748B, #94A3B8); }}
+.ph-photo img {{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }}
 .ph-card-head {{ display: flex; align-items: center; gap: 14px; }}
 .ph-score {{
     flex: 0 0 auto; width: 52px; height: 52px; border-radius: 14px;

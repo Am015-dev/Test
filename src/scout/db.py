@@ -61,6 +61,7 @@ _SNAPSHOT_FIELDS = (
     "gross_yield",
     "predicted_price",
     "value_gap_pct",
+    "image_url",
 )
 
 
@@ -88,6 +89,7 @@ def init_db() -> None:
             "search_area": "VARCHAR(128)",
             "predicted_price": "INTEGER",
             "value_gap_pct": "DOUBLE PRECISION",
+            "image_url": "VARCHAR(1024)",
         },
     )
     _ensure_index(engine, "ix_listing_search_area", "listing", "search_area")

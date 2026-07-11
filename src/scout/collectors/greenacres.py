@@ -28,6 +28,7 @@ import random
 import re
 import time
 from collections.abc import Iterator
+from html import unescape
 
 import requests
 from selectolax.parser import HTMLParser
@@ -52,6 +53,10 @@ _COORDS_RE = re.compile(
 # Residential types worth keeping (the URL's 3rd path segment). Drop business-premises,
 # land, parking, etc. — this tool is about homes to let.
 _RESIDENTIAL_TYPES = {"apartment", "house", "luxury-property", "property"}
+# A property photo URL sitting in the card (carousel slides / img src).
+_IMG_RE = re.compile(
+    r"https://[a-z0-9.\-/_]*green-acres\.com/[^\"'&\s]+\.(?:jpg|jpeg|webp|png)", re.I
+)
 
 
 class GreenAcresCollector(Collector):
@@ -169,6 +174,9 @@ class GreenAcresCollector(Collector):
         location = text(self.SEL_LOCATION)  # "Chalandri (Attica)"
         neighborhood = location.split("(")[0].strip() if location else None
 
+        m_img = _IMG_RE.search(unescape(html))
+        image_url = m_img.group(0) if m_img else None
+
         return {
             "source": self.source,
             "source_id": advert_id,
@@ -180,6 +188,7 @@ class GreenAcresCollector(Collector):
             "neighborhood": neighborhood,
             "address": neighborhood,
             "property_type": property_type,
+            "image_url": image_url,
         }
 
     def _enrich_from_detail(self, session: requests.Session, raw: dict) -> None:

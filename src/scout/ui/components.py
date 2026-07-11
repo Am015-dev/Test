@@ -111,22 +111,39 @@ def _card_html(d: dict) -> str:
     )
     url = _esc(d.get("url") or "#")
 
+    # Photo header: a coloured gradient placeholder always shows (so the card never
+    # looks empty), with the real listing photo layered on top when it loads.
+    img = d.get("image_url")
+    img_layer = (
+        f'<img src="{_esc(img)}" loading="lazy" alt="" '
+        f'onerror="this.style.display=&quot;none&quot;">'
+        if img
+        else ""
+    )
+    photo = (
+        f'<a class="ph-photo ph-photo-{arch_cls}" href="{url}" target="_blank" rel="noopener">'
+        f"{img_layer}</a>"
+    )
+
     return f"""
 <div class="ph-card">
-  <div class="ph-card-head">
-    <div class="ph-score" style="--hue:{hue}"><span>{score}</span><small>score</small></div>
-    <div class="ph-price-wrap">
-      <div class="ph-price">{price}</div>
-      <div class="ph-ppm2">{ppm2}</div>
+  {photo}
+  <div class="ph-body">
+    <div class="ph-card-head">
+      <div class="ph-score" style="--hue:{hue}"><span>{score}</span><small>score</small></div>
+      <div class="ph-price-wrap">
+        <div class="ph-price">{price}</div>
+        <div class="ph-ppm2">{ppm2}</div>
+      </div>
+      <span class="ph-arch ph-arch-{arch_cls}">{_esc(archetype)}</span>
     </div>
-    <span class="ph-arch ph-arch-{arch_cls}">{_esc(archetype)}</span>
-  </div>
-  <div class="ph-hood">📍 {hood}</div>
-  <div class="ph-specs">{"".join(specs)}</div>
-  <div class="ph-signals">{"".join(signals)}</div>
-  <div class="ph-card-foot">
-    <div class="ph-badges">{badges}</div>
-    <a class="ph-cta" href="{url}" target="_blank" rel="noopener">View listing ↗</a>
+    <div class="ph-hood">📍 {hood}</div>
+    <div class="ph-specs">{"".join(specs)}</div>
+    <div class="ph-signals">{"".join(signals)}</div>
+    <div class="ph-card-foot">
+      <div class="ph-badges">{badges}</div>
+      <a class="ph-cta" href="{url}" target="_blank" rel="noopener">View listing ↗</a>
+    </div>
   </div>
 </div>"""
 

@@ -72,6 +72,8 @@ class Listing(BaseModel):
     predicted_price: int | None = None
     value_gap_pct: float | None = None
 
+    image_url: str | None = None  # a representative photo (card carousel / detail og:image)
+
     first_seen: datetime | None = None
     last_seen: datetime | None = None
     status: ListingStatus = "active"
@@ -142,6 +144,7 @@ class ListingRow(Base):
     # Hedonic fair-value estimate and gap to asking price (see Listing above).
     predicted_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
     value_gap_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     # Latest computed score (denormalized for fast UI reads).
     score: Mapped[float] = mapped_column(Float, default=0.0)
