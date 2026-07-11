@@ -16,9 +16,10 @@ pipeline + scoring.
 - `hard_filters`: `min_floor` (ground/low floors excluded), `max_metro_distance_m`
   (listings farther than this are excluded). Exclusion sets `excluded=True` + a reason; it
   doesn't delete.
-- `weights`: relative importance of `gross_yield`, `price_vs_area_median`, `price_drop`,
-  `is_currently_rented`, `is_private_seller`. They don't need to sum to 100 (`total()`
-  normalizes).
+- `weights`: relative importance of `undervaluation` (asking price vs the hedonic
+  fair-value model — falls back to raw €/m² vs area median when too few comps to fit),
+  `gross_yield`, `newness`, `energy_class`, `price_drop`, `is_currently_rented`,
+  `is_private_seller`. They don't need to sum to 100 (`total()` normalizes).
 - `opportunity_flag.price_per_m2_below_median_pct`: the €/m² threshold (vs area median) to
   flag a listing as an opportunity (drives the digest's TOP OPPORTUNITIES).
 - `scoring_reference`: `yield_floor`/`yield_ceiling` (the yield range mapped to 0..1),

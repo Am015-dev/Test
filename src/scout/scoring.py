@@ -110,6 +110,25 @@ def _price_vs_median_signal(listing: Listing, median_ppm2: float | None) -> floa
     return _clamp01((1.0 - ratio) / 0.3)
 
 
+def _undervaluation_signal(
+    listing: Listing, median_ppm2: float | None, strategy: Strategy
+) -> float:
+    """How far below fair value the asking price sits, 0..1.
+
+    Prefers the hedonic model's ``value_gap_pct`` — which controls for the property's
+    own size/floor/age/energy/metro, so it separates *mispriced* (a real bargain) from
+    merely *cheap because inferior*. A gap of ``target_undervaluation`` (default 20%
+    below fair value) scores a full 1.0; at/above fair value scores 0.
+
+    Falls back to the raw €/m²-vs-neighborhood-median signal when the model couldn't
+    price this listing (too few comps, or missing price/area)."""
+    gap = listing.value_gap_pct
+    if gap is not None:
+        target = max(strategy.scoring_reference.target_undervaluation, 1e-9)
+        return _clamp01(gap / target)
+    return _price_vs_median_signal(listing, median_ppm2)
+
+
 def _price_drop_signal(listing: Listing, first_price: int | None, strategy: Strategy) -> float:
     if not first_price or first_price <= 0 or listing.price >= first_price:
         return 0.0
@@ -194,8 +213,8 @@ def score(
     # 2. Weighted, normalized signals.
     median_ppm2 = market_stats.price_per_m2_median_for(listing.neighborhood)
     signals = {
+        "undervaluation": _undervaluation_signal(listing, median_ppm2, strategy),
         "gross_yield": _yield_signal(listing, strategy),
-        "price_vs_area_median": _price_vs_median_signal(listing, median_ppm2),
         "newness": _newness_signal(listing, strategy),
         "energy_class": _energy_signal(listing),
         "price_drop": _price_drop_signal(listing, first_price, strategy),
@@ -204,8 +223,8 @@ def score(
     }
     w = strategy.weights
     weights = {
+        "undervaluation": w.undervaluation,
         "gross_yield": w.gross_yield,
-        "price_vs_area_median": w.price_vs_area_median,
         "newness": w.newness,
         "energy_class": w.energy_class,
         "price_drop": w.price_drop,

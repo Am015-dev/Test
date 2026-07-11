@@ -47,6 +47,8 @@ def _row_to_dict(row: ListingRow, first_price: int | None) -> dict:
         "price_per_m2": row.price_per_m2,
         "est_monthly_rent": row.est_monthly_rent,
         "gross_yield": row.gross_yield,
+        "predicted_price": row.predicted_price,
+        "value_gap_pct": row.value_gap_pct,
         "score": row.score,
         "is_opportunity": row.is_opportunity,
         "excluded": row.excluded,

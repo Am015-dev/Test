@@ -59,6 +59,8 @@ _SNAPSHOT_FIELDS = (
     "price_per_m2",
     "est_monthly_rent",
     "gross_yield",
+    "predicted_price",
+    "value_gap_pct",
 )
 
 
@@ -79,7 +81,15 @@ def init_db() -> None:
     """
     engine = get_engine()
     Base.metadata.create_all(engine)
-    _ensure_columns(engine, "listing", {"search_area": "VARCHAR(128)"})
+    _ensure_columns(
+        engine,
+        "listing",
+        {
+            "search_area": "VARCHAR(128)",
+            "predicted_price": "INTEGER",
+            "value_gap_pct": "DOUBLE PRECISION",
+        },
+    )
     _ensure_index(engine, "ix_listing_search_area", "listing", "search_area")
 
 

@@ -94,6 +94,10 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
         rec = {
             "Score": round(d["score"], 0),
             "Price": d["price"],
+            "Fair value": d.get("predicted_price"),
+            "Value gap": (
+                (d.get("value_gap_pct") * 100) if d.get("value_gap_pct") is not None else None
+            ),
             "€/m²": d["price_per_m2"],
             "Area": d["area_m2"],
             "Floor": d["floor"],
@@ -114,6 +118,12 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
             "Score", help="0–100 fit vs strategy", min_value=0, max_value=100, format="%.0f"
         ),
         "Price": st.column_config.NumberColumn("Price", format="€%d"),
+        "Fair value": st.column_config.NumberColumn(
+            "Fair value", help="hedonic model's fair price for this flat's attributes", format="€%d"
+        ),
+        "Value gap": st.column_config.NumberColumn(
+            "Value gap", help="+ = priced below fair value (undervalued)", format="%+.0f%%"
+        ),
         "€/m²": st.column_config.NumberColumn("€/m²", format="€%.0f"),
         "Area": st.column_config.NumberColumn("Area", format="%.0f m²"),
         "Floor": st.column_config.NumberColumn("Floor", format="%.0f"),
@@ -187,6 +197,20 @@ def _kpi_header(listings: list[dict]) -> None:
 def _investment_bullets(d: dict) -> list[str]:
     """Plain-language reasons why this listing is (or isn't) interesting, ordered by impact."""
     bullets: list[str] = []
+
+    # Undervaluation vs hedonic fair value — the headline "is this a real bargain?" signal.
+    gap = d.get("value_gap_pct")
+    fair = d.get("predicted_price")
+    if gap is not None and fair:
+        if gap >= 0.10:
+            bullets.append(
+                f"**{gap*100:.0f}% under fair value** → model prices it at {fmt.euro(fair)} "
+                f"vs {fmt.euro(d.get('price', 0))} asked"
+            )
+        elif gap <= -0.10:
+            bullets.append(
+                f"**{abs(gap)*100:.0f}% over fair value** — model prices it at {fmt.euro(fair)}"
+            )
 
     # Yield + income — most important signal
     monthly = d.get("listed_rent") or d.get("est_monthly_rent")
@@ -273,18 +297,22 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
     energy_sig = energy_class_score(d.get("energy_class"))
     built = d.get("renovated_year") or d.get("year_built")
 
+    gap = d.get("value_gap_pct")
+    target = max(getattr(ref, "target_undervaluation", 0.20), 1e-9)
+    under_sig = max(0.0, min(1.0, gap / target)) if gap is not None else 0.0
+
     rows = [
+        {
+            "Signal": "Undervaluation",
+            "Value": f"{gap*100:+.0f}% vs fair" if gap is not None else "no model",
+            "Score": round(under_sig * w.undervaluation / total_w * 100, 1),
+            "Max": round(w.undervaluation / total_w * 100, 1),
+        },
         {
             "Signal": "Gross yield",
             "Value": f"{gy*100:.1f}%" if gy else "—",
             "Score": round(yield_sig * w.gross_yield / total_w * 100, 1),
             "Max": round(w.gross_yield / total_w * 100, 1),
-        },
-        {
-            "Signal": "Price vs area median",
-            "Value": "See score",
-            "Score": "—",
-            "Max": round(w.price_vs_area_median / total_w * 100, 1),
         },
         {
             "Signal": "Newness (build/reno yr)",
@@ -328,8 +356,10 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
         },
     )
     st.caption(
-        "Price vs area median is computed from all area listings — accurate once ≥ 3 "
-        "comparables exist per neighborhood."
+        "Undervaluation compares the asking price to a hedonic fair value predicted from "
+        "this flat's own size, floor, age, energy class, metro distance and area — so it "
+        "flags a genuine mispricing, not merely a cheap-but-inferior flat. It needs ≥ 25 "
+        "comparables to fit; below that it falls back to raw €/m² vs the area median."
     )
 
 
@@ -474,6 +504,14 @@ def page_opportunities(listings: list[dict]) -> None:
             st.slider("Area (m²)", amin, amax, (amin, amax)) if amin < amax else (amin, amax)
         )
         min_yield = st.slider("Min gross yield (%)", 0.0, 12.0, 0.0, step=0.5) / 100
+        min_value_gap = st.slider(
+            "Min value gap (% below fair value)",
+            0,
+            40,
+            0,
+            step=5,
+            help="Only flats the hedonic model prices at least this far below fair value.",
+        )
         min_year = st.slider("Built/renovated after", 1950, 2025, 1950, step=5)
         new_only = st.checkbox("New builds only (≥ 2010)", value=False)
         include_unknown_year = st.checkbox("Include unknown build year", value=True)
@@ -490,6 +528,10 @@ def page_opportunities(listings: list[dict]) -> None:
             return False
         if (d["gross_yield"] or 0) < min_yield:
             return False
+        if min_value_gap > 0:
+            gap = d.get("value_gap_pct")
+            if gap is None or gap * 100 < min_value_gap:
+                return False
         yr = _built_year(d)
         effective_min = max(min_year, 2010) if new_only else min_year
         if yr is None:
@@ -710,8 +752,10 @@ def page_strategy() -> None:
         )
         st.markdown("**Weights**")
         w = strategy.weights
+        under = st.slider(
+            "Undervaluation (vs hedonic fair value)", 0.0, 50.0, float(w.undervaluation)
+        )
         gy = st.slider("Gross yield", 0.0, 50.0, float(w.gross_yield))
-        pm = st.slider("Price vs area median", 0.0, 50.0, float(w.price_vs_area_median))
         newness = st.slider("Newness (build/reno year)", 0.0, 50.0, float(w.newness))
         energy = st.slider("Energy class", 0.0, 50.0, float(w.energy_class))
         pd_ = st.slider("Price drop", 0.0, 50.0, float(w.price_drop))
@@ -733,8 +777,8 @@ def page_strategy() -> None:
     if submitted:
         strategy.hard_filters.min_floor = int(min_floor)
         strategy.hard_filters.max_metro_distance_m = int(max_metro)
+        strategy.weights.undervaluation = under
         strategy.weights.gross_yield = gy
-        strategy.weights.price_vs_area_median = pm
         strategy.weights.newness = newness
         strategy.weights.energy_class = energy
         strategy.weights.price_drop = pd_

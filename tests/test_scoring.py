@@ -110,6 +110,30 @@ def test_rented_and_private_add_signal(strategy):
     assert flagged.signals["is_private_seller"] == 1.0
 
 
+def test_undervaluation_signal_from_value_gap(strategy):
+    """When the hedonic model priced a listing, the undervaluation signal tracks its gap:
+    a listing at the target discount (20% below fair value) earns the full signal."""
+    fair = score(make_listing(value_gap_pct=0.0), _stats(), strategy)
+    under = score(make_listing(value_gap_pct=0.20), _stats(), strategy)
+    over = score(make_listing(value_gap_pct=-0.20), _stats(), strategy)
+    assert under.signals["undervaluation"] == 1.0
+    assert fair.signals["undervaluation"] == 0.0
+    assert over.signals["undervaluation"] == 0.0
+    assert under.score > fair.score >= over.score
+
+
+def test_undervaluation_falls_back_to_price_vs_median(strategy):
+    """With no hedonic gap (model couldn't price it), the signal falls back to raw €/m²
+    vs the neighborhood median, so cheaper-per-m² still scores higher."""
+    cheap = score(
+        make_listing(value_gap_pct=None, price_per_m2=2100.0), _stats(median_ppm2=3000.0), strategy
+    )
+    dear = score(
+        make_listing(value_gap_pct=None, price_per_m2=3000.0), _stats(median_ppm2=3000.0), strategy
+    )
+    assert cheap.signals["undervaluation"] > dear.signals["undervaluation"]
+
+
 def test_opportunity_flag_set_when_cheap(strategy):
     # ppm2 = 2500 vs median 3500 -> 2500 < 0.85*3500=2975 -> opportunity
     result = score(make_listing(price_per_m2=2500.0), _stats(median_ppm2=3500.0), strategy)

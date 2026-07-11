@@ -133,18 +133,22 @@ class HardFilters(BaseModel):
 
 
 class Weights(BaseModel):
-    gross_yield: float = 30
-    price_vs_area_median: float = 18
-    newness: float = 16  # build/renovation year — new stock rents better, costs less to hold
+    # Undervaluation is the headline signal: a hedonic model prices each flat from its
+    # own attributes (size, floor, age, energy, metro, area) and this rewards those
+    # priced *below* that fair value — a genuine mispricing, not merely a cheap inferior
+    # flat. Falls back to raw €/m²-vs-median when the model can't price a listing.
+    undervaluation: float = 30
+    gross_yield: float = 25
+    newness: float = 15  # build/renovation year — new stock rents better, costs less to hold
     energy_class: float = 8  # A/B rent higher and are future-proof vs EU efficiency rules
-    price_drop: float = 12
-    is_currently_rented: float = 8
-    is_private_seller: float = 8
+    price_drop: float = 10
+    is_currently_rented: float = 6
+    is_private_seller: float = 6
 
     def total(self) -> float:
         return (
-            self.gross_yield
-            + self.price_vs_area_median
+            self.undervaluation
+            + self.gross_yield
             + self.newness
             + self.energy_class
             + self.price_drop
@@ -165,6 +169,10 @@ class ScoringReference(BaseModel):
     # the ceiling scores 1 (linear between). Unknown year is treated as neutral-low.
     build_year_floor: int = 1980
     build_year_ceiling: int = 2015
+    # Undervaluation normalization: a listing priced this fraction below its hedonic
+    # fair value scores a full 1.0 on the undervaluation signal (linear from 0). 0.20 =
+    # "20% under fair value is a top-tier bargain".
+    target_undervaluation: float = 0.20
 
 
 class Strategy(BaseModel):

@@ -66,6 +66,12 @@ class Listing(BaseModel):
     est_monthly_rent: int | None = None
     gross_yield: float | None = None
 
+    # Hedonic valuation (computed): the model's fair price given this property's own
+    # attributes, and the gap to the asking price. value_gap_pct > 0 = priced below fair
+    # value (a genuine bargain, not merely cheap because it's inferior stock).
+    predicted_price: int | None = None
+    value_gap_pct: float | None = None
+
     first_seen: datetime | None = None
     last_seen: datetime | None = None
     status: ListingStatus = "active"
@@ -132,6 +138,10 @@ class ListingRow(Base):
     price_per_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
     est_monthly_rent: Mapped[int | None] = mapped_column(Integer, nullable=True)
     gross_yield: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Hedonic fair-value estimate and gap to asking price (see Listing above).
+    predicted_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    value_gap_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Latest computed score (denormalized for fast UI reads).
     score: Mapped[float] = mapped_column(Float, default=0.0)
