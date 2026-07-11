@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from ..db import session_scope
-from ..models import ListingRow, PriceHistoryRow
+from ..models import HealthReportRow, ListingRow, PriceHistoryRow
 
 
 def _row_to_dict(row: ListingRow, first_price: int | None) -> dict:
@@ -141,3 +141,38 @@ def set_watched(listing_id: int, watched: bool) -> None:
         row = session.get(ListingRow, listing_id)
         if row is not None:
             row.is_watched = watched
+
+
+def load_recent_health(limit: int = 20) -> list[dict]:
+    """Most recent persisted health snapshots (newest first), for the UI health panel.
+
+    Returns plain dicts (issues/metrics are the raw JSON strings the caller parses),
+    so nothing detaches when the session closes. Empty list if the table is empty or
+    absent (older DBs created before the health_report table existed).
+    """
+    try:
+        with session_scope() as session:
+            rows = session.scalars(
+                select(HealthReportRow).order_by(HealthReportRow.checked_at.desc()).limit(limit)
+            ).all()
+            return [
+                {
+                    "checked_at": r.checked_at,
+                    "status": r.status,
+                    "issues": r.issues,
+                    "metrics": r.metrics,
+                }
+                for r in rows
+            ]
+    except Exception:
+        return []
+
+
+def load_all_price_history() -> list[dict]:
+    """Every price observation across all listings, for the market price index.
+
+    Each dict is ``{observed_at, price}``; the analytics layer buckets them by month.
+    """
+    with session_scope() as session:
+        rows = session.scalars(select(PriceHistoryRow)).all()
+        return [{"observed_at": r.observed_at, "price": r.price} for r in rows]

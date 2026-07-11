@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
+from scout import analytics, comps, finance  # noqa: E402
 from scout.config import Strategy, load_strategy, save_strategy  # noqa: E402
 from scout.ui import format as fmt  # noqa: E402
 from scout.ui import queries  # noqa: E402
@@ -50,6 +51,16 @@ def get_all_listings_debug() -> list[dict]:
 @st.cache_data(ttl=60)
 def get_history(listing_id: int):
     return queries.load_price_history(listing_id)
+
+
+@st.cache_data(ttl=300)
+def get_all_price_history() -> list[dict]:
+    return queries.load_all_price_history()
+
+
+@st.cache_data(ttl=120)
+def get_recent_health() -> list[dict]:
+    return queries.load_recent_health(10)
 
 
 def _last_updated(listings: list[dict]) -> datetime | None:
@@ -289,6 +300,104 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
     )
 
 
+def _net_return_and_financing(d: dict, lid: int) -> None:
+    """Net yield after Greek buying + operating costs, and a mortgage/cash-on-cash model.
+
+    All inputs are UI-editable assumptions (nothing is stored); the score/thesis are
+    unchanged — this is analysis layered on top of the listing's own figures.
+    """
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if not monthly:
+        st.markdown("#### 💶 Net return")
+        st.caption("_Needs a rent figure to model net return — none scraped or estimated._")
+        return
+    annual = monthly * 12
+    price = d["price"]
+    area = d.get("area_m2")
+    private = bool(d.get("is_private_seller"))
+
+    st.markdown("#### 💶 Net return (after Greek buying & operating costs)")
+    with st.expander("⚙️ Cost assumptions — edit to match your case"):
+        c = st.columns(3)
+        vacancy = c[0].number_input("Vacancy %", 0.0, 30.0, 5.0, 0.5, key=f"vac-{lid}") / 100
+        maint = c[1].number_input("Maintenance % of rent", 0.0, 30.0, 8.0, 0.5, key=f"maint-{lid}")
+        enfia = c[2].number_input("ENFIA €/m²/yr", 0.0, 20.0, 4.0, 0.5, key=f"enfia-{lid}")
+        c2 = st.columns(3)
+        mgmt = c2[0].number_input("Management % of rent", 0.0, 20.0, 0.0, 0.5, key=f"mgmt-{lid}")
+        ins = c2[1].number_input("Insurance % of value/yr", 0.0, 2.0, 0.1, 0.05, key=f"ins-{lid}")
+    a = finance.CostAssumptions(
+        vacancy_rate=vacancy,
+        maintenance_pct_of_rent=maint / 100,
+        enfia_eur_per_m2_year=enfia,
+        mgmt_pct_of_rent=mgmt / 100,
+        insurance_pct_of_value_year=ins / 100,
+    )
+    ny = finance.net_yield(price, annual, area, private, a)
+    noi = finance.net_operating_income(annual, price, area, a)
+    acq = finance.acquisition_costs(price, private, a)
+    nc = st.columns(4)
+    nc[0].metric("Net yield", fmt.pct(ny), help="Net operating income ÷ (price + buying costs)")
+    nc[1].metric("Gross yield", fmt.pct(d.get("gross_yield")))
+    nc[2].metric("Net income/yr", fmt.euro(noi), help="Rent after vacancy, mgmt, maintenance, tax")
+    nc[3].metric(
+        "Buying costs",
+        fmt.euro(acq),
+        help="Transfer tax, notary, legal" + ("" if private else ", agent"),
+    )
+
+    st.markdown("#### 🏦 Financing (mortgage & cash-on-cash)")
+    fc = st.columns(3)
+    deposit = fc[0].slider("Deposit %", 10, 100, 30, key=f"dep-{lid}") / 100
+    rate = fc[1].slider("Interest rate %", 0.0, 10.0, 4.0, 0.1, key=f"rate-{lid}") / 100
+    years = fc[2].slider("Term (years)", 5, 40, 25, key=f"term-{lid}")
+    lev = finance.leverage_summary(price, annual, area, private, deposit, rate, years, a)
+    if lev:
+        lc = st.columns(4)
+        lc[0].metric("Monthly payment", fmt.euro(lev["monthly_payment"]))
+        lc[1].metric("Cash invested", fmt.euro(lev["cash_invested"]), help="Deposit + buying costs")
+        lc[2].metric("Cashflow/yr after debt", fmt.euro(lev["annual_cashflow_after_debt"]))
+        lc[3].metric(
+            "Cash-on-cash", fmt.pct(lev["cash_on_cash"]), help="Annual cashflow ÷ cash invested"
+        )
+
+
+def _comparables(d: dict, listings: list[dict]) -> None:
+    """Similar active listings in the same neighborhood, with a €/m² delta vs this one."""
+    rows = comps.find_comparables(d, listings)
+    if not rows:
+        st.caption("No comparable active listings in this neighborhood yet.")
+        return
+    records = [
+        {
+            "Price": c["price"],
+            "€/m²": c["price_per_m2"],
+            "Area": c["area_m2"],
+            "Floor": c["floor"],
+            "vs this €/m²": c.get("ppm2_delta_pct"),
+            "Score": round(c["score"], 0),
+            "Link": c["url"],
+        }
+        for c in rows
+    ]
+    st.dataframe(
+        pd.DataFrame(records),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Price": st.column_config.NumberColumn("Price", format="€%d"),
+            "€/m²": st.column_config.NumberColumn("€/m²", format="€%.0f"),
+            "Area": st.column_config.NumberColumn("Area", format="%.0f m²"),
+            "Floor": st.column_config.NumberColumn("Floor", format="%.0f"),
+            "vs this €/m²": st.column_config.NumberColumn(
+                "vs this €/m²", help="Negative = cheaper per m² than this listing", format="%+.0f%%"
+            ),
+            "Score": st.column_config.NumberColumn("Score", format="%.0f"),
+            "Link": st.column_config.LinkColumn("Link", display_text="open ↗"),
+        },
+    )
+    st.caption("Same neighborhood, within ±25% area and ±30% price, ranked by €/m² closeness.")
+
+
 # ---- pages -----------------------------------------------------------------
 
 
@@ -470,10 +579,17 @@ def page_detail(listings: list[dict]) -> None:
         for b in bullets:
             st.markdown(f"• {b}")
 
+    # --- net return (after Greek costs) + financing ---
+    _net_return_and_financing(d, lid)
+
     # --- score breakdown ---
     strategy = get_strategy()
     st.markdown("#### 📊 Score breakdown")
     _score_breakdown(d, strategy)
+
+    # --- comparable listings ---
+    st.markdown("#### 🔁 Comparable active listings nearby")
+    _comparables(d, listings)
 
     # --- property specs ---
     st.markdown("#### 🏗️ Property specs")
@@ -610,11 +726,92 @@ def page_debug() -> None:
         "⬇️ Download as CSV", df.to_csv(index=False).encode("utf-8"), "holargos_listings.csv"
     )
 
+    _health_panel()
+
+
+def _health_panel() -> None:
+    """Live scraper-health + job-queue status, so the owner can spot a broken scrape
+    without opening a DB console. Every part is guarded — the panel must never crash
+    the page (e.g. on an older DB missing the scrape_job / health_report tables)."""
+    st.divider()
+    st.markdown("### 🩺 Scraper health")
+    try:
+        from scout.health import check_health
+
+        report = check_health()
+        icon = {"ok": "✅", "warn": "⚠️", "error": "🚨"}.get(report.status, "•")
+        st.write(f"{icon} **{report.status.upper()}**")
+        for issue in report.issues:
+            st.write(f"- {issue}")
+        st.json(report.metrics)
+    except Exception as exc:
+        st.caption(f"Health check unavailable: {exc}")
+    try:
+        from scout.queue import job_stats
+
+        st.write("**Scrape-job queue:**", job_stats())
+    except Exception:
+        pass
+    recent = get_recent_health()
+    if recent:
+        st.markdown("**Recent health snapshots**")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"checked_at": r["checked_at"], "status": r["status"], "issues": r["issues"]}
+                    for r in recent
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
+def page_neighborhoods(listings: list[dict]) -> None:
+    st.subheader("Neighborhood analytics")
+    st.caption("Per-area market stats over the eligible (hard-filter-passing) listings.")
+    stats = analytics.neighborhood_stats(_eligible(listings))
+    if not stats:
+        st.info("No neighborhood data yet — run the pipeline to populate listings.")
+        return
+    records = [
+        {
+            "Neighborhood": s["neighborhood"],
+            "Listings": s["count"],
+            "Median price": s["median_price"],
+            "Median €/m²": s["median_ppm2"],
+            "Median yield": s["median_yield_pct"],
+            "Opportunities": s["opportunities"],
+            "Rented": s["rented"],
+        }
+        for s in stats
+    ]
+    st.dataframe(
+        pd.DataFrame(records),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Median price": st.column_config.NumberColumn("Median price", format="€%d"),
+            "Median €/m²": st.column_config.NumberColumn("Median €/m²", format="€%.0f"),
+            "Median yield": st.column_config.NumberColumn("Median yield", format="%.1f%%"),
+        },
+    )
+
+    st.markdown("#### 📈 Market price index (monthly median)")
+    idx = analytics.market_price_index(get_all_price_history())
+    if len(idx) >= 2:
+        idx_df = pd.DataFrame(idx).set_index("month")[["median_price"]]
+        st.line_chart(idx_df)
+        st.caption("Median recorded price across all listings, by month.")
+    else:
+        st.caption("The price index builds up over multiple pipeline runs.")
+
 
 PAGES = {
     "Opportunities": page_opportunities,
     "Today": page_today,
     "Map": page_map,
+    "Neighborhoods": page_neighborhoods,
     "Listing detail": page_detail,
     "Watchlist": page_watchlist,
 }
