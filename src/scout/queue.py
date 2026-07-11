@@ -31,6 +31,9 @@ ACTIVE_STATUSES = ("pending", "running")
 # A job claimed this many times without completing is treated as a poison pill (its
 # work keeps hard-crashing the worker) and failed instead of requeued forever.
 MAX_ATTEMPTS = 5
+# Defensive cap on claim_job's re-query loop (10 candidates each) so it can never spin
+# forever; far more than any realistic pending backlog a single claim needs to scan.
+MAX_CLAIM_BATCHES = 100
 
 
 @dataclass(frozen=True)
@@ -110,30 +113,39 @@ def claim_job(
     now = now or datetime.utcnow()
     lease = now + timedelta(minutes=lease_minutes)
     with session_scope() as session:
-        candidate_ids = session.scalars(
-            select(ScrapeJobRow.id)
-            .where(ScrapeJobRow.status == "pending")
-            .order_by(ScrapeJobRow.created_at)
-            .limit(10)
-        ).all()
-        for jid in candidate_ids:
-            # Status-guarded UPDATE: only the transaction that still sees this row as
-            # 'pending' wins; a racing worker's UPDATE matches 0 rows and moves on.
-            res = session.execute(
-                update(ScrapeJobRow)
-                .where(ScrapeJobRow.id == jid, ScrapeJobRow.status == "pending")
-                .values(
-                    status="running",
-                    worker_id=worker_id,
-                    lease_until=lease,
-                    updated_at=now,
-                    attempts=ScrapeJobRow.attempts + 1,
+        # Re-query past the first batch: under heavy contention every candidate in a
+        # batch can be claimed by other workers before we win one. Returning None then
+        # would wrongly report the queue empty (and a one-shot drain would stop) while
+        # jobs 11..N are still pending. Loop until we claim one or the pending set is
+        # genuinely exhausted; claimed jobs leave 'pending', so this always terminates.
+        # The batch cap is a defensive bound against pathological spin.
+        for _ in range(MAX_CLAIM_BATCHES):
+            candidate_ids = session.scalars(
+                select(ScrapeJobRow.id)
+                .where(ScrapeJobRow.status == "pending")
+                .order_by(ScrapeJobRow.created_at)
+                .limit(10)
+            ).all()
+            if not candidate_ids:
+                return None
+            for jid in candidate_ids:
+                # Status-guarded UPDATE: only the transaction that still sees this row as
+                # 'pending' wins; a racing worker's UPDATE matches 0 rows and moves on.
+                res = session.execute(
+                    update(ScrapeJobRow)
+                    .where(ScrapeJobRow.id == jid, ScrapeJobRow.status == "pending")
+                    .values(
+                        status="running",
+                        worker_id=worker_id,
+                        lease_until=lease,
+                        updated_at=now,
+                        attempts=ScrapeJobRow.attempts + 1,
+                    )
                 )
-            )
-            if res.rowcount == 1:
-                row = session.get(ScrapeJobRow, jid)
-                logger.info("claim: worker %s took area %r (job %d)", worker_id, row.area, jid)
-                return ClaimedJob(id=row.id, area=row.area, attempts=row.attempts)
+                if res.rowcount == 1:
+                    row = session.get(ScrapeJobRow, jid)
+                    logger.info("claim: worker %s took area %r (job %d)", worker_id, row.area, jid)
+                    return ClaimedJob(id=row.id, area=row.area, attempts=row.attempts)
     return None
 
 

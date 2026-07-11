@@ -15,6 +15,7 @@ from .parse_helpers import (
     parse_int,
     parse_private_seller,
     parse_rent,
+    source_id_from_url,
 )
 
 
@@ -67,8 +68,8 @@ class IndomioCollector(Collector):
             href = self.BASE + href
 
         card = tree.css_first(self.CARD_SELECTOR)
-        source_id = (card.attributes.get(self.ATTR_ID) if card else None) or (
-            href.rstrip("/").split("/")[-1] if href else None
+        source_id = (card.attributes.get(self.ATTR_ID) if card else None) or source_id_from_url(
+            href
         )
 
         desc = text(self.SEL_DESC)

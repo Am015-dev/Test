@@ -44,6 +44,19 @@ def test_claim_is_exclusive(queue_db):
     assert queue.job_stats() == {"running": 1}
 
 
+def test_claim_drains_more_than_one_batch(queue_db):
+    """Regression: claim_job must reach jobs beyond its first 10-candidate batch and
+    terminate cleanly — draining 15 jobs claims each exactly once, then reports empty."""
+    areas = [f"Area-{i:02d}" for i in range(15)]
+    queue.enqueue_areas(areas)
+    claimed = []
+    while (job := queue.claim_job("w")) is not None:
+        claimed.append(job.area)
+    assert sorted(claimed) == sorted(areas)  # all 15 claimed, none skipped or double-claimed
+    assert queue.job_stats() == {"running": 15}
+    assert queue.claim_job("w") is None
+
+
 def test_requeue_stale_returns_crashed_jobs(queue_db):
     queue.enqueue_areas(["Cholargos"])
     queue.claim_job("worker-1", lease_minutes=15)

@@ -24,6 +24,7 @@ from .parse_helpers import (
     parse_int,
     parse_private_seller,
     parse_rent,
+    source_id_from_url,
 )
 
 
@@ -82,7 +83,9 @@ class SpitogatosCollector(Collector):
             href = self.BASE + href
 
         card = tree.css_first(self.CARD_SELECTOR)
-        source_id = (card.attributes.get(self.ATTR_ID) if card else None) or _id_from_url(href)
+        source_id = (card.attributes.get(self.ATTR_ID) if card else None) or source_id_from_url(
+            href
+        )
 
         desc = text(self.SEL_DESC)
         rented, listed_rent = parse_rent(desc)
@@ -102,9 +105,3 @@ class SpitogatosCollector(Collector):
             "is_private_seller": private,
             "description": desc,
         }
-
-
-def _id_from_url(url: str | None) -> str | None:
-    if not url:
-        return None
-    return url.rstrip("/").split("/")[-1] or None

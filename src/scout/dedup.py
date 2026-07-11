@@ -45,6 +45,34 @@ def _location_tokens(listing: Listing) -> set[str]:
     return tokens
 
 
+# Generic address words that don't identify a specific building (street/square/city
+# nouns). Excluded from the street-token signal so two different streets don't look
+# "the same" just because both addresses contain "οδός" (street) or the city name.
+_GENERIC_LOCATION_WORDS = {
+    "odos",
+    "οδος",
+    "leoforos",
+    "λεωφορος",
+    "plateia",
+    "πλατεια",
+    "athens",
+    "αθηνα",
+    "attica",
+    "αττικη",
+}
+
+
+def _street_tokens(listing: Listing) -> set[str]:
+    """Street-level tokens: address tokens beyond the neighborhood and generic nouns.
+
+    Empty when the source carries no street detail (e.g. XE, whose address is just the
+    neighborhood) — so this signal only ever *adds* discrimination, never removes the
+    ability to match sources that lack it.
+    """
+    beyond_hood = _norm_text(listing.address) - _norm_text(listing.neighborhood)
+    return {t for t in beyond_hood if t not in _GENERIC_LOCATION_WORDS}
+
+
 def _similar(a: Listing, b: Listing) -> bool:
     # Fuzzy matching is for the SAME flat listed on DIFFERENT portals. Two ads from
     # the same source are distinct listings (exact source_id dedup already collapses
@@ -61,7 +89,17 @@ def _similar(a: Listing, b: Listing) -> bool:
     ta, tb = _location_tokens(a), _location_tokens(b)
     if not ta or not tb:
         return False
-    return bool(ta & tb)
+    if not (ta & tb):
+        return False
+    # Neighborhood overlap alone is weak: a sub-neighborhood holds many flats, and the
+    # size/price tolerances are loose, so distinct flats can collide. When BOTH ads
+    # carry distinct street-level detail that doesn't overlap, they're different
+    # buildings — don't merge. (A rare mismatch on spelling only costs a duplicate,
+    # which this module explicitly prefers over a false merge that drops a listing.)
+    sa, sb = _street_tokens(a), _street_tokens(b)
+    if sa and sb and not (sa & sb):
+        return False
+    return True
 
 
 @dataclass

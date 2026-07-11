@@ -67,6 +67,13 @@ def run(
     # must be scoped to it — otherwise an unscoped run() would retire every *other*
     # area's still-live listings. Default to the strategy's municipality when no area
     # was given, so the boot/refresh/cron run() paths are scoped too, not just workers.
+    #
+    # Only a truly unscoped/default run (no `area` given) owns the one-time backfill of
+    # legacy NULL-tagged rows below. `run_for_area` passes area=area AND sets
+    # municipality=area, so gating the backfill on "effective_area == municipality"
+    # would be true for every worker — letting any area steal-and-retire another area's
+    # NULL-tagged live rows. Gate on `area is None` (captured before defaulting) instead.
+    is_default_run = area is None
     effective_area = area or strategy.search.municipality
 
     if collectors is None:
@@ -96,14 +103,18 @@ def run(
                 # Fall back to the configured baseline so yield is always computable.
                 if not median_rent:
                     median_rent = strategy.search.est_rent_eur_per_m2
-                enriched.append(
-                    enrich_listing(
+                # SAVEPOINT per listing: enrich_listing writes the geocode cache via
+                # session.flush(); a failed flush (e.g. a duplicate-query race) would
+                # otherwise poison the whole session. Isolating it here means one bad
+                # geocode can't crash enrichment for the rest of the batch.
+                with session.begin_nested():
+                    result = enrich_listing(
                         lst,
                         median_rent_per_m2=median_rent,
                         session=session,
                         use_network=use_network,
                     )
-                )
+                enriched.append(result)
             except Exception as exc:
                 logger.warning("enrich failed for %s: %s", lst.dedup_key, exc)
                 enriched.append(lst)
@@ -126,7 +137,7 @@ def run(
         # NULL. They all predate multi-area support, so they belong to the default
         # municipality — tag them on its run so scoped retirement can reach them
         # (otherwise they'd stay 'active' forever). No-op once none remain.
-        if effective_area == strategy.search.municipality:
+        if is_default_run:
             session.execute(
                 update(ListingRow)
                 .where(ListingRow.search_area.is_(None))
@@ -134,22 +145,41 @@ def run(
             )
         for lst in canonical:
             try:
-                lst.search_area = effective_area
-                row = upsert_listing_with_history(session, lst, observed_at=now)
-                seen_keys.add((lst.source, lst.source_id))
-                first_price = _first_price(session, row.id)
-                scored = score(lst, market_stats, strategy, first_price=first_price)
-                row.score = scored.score
-                row.is_opportunity = scored.is_opportunity
-                row.excluded = scored.excluded
-                row.exclusion_reason = scored.exclusion_reason
+                # SAVEPOINT per listing so a single failed flush (a UNIQUE/NOT NULL
+                # violation, a cross-area duplicate-key race, an oversized field) rolls
+                # back ONLY this listing. Without it the failed flush leaves the whole
+                # session in "pending rollback", so every later item AND the final
+                # commit raise too — turning one bad row into a full-run rollback and an
+                # uncaught crash, the opposite of the documented fail-soft behavior.
+                with session.begin_nested():
+                    lst.search_area = effective_area
+                    row = upsert_listing_with_history(session, lst, observed_at=now)
+                    seen_keys.add((lst.source, lst.source_id))
+                    first_price = _first_price(session, row.id)
+                    scored = score(lst, market_stats, strategy, first_price=first_price)
+                    row.score = scored.score
+                    row.is_opportunity = scored.is_opportunity
+                    row.excluded = scored.excluded
+                    row.exclusion_reason = scored.exclusion_reason
                 stored += 1
             except Exception as exc:
                 logger.warning("store/score failed for %s: %s", lst.dedup_key, exc)
 
-        gone = mark_unseen_as_gone(
-            session, seen_keys, observed_at=now, active_sources=active_sources, area=effective_area
-        )
+        # Retirement runs on its own SAVEPOINT and try/except: a failure here (or a
+        # session poisoned despite the guards above) degrades to "retired nothing this
+        # pass" instead of rolling back every listing just stored and crashing the run.
+        try:
+            with session.begin_nested():
+                gone = mark_unseen_as_gone(
+                    session,
+                    seen_keys,
+                    observed_at=now,
+                    active_sources=active_sources,
+                    area=effective_area,
+                )
+        except Exception as exc:
+            logger.warning("retirement pass failed: %s", exc)
+            gone = 0
 
     summary = {
         "raw": len(raws),

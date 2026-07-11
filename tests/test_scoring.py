@@ -33,9 +33,12 @@ def test_mezzanine_is_excluded(strategy):
     assert result.excluded
 
 
-def test_missing_floor_is_excluded(strategy):
+def test_missing_floor_is_not_excluded(strategy):
+    """Unknown floor must not hard-exclude — a portal that never reports floor would
+    otherwise have every listing wrongly dropped as 'ground/low floor'. Mirrors the
+    unknown-metro-distance handling; only a KNOWN low floor excludes."""
     result = score(make_listing(floor=None), _stats(), strategy)
-    assert result.excluded
+    assert not result.excluded
 
 
 def test_too_far_from_metro_is_excluded(strategy):

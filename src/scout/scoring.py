@@ -125,8 +125,11 @@ def score(
 ) -> ScoredListing:
     """Score a single listing. ``first_price`` enables the price-drop signal."""
     # 1. Hard filters.
-    floor = listing.floor if listing.floor is not None else -99
-    if floor < strategy.hard_filters.min_floor:
+    # Only exclude when the floor is KNOWN to be too low. An unknown floor (the portal
+    # didn't report one) must not be treated as a basement and silently dropped — same
+    # reasoning as the unknown-metro-distance case below; otherwise a portal that never
+    # reports floor has every one of its listings wrongly excluded.
+    if listing.floor is not None and listing.floor < strategy.hard_filters.min_floor:
         return _excluded(listing, "ground/low floor")
     metro = listing.metro_distance_m
     # Only exclude when we KNOW it's too far. Unknown distance (geocoding

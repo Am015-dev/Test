@@ -102,6 +102,51 @@ def test_partial_zero_is_warn(health_db):
     assert any("Papagou" in i for i in report.issues)
 
 
+def test_pending_jobs_do_not_trigger_ip_block_error(health_db):
+    """Regression: freshly enqueued (pending) jobs must not fire the 'all IP-blocked'
+    error before any worker has completed — that cries wolf on every enqueue cycle."""
+    now = datetime.utcnow()
+    _add_listing(now)  # data is fresh
+    _add_job("Cholargos", "pending", listings_found=None, updated_at=now)
+    _add_job("Papagou", "pending", listings_found=None, updated_at=now)
+    report = check_health(now=now)
+    assert report.status == "ok"
+    assert not any("IP-blocked" in i for i in report.issues)
+
+
+def test_all_gone_is_not_reported_as_never_recorded(health_db):
+    """Regression: when listings exist but are all 'gone', report 'no active listings'
+    but NOT the misleading 'no listing has ever been recorded'."""
+    now = datetime.utcnow()
+    with db.session_scope() as session:
+        db.upsert_listing_with_history(session, make_listing(source_id="g1"), observed_at=now)
+        session.query(ListingRow).update({ListingRow.status: "gone"})
+    report = check_health(now=now)
+    assert report.status == "error"
+    assert any("no active listings" in i.lower() for i in report.issues)
+    assert not any("never" in i.lower() or "ever been recorded" in i.lower() for i in report.issues)
+
+
+def test_persist_health_report_bounds_large_payload(health_db):
+    """Regression: a wide 'many areas returned zero' event must still persist (fit the
+    String columns) rather than silently failing the insert on Postgres."""
+    now = datetime.utcnow()
+    many_areas = [f"Municipality-Number-{i:03d}" for i in range(300)]
+    report = HealthReport(
+        status="error",
+        issues=[f"Some areas returned 0 listings: {many_areas}."],
+        metrics={"areas_returned_zero": many_areas, "configured_areas": many_areas},
+    )
+    persist_health_report(report, checked_at=now)
+    with db.session_scope() as session:
+        row = session.query(HealthReportRow).one()
+        assert row.status == "error"
+        # Stored JSON is valid and bounded well under the column sizes.
+        assert len(row.issues) <= 2048
+        assert len(row.metrics) <= 4096
+        assert isinstance(json.loads(row.metrics)["areas_returned_zero"], list)
+
+
 def test_persist_health_report(health_db):
     """persist_health_report writes status, issues, and metrics to the health_report table."""
     now = datetime.utcnow()

@@ -45,7 +45,7 @@ def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 
 def price_per_m2(price: int, area_m2: float) -> float | None:
-    if not area_m2 or area_m2 <= 0:
+    if not area_m2 or area_m2 <= 0 or not price or price <= 0:
         return None
     return round(price / area_m2, 2)
 
