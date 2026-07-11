@@ -73,6 +73,31 @@ def test_price_drop_increases_score(strategy):
     assert dropped.score > no_drop.score
 
 
+def test_newness_signal_favours_new_builds(strategy):
+    old = score(make_listing(year_built=1975), _stats(), strategy)
+    new = score(make_listing(year_built=2020), _stats(), strategy)
+    assert new.signals["newness"] > old.signals["newness"]
+    assert new.score > old.score
+
+
+def test_renovation_counts_as_newness(strategy):
+    # A 1970 flat renovated in 2022 should score as effectively new.
+    r = score(make_listing(year_built=1970, renovated_year=2022), _stats(), strategy)
+    assert r.signals["newness"] > 0.5
+
+
+def test_energy_class_signal_greek_and_latin(strategy):
+    good = score(make_listing(energy_class="A"), _stats(), strategy)
+    poor = score(make_listing(energy_class="Ε"), _stats(), strategy)  # Greek Epsilon
+    assert good.signals["energy_class"] > poor.signals["energy_class"]
+    assert good.score > poor.score
+    # Unknown / exempt energy class contributes nothing rather than crashing.
+    assert (
+        score(make_listing(energy_class="Εξαιρείται"), _stats(), strategy).signals["energy_class"]
+        == 0.0
+    )
+
+
 def test_rented_and_private_add_signal(strategy):
     plain = score(
         make_listing(is_currently_rented=False, is_private_seller=False), _stats(), strategy

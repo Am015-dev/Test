@@ -57,6 +57,27 @@ def test_normalize_drops_unusable_raw():
     assert normalize(raw) is None
 
 
+def test_parse_detail_jsonld_extracts_investment_fields():
+    """The detail page's JSON-LD yields the rich fields the search cards lack."""
+    from scout.collectors.xe import parse_detail_jsonld
+
+    html = (FIXTURES / "xe_detail.html").read_text(encoding="utf-8")
+    d = parse_detail_jsonld(html)
+    assert d["year_built"] == 1984
+    assert d["bedrooms"] == 2
+    assert d["energy_class"] == "Ε"  # Greek Epsilon
+    assert d["area_m2"] == 120.0
+    assert d.get("heating")
+    assert len(d.get("description", "")) > 50
+
+
+def test_parse_detail_jsonld_fails_soft_on_garbage():
+    from scout.collectors.xe import parse_detail_jsonld
+
+    assert parse_detail_jsonld("<html>no json-ld here</html>") == {}
+    assert parse_detail_jsonld("<script type='application/ld+json'>{bad</script>") == {}
+
+
 def test_normalize_drops_negative_price():
     """Regression: a garbled negative price must be dropped (truthiness let it through
     before), else it produces a maxed-out false 'below market' signal downstream."""

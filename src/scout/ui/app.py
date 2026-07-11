@@ -26,6 +26,7 @@ import streamlit as st  # noqa: E402
 
 from scout import analytics, comps, finance  # noqa: E402
 from scout.config import Strategy, load_strategy, save_strategy  # noqa: E402
+from scout.scoring import energy_class_score, newness_score  # noqa: E402
 from scout.ui import format as fmt  # noqa: E402
 from scout.ui import queries  # noqa: E402
 
@@ -96,6 +97,8 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
             "€/m²": d["price_per_m2"],
             "Area": d["area_m2"],
             "Floor": d["floor"],
+            "Built": d.get("renovated_year") or d.get("year_built"),
+            "Energy": d.get("energy_class") or "",
             "Yield": (d["gross_yield"] * 100) if d["gross_yield"] is not None else None,
             "Metro": d["metro_distance_m"],
             "Neighborhood": d["neighborhood"] or "—",
@@ -114,6 +117,10 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
         "€/m²": st.column_config.NumberColumn("€/m²", format="€%.0f"),
         "Area": st.column_config.NumberColumn("Area", format="%.0f m²"),
         "Floor": st.column_config.NumberColumn("Floor", format="%.0f"),
+        "Built": st.column_config.NumberColumn(
+            "Built", help="build / renovation year", format="%d"
+        ),
+        "Energy": st.column_config.TextColumn("Energy", help="energy performance class"),
         "Yield": st.column_config.NumberColumn("Yield", format="%.1f%%"),
         "Metro": st.column_config.NumberColumn("Metro", help="walk to Line 3", format="%d m"),
         "Link": st.column_config.LinkColumn("Link", display_text="open ↗"),
@@ -193,6 +200,17 @@ def _investment_bullets(d: dict) -> list[str]:
         else:
             bullets.append(f"**{gy*100:.1f}% gross yield**")
 
+    # Newness & energy — quality signals (new/efficient stock rents better, holds value)
+    yr = d.get("renovated_year") or d.get("year_built")
+    if yr:
+        label = "renovated" if d.get("renovated_year") else "built"
+        tag = " — **new build**" if yr >= 2010 else (" — dated" if yr < 1990 else "")
+        bullets.append(f"{label.capitalize()} **{yr}**{tag}")
+    ec = d.get("energy_class")
+    if ec:
+        good = energy_class_score(ec) >= 0.75
+        bullets.append(f"**Energy class {ec}**" + (" — efficient" if good else ""))
+
     # Price drop — timing signal
     fp = d.get("first_price")
     cp = d.get("price", 0)
@@ -251,6 +269,9 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
 
     rented_sig = 1.0 if d.get("is_currently_rented") else 0.0
     private_sig = 1.0 if d.get("is_private_seller") else 0.0
+    new_sig = newness_score(d.get("year_built"), d.get("renovated_year"), ref)
+    energy_sig = energy_class_score(d.get("energy_class"))
+    built = d.get("renovated_year") or d.get("year_built")
 
     rows = [
         {
@@ -264,6 +285,18 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
             "Value": "See score",
             "Score": "—",
             "Max": round(w.price_vs_area_median / total_w * 100, 1),
+        },
+        {
+            "Signal": "Newness (build/reno yr)",
+            "Value": str(built) if built else "—",
+            "Score": round(new_sig * w.newness / total_w * 100, 1),
+            "Max": round(w.newness / total_w * 100, 1),
+        },
+        {
+            "Signal": "Energy class",
+            "Value": d.get("energy_class") or "—",
+            "Score": round(energy_sig * w.energy_class / total_w * 100, 1),
+            "Max": round(w.energy_class / total_w * 100, 1),
         },
         {
             "Signal": "Price drop",
@@ -441,8 +474,14 @@ def page_opportunities(listings: list[dict]) -> None:
             st.slider("Area (m²)", amin, amax, (amin, amax)) if amin < amax else (amin, amax)
         )
         min_yield = st.slider("Min gross yield (%)", 0.0, 12.0, 0.0, step=0.5) / 100
+        min_year = st.slider("Built/renovated after", 1950, 2025, 1950, step=5)
+        new_only = st.checkbox("New builds only (≥ 2010)", value=False)
+        include_unknown_year = st.checkbox("Include unknown build year", value=True)
         max_metro = st.slider("Max metro distance (m)", 0, 2000, 2000, step=50)
         include_unknown_metro = st.checkbox("Include unknown metro distance", value=True)
+
+    def _built_year(d: dict) -> int | None:
+        return d.get("renovated_year") or d.get("year_built")
 
     def keep(d: dict) -> bool:
         if not (price_range[0] <= d["price"] <= price_range[1]):
@@ -450,6 +489,13 @@ def page_opportunities(listings: list[dict]) -> None:
         if not (area_range[0] <= d["area_m2"] <= area_range[1]):
             return False
         if (d["gross_yield"] or 0) < min_yield:
+            return False
+        yr = _built_year(d)
+        effective_min = max(min_year, 2010) if new_only else min_year
+        if yr is None:
+            if new_only or not include_unknown_year:
+                return False
+        elif yr < effective_min:
             return False
         if d["metro_distance_m"] is None:
             return include_unknown_metro
@@ -596,9 +642,10 @@ def page_detail(listings: list[dict]) -> None:
     spec_cols = st.columns(3)
     spec_cols[0].markdown(
         f"**Area:** {d['area_m2']:.0f} m²  \n"
-        f"**Rooms:** {d['rooms'] or '—'}  \n"
         f"**Bedrooms:** {d['bedrooms'] or '—'}  \n"
-        f"**Floor:** {_floor_label(d['floor'])}"
+        f"**Floor:** {_floor_label(d['floor'])}  \n"
+        f"**Built:** {d.get('year_built') or '—'}"
+        + (f" (renov. {d['renovated_year']})" if d.get("renovated_year") else "")
     )
     spec_cols[1].markdown(
         f"**Neighborhood:** {d['neighborhood'] or '—'}  \n"
@@ -607,10 +654,10 @@ def page_detail(listings: list[dict]) -> None:
         f"**Metro distance:** {_metro_label(d)}"
     )
     spec_cols[2].markdown(
-        f"**Source:** {d['source']}  \n"
+        f"**Energy class:** {d.get('energy_class') or '—'}  \n"
+        f"**Heating:** {d.get('heating') or '—'}  \n"
         f"**Private seller:** {'✅ yes' if d['is_private_seller'] else '✗ no'}  \n"
-        f"**Currently rented:** {'✅ yes' if d['is_currently_rented'] else '✗ no'}  \n"
-        f"**Listed rent:** {fmt.euro(d.get('listed_rent'))}"
+        f"**Currently rented:** {'✅ yes' if d['is_currently_rented'] else '✗ no'}"
     )
 
     # --- price history ---
@@ -665,9 +712,22 @@ def page_strategy() -> None:
         w = strategy.weights
         gy = st.slider("Gross yield", 0.0, 50.0, float(w.gross_yield))
         pm = st.slider("Price vs area median", 0.0, 50.0, float(w.price_vs_area_median))
+        newness = st.slider("Newness (build/reno year)", 0.0, 50.0, float(w.newness))
+        energy = st.slider("Energy class", 0.0, 50.0, float(w.energy_class))
         pd_ = st.slider("Price drop", 0.0, 50.0, float(w.price_drop))
         rented = st.slider("Currently rented", 0.0, 50.0, float(w.is_currently_rented))
         private = st.slider("Private seller", 0.0, 50.0, float(w.is_private_seller))
+        st.markdown("**Newness reference**")
+        by_floor = st.number_input(
+            "Build year = 0 signal at/below",
+            value=strategy.scoring_reference.build_year_floor,
+            step=5,
+        )
+        by_ceiling = st.number_input(
+            "Build year = full signal at/above",
+            value=strategy.scoring_reference.build_year_ceiling,
+            step=5,
+        )
         submitted = st.form_submit_button("Save & re-score")
 
     if submitted:
@@ -675,9 +735,13 @@ def page_strategy() -> None:
         strategy.hard_filters.max_metro_distance_m = int(max_metro)
         strategy.weights.gross_yield = gy
         strategy.weights.price_vs_area_median = pm
+        strategy.weights.newness = newness
+        strategy.weights.energy_class = energy
         strategy.weights.price_drop = pd_
         strategy.weights.is_currently_rented = rented
         strategy.weights.is_private_seller = private
+        strategy.scoring_reference.build_year_floor = int(by_floor)
+        strategy.scoring_reference.build_year_ceiling = int(by_ceiling)
         save_strategy(strategy)
         from scout.pipeline import rescore_all
 
