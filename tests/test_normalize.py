@@ -78,6 +78,19 @@ def test_parse_detail_jsonld_fails_soft_on_garbage():
     assert parse_detail_jsonld("<script type='application/ld+json'>{bad</script>") == {}
 
 
+def test_parse_detail_coordinates_from_bounding_box():
+    """The listing's real (lat, lng) comes from the detail page's geo box centre —
+    what makes accurate per-listing metro distance possible."""
+    from scout.collectors.xe import parse_detail_coordinates
+
+    html = (FIXTURES / "xe_detail.html").read_text(encoding="utf-8")
+    lat, lng = parse_detail_coordinates(html)
+    assert lat is not None and 37.9 < lat < 38.2  # north Athens
+    assert lng is not None and 23.7 < lng < 23.9
+    # Fails soft when the box isn't present.
+    assert parse_detail_coordinates("<html>no coords</html>") == (None, None)
+
+
 def test_normalize_drops_negative_price():
     """Regression: a garbled negative price must be dropped (truthiness let it through
     before), else it produces a maxed-out false 'below market' signal downstream."""

@@ -31,6 +31,7 @@ import re
 import time
 from collections.abc import Iterator
 from datetime import datetime, timedelta
+from html import unescape
 from urllib.parse import urlencode
 
 import requests
@@ -88,6 +89,27 @@ def _feature_value(name: str) -> tuple[str, str] | None:
         return None
     key, value = name.split(":", 1)
     return key.strip(), value.strip()
+
+
+# The detail page embeds the listing's location as a small privacy bounding box under
+# ``property_location.coordinates`` (HTML-escaped JSON). The box CENTRE is the listing's
+# real position — precise enough for an accurate walking distance to the nearest metro.
+_COORDS_RE = re.compile(r"property_location\.coordinates\"\s*:\s*(\{.*?\}\s*\})")
+_LAT_RE = re.compile(r"\"lat\"\s*:\s*(-?\d+\.\d+)")
+_LON_RE = re.compile(r"\"lon\"\s*:\s*(-?\d+\.\d+)")
+
+
+def parse_detail_coordinates(html: str) -> tuple[float | None, float | None]:
+    """Return the listing's (lat, lng) from the detail page's geo bounding box, or
+    (None, None). Averages the box corners to the centre. Fails soft."""
+    match = _COORDS_RE.search(unescape(html))
+    if not match:
+        return None, None
+    lats = [float(x) for x in _LAT_RE.findall(match.group(1))]
+    lons = [float(x) for x in _LON_RE.findall(match.group(1))]
+    if not lats or not lons:
+        return None, None
+    return sum(lats) / len(lats), sum(lons) / len(lons)
 
 
 def parse_detail_jsonld(html: str) -> dict:
@@ -322,6 +344,9 @@ class XeCollector(Collector):
         html = self._fetch_detail(session, raw["url"])
         if not html:
             return
+        lat, lng = parse_detail_coordinates(html)
+        if lat is not None and lng is not None:
+            raw["lat"], raw["lng"] = lat, lng
         try:
             detail = parse_detail_jsonld(html)
         except Exception as exc:
