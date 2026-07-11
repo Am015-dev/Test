@@ -137,10 +137,18 @@ Current collector status:
   autocomplete is unreachable the collector falls back to the (unfiltered)
   `geo_place_name` search so it still returns something. `tests/fixtures/xe_card.html`
   is a real captured card.
-- **Spitogatos, Indomio** — behind a CloudFront/WAF that 403s a plain client. Set
-  `FLARESOLVERR_URL` (start the free `flaresolverr` compose service) and they're
-  scraped through it — FlareSolverr drives a real browser and solves the challenge,
-  returning rendered HTML, so they're added to the default collectors automatically.
+- **Green-Acres** — a second always-on source. Serves static per-city pages
+  (`/property-for-sale/<city>`) to a plain client, so it's scraped browser-free like XE
+  and runs by default. Provides price/area/bedrooms/location + precise coordinates (from
+  the detail page) but not energy class / build year, so its listings score lower under
+  the quality-first weights until those are known. `tests/fixtures/greenacres_card.html`
+  is a real captured card. Inventory for the inland target suburbs is modest (~a dozen
+  apartments) and complements XE rather than replacing it.
+- **Spitogatos, Indomio** — behind PerimeterX / Cloudflare that block a plain client
+  (and even their sitemaps). Set `FLARESOLVERR_URL` (start the free `flaresolverr`
+  compose service) and they're scraped through it — FlareSolverr drives a real browser
+  and solves the challenge, returning rendered HTML, so they're added automatically.
+  Note: PerimeterX (Spitogatos) can resist even FlareSolverr without residential IPs.
   Their within-card selectors are reasonable placeholders; finalize them against the
   first live capture under `data/raw/` (the rest of the pipeline is unaffected).
 

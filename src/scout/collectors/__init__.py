@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..config import Strategy, get_settings
 from .base import Collector
+from .greenacres import GreenAcresCollector
 from .indomio import IndomioCollector
 from .spitogatos import SpitogatosCollector
 from .xe import XeCollector
@@ -20,10 +21,12 @@ ALL_COLLECTORS: list[type[Collector]] = [
 def default_collectors(strategy: Strategy) -> list[Collector]:
     """The collectors the pipeline runs.
 
-    XE always (reachable over plain HTTP). The WAF-blocked portals are added only
-    when a FlareSolverr endpoint is configured to reach them.
+    XE and Green-Acres always (both serve static HTML to a plain client, no browser
+    needed). The PerimeterX/Cloudflare-blocked portals (Spitogatos, Indomio) are added
+    only when a FlareSolverr endpoint is configured to drive a real browser past their
+    challenge.
     """
-    collectors: list[Collector] = [XeCollector(strategy)]
+    collectors: list[Collector] = [XeCollector(strategy), GreenAcresCollector(strategy)]
     if get_settings().flaresolverr_url:
         collectors += [SpitogatosCollector(strategy), IndomioCollector(strategy)]
     return collectors
@@ -34,6 +37,7 @@ __all__ = [
     "SpitogatosCollector",
     "XeCollector",
     "IndomioCollector",
+    "GreenAcresCollector",
     "ALL_COLLECTORS",
     "default_collectors",
 ]
