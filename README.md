@@ -23,8 +23,16 @@ over time, and surfaces the best opportunities in a Streamlit web app.
   (yield, price-vs-median, price drop, currently-rented, private-seller) → 0–100.
 - **Track history** — `price_history` / `status_history` tables. Price-cut detection
   and days-on-market fall out of these; the upsert appends history only on real change.
-- **Surface** — Streamlit app: Today, All opportunities, Map, Listing detail (with
-  price-history chart), Watchlist, and a live Strategy editor.
+- **Analyze** — per-listing **net yield** after Greek buying + operating costs (transfer
+  tax, notary, legal, agent, vacancy, maintenance, ENFIA, insurance), a **mortgage /
+  cash-on-cash** model, **comparable** nearby listings with a €/m² delta, and
+  per-neighborhood market stats. Pure and unit-tested; display-only — the score is
+  unchanged.
+- **Surface** — Streamlit app: Opportunities, Today, Map, **Neighborhoods**, Listing
+  detail (price history + net-return + financing + comparables), Watchlist, a live
+  Strategy editor, and a Debug page with a **scraper-health panel**.
+- **Alert** — optional daily digest (Telegram/email, off by default) that leads with
+  **hot deals**, and shows each pick's net yield plus new listings and genuine price cuts.
 
 ## Architecture
 
@@ -38,12 +46,23 @@ src/scout/
   enrich.py        # geocode, metro distance, €/m², est rent, gross yield
   dedup.py         # cross-source matching
   scoring.py       # pure filters + weighted score + market stats
+  finance.py       # net yield / total cost-of-ownership + mortgage & cash-on-cash
+  comps.py         # comparable-listing search (same neighborhood, €/m² delta)
+  analytics.py     # per-neighborhood market stats + monthly price index
   pipeline.py      # collect -> normalize -> enrich -> dedup -> store -> score
-  alerts.py        # optional NEW + PRICE-drop digest (Telegram/email, off by default)
+  queue.py         # scrape-job work queue (atomic claim, lease, poison-pill cap)
+  health.py        # runtime data-health check (is scraping silently broken?)
+  doctor.py        # deploy/config readiness self-check (no secrets echoed)
+  alerts.py        # optional hot-deals + NEW + PRICE-drop digest (Telegram/email)
   ui/app.py        # Streamlit entrypoint (read-only over the DB)
 scripts/
-  run_daily.py     # cron entrypoint (seeds demo data if portals yield nothing)
-  seed.py          # hand-entered listings to verify upsert-with-history
+  run_daily.py     # cron entrypoint — real listings only (no demo/seed fallback)
+  enqueue.py       # queue one job per configured area (control VM cron)
+  worker.py        # claim + drain areas from the shared queue (per Oracle instance)
+  healthcheck.py   # grade data health, persist it, alert on WARN/ERROR (cron)
+  notify.py        # send the daily digest to configured sinks (cron)
+  doctor.py        # print deployment readiness; exit non-zero on FAIL
+  seed.py          # hand-entered listings to verify upsert-with-history (dev only)
 ```
 
 ## Setup
@@ -54,11 +73,11 @@ pip install -e ".[dev]"
 playwright install chromium          # only needed for live scraping
 cp .env.example .env                 # adjust geocoder UA etc.
 
-python scripts/seed.py               # populate the DB with demo listings
+python scripts/seed.py               # populate the DB with demo listings (dev only)
 streamlit run src/scout/ui/app.py    # launch the UI
 
-# real daily run (scrapes portals; falls back to seeding if none reachable)
-python scripts/run_daily.py
+python scripts/run_daily.py          # real daily run — scrapes portals, stores real listings
+python scripts/doctor.py             # readiness self-check (DB, schema, config, sinks)
 ```
 
 ## Configuration
@@ -66,8 +85,22 @@ python scripts/run_daily.py
 - `strategy.yaml` — investor rules & weights. **Hot-editable**: change neighborhoods,
   price band, hard filters, or weights and re-score without touching code (also
   editable live from the UI Strategy page).
-- `.env` — operational config: geocoder User-Agent, DB path, OSRM base URL, optional
-  alert credentials. See `.env.example`.
+- `.env` — operational config: geocoder User-Agent, DB path / `DATABASE_URL`, OSRM base
+  URL, optional alert credentials, and daily-digest thresholds
+  (`DIGEST_HOT_MIN_SCORE`, `DIGEST_HOT_MIN_NET_YIELD` — a new listing clearing either
+  bar is flagged as a "hot deal"). See `.env.example`.
+
+## Diagnostics
+
+Two complementary checks, both safe to run from cron or by hand — neither prints secrets:
+
+- `python scripts/doctor.py` — **deploy readiness**: DB connectivity + schema,
+  Postgres-vs-SQLite backend, data presence, geocoder/alert config, area coverage.
+  Exits non-zero on any hard failure, so it doubles as a container smoke gate (it also
+  runs on container boot and logs the result).
+- `python scripts/healthcheck.py` — **runtime data health**: alerts if scraping has
+  silently broken (stale data, every area returning zero). Surfaced live on the UI
+  Debug page's health panel.
 
 ## Scheduling
 
