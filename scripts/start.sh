@@ -4,6 +4,10 @@ set -e
 # Ensure the schema exists (works for both SQLite and Postgres via DATABASE_URL).
 python -c "from scout.db import init_db; init_db()"
 
+# Log deployment readiness on boot so config issues (no DATABASE_URL, missing alert
+# sink, placeholder geocoder UA, …) show up in the container logs. Non-fatal.
+python scripts/doctor.py || true
+
 # Populate real listings on first boot in the background (no demo/seed data).
 # Safe to fail — the daily cron retries; the dashboard shows a clean empty state.
 ( python -c "from scout.pipeline import run; print(run())" \
