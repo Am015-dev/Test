@@ -13,11 +13,13 @@ from sqlalchemy import select
 
 from ..db import session_scope
 from ..models import HealthReportRow, ListingRow, PriceHistoryRow
+from ..scoring import investment_archetype
 
 
 def _row_to_dict(row: ListingRow, first_price: int | None) -> dict:
     price_dropped = bool(first_price and row.price < first_price)
     return {
+        "archetype": investment_archetype(row.year_built, row.renovated_year, row.energy_class),
         "id": row.id,
         "source": row.source,
         "source_id": row.source_id,

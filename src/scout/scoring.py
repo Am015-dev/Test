@@ -173,7 +173,8 @@ _ENERGY_SCORE = {
     "F": 0.12,
     "Ζ": 0.12,
     "G": 0.0,
-    "Η": 0.0,
+    "Η": 0.0,  # Greek eta — the worst class in Greece's A+..Η scale
+    "H": 0.0,  # Latin alias for Η, in case a source transliterates it
 }
 
 
@@ -186,6 +187,57 @@ def energy_class_score(energy_class: str | None) -> float:
 def _energy_signal(listing: Listing) -> float:
     """Map the energy class to 0..1. Unknown / exempt / pending -> 0 (no bonus)."""
     return energy_class_score(listing.energy_class)
+
+
+def energy_liability_multiplier(energy_class: str | None, ref) -> float:
+    """A 0.x..1.0 multiplier that DEMOTES energy-inefficient stock in the final score.
+
+    Energy class E/F/G (Greek Ε/Ζ/Η) is not merely "lower quality" — under the EU EPBD
+    the worst-performing buildings face mandatory renovation and tightening rental
+    restrictions this decade, so a cheap energy-H flat carries a real capital-expense and
+    legal liability that a naive score would ignore. This scales the whole score down for
+    poor classes (worst class → ``energy_liability_floor``, best → 1.0), so an efficient
+    flat can't be beaten to the top by a high-yield liability.
+
+    Unknown/exempt energy → 1.0 (no penalty): never punish a listing for missing data.
+    """
+    ec = (energy_class or "").strip().upper()
+    if ec not in _ENERGY_SCORE:
+        return 1.0
+    floor = ref.energy_liability_floor
+    return floor + (1.0 - floor) * _ENERGY_SCORE[ec]
+
+
+def investment_archetype(
+    year_built: int | None,
+    renovated_year: int | None,
+    energy_class: str | None,
+    new_build_year: int = 2015,
+) -> str:
+    """A plain-language asset class so old/inefficient stock is characterised honestly
+    instead of being sold as a turnkey 'opportunity'. Takes primitives so the UI can call
+    it per row without building a Listing.
+
+    - New build        : built in the last ~decade
+    - Renovated        : recently renovated (effectively modern)
+    - Modern           : 2000s stock
+    - Energy liability : E/F/G class — EU renovation mandate / high capex risk
+    - Dated            : older stock without a redeeming energy class
+    - Standard         : everything else / unknown
+    """
+    yr = renovated_year or year_built
+    energy = _ENERGY_SCORE.get((energy_class or "").strip().upper())
+    if renovated_year and renovated_year >= new_build_year - 5:
+        return "Renovated"
+    if yr and yr >= new_build_year:
+        return "New build"
+    if yr and yr >= 2005:
+        return "Modern"
+    if energy is not None and energy <= 0.12:  # E/F/G (Ε/Ζ/Η)
+        return "Energy liability"
+    if yr and yr < 1990:
+        return "Dated"
+    return "Standard"
 
 
 def score(
@@ -235,12 +287,22 @@ def score(
     raw = sum(signals[k] * weights[k] for k in signals)
     final = raw / total_weight * 100.0
 
-    # 3. Opportunity flag.
+    # 2b. Energy-liability demotion: scale the whole score down for inefficient stock so a
+    # cheap, high-yield energy-H flat (an EU-EPBD renovation liability) can't outrank an
+    # efficient, well-built one. See energy_liability_multiplier.
+    ref = strategy.scoring_reference
+    final *= energy_liability_multiplier(listing.energy_class, ref)
+
+    # 3. Opportunity flag. A genuine opportunity must clear the €/m² bar AND not be an
+    # energy liability — flagging a renovation-mandated energy-H flat as an "opportunity"
+    # is exactly the mistake that made the results look amateurish.
     is_opp = False
     ppm2 = listing.price_per_m2 or (listing.price / listing.area_m2 if listing.area_m2 else None)
     if ppm2 and median_ppm2:
         threshold = strategy.opportunity_flag.price_per_m2_below_median_pct * median_ppm2
-        is_opp = ppm2 < threshold
+        energy = energy_class_score(listing.energy_class)
+        energy_known = (listing.energy_class or "").strip().upper() in _ENERGY_SCORE
+        is_opp = ppm2 < threshold and (not energy_known or energy > 0.12)
 
     return ScoredListing(
         listing=listing,

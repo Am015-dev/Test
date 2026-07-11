@@ -1,0 +1,22 @@
+# Holargos Property Scout — visual theme
+# A calm, trustworthy proptech palette: deep slate/navy text, a restrained
+# teal accent, and a clean off-white canvas. Fine typographic and component
+# polish lives in src/scout/ui/theme.py (inject_css); this block sets the
+# base colours Streamlit uses for widgets, chrome and text.
+
+[theme]
+# Accent used by interactive widgets (sliders, checkboxes, links, progress).
+# Replaces Streamlit's default red with a restrained deep teal.
+primaryColor = "#0F766E"
+
+# Clean, slightly cool off-white canvas — reads as premium, not stark white.
+backgroundColor = "#F7F9FC"
+
+# Secondary surfaces (sidebar, inputs, table headers): a soft slate tint.
+secondaryBackgroundColor = "#EEF2F7"
+
+# Primary text — deep slate/navy, high contrast and easy to read.
+textColor = "#0F172A"
+
+# System font stack only (no web fonts — the app runs offline behind a CSP).
+font = "sans serif"

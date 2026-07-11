@@ -133,17 +133,18 @@ class HardFilters(BaseModel):
 
 
 class Weights(BaseModel):
-    # Undervaluation is the headline signal: a hedonic model prices each flat from its
-    # own attributes (size, floor, age, energy, metro, area) and this rewards those
-    # priced *below* that fair value — a genuine mispricing, not merely a cheap inferior
-    # flat. Falls back to raw €/m²-vs-median when the model can't price a listing.
-    undervaluation: float = 30
-    gross_yield: float = 25
-    newness: float = 15  # build/renovation year — new stock rents better, costs less to hold
-    energy_class: float = 8  # A/B rent higher and are future-proof vs EU efficiency rules
-    price_drop: float = 10
-    is_currently_rented: float = 6
-    is_private_seller: float = 6
+    # Quality-first: a buy-to-let investor wants a good ASSET at a fair price, not the
+    # cheapest flat. Newness + energy (asset quality) together outweigh undervaluation, so
+    # an efficient, well-built property near metro ranks above an old energy-H flat that
+    # merely looks "cheap for its (poor) attributes". On top of these weights, the score
+    # is further scaled down for energy-liability stock (see energy_liability_floor).
+    newness: float = 20  # build/renovation year — new stock rents better, costs less to hold
+    gross_yield: float = 22  # realistic rental income (from real rent comps)
+    energy_class: float = 18  # A/B rent higher and are future-proof vs EU efficiency rules
+    undervaluation: float = 16  # priced below hedonic fair value (secondary to quality now)
+    price_drop: float = 8
+    is_currently_rented: float = 8
+    is_private_seller: float = 8
 
     def total(self) -> float:
         return (
@@ -173,6 +174,10 @@ class ScoringReference(BaseModel):
     # fair value scores a full 1.0 on the undervaluation signal (linear from 0). 0.20 =
     # "20% under fair value is a top-tier bargain".
     target_undervaluation: float = 0.20
+    # Energy-liability demotion: the multiplier applied to the WORST energy class (G/Η).
+    # The best class keeps 1.0; classes scale linearly between. 0.55 means a bottom-class
+    # energy-H flat loses ~45% of its score — reflecting the EU-EPBD renovation liability.
+    energy_liability_floor: float = 0.55
 
 
 class Strategy(BaseModel):

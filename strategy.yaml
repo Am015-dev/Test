@@ -21,14 +21,14 @@ hard_filters:
   min_floor: 1               # exclude ground/semi-basement/mezzanine (floor <= 0)
   max_metro_distance_m: 600
 
-weights:                     # contribution to the 0-100 score
-  undervaluation: 30         # priced below hedonic fair value (mispriced, not just cheap)
-  gross_yield: 25
-  newness: 15                # build/renovation year — favour new stock over old
-  energy_class: 8            # A/B efficient vs Ε/Ζ liability
-  price_drop: 10             # dropped since first_seen
-  is_currently_rented: 6     # proven rent (ground-truth comp)
-  is_private_seller: 6       # negotiation room
+weights:                     # contribution to the 0-100 score (quality-first)
+  newness: 20                # build/renovation year — favour new/renovated stock
+  gross_yield: 22            # realistic rental income from real rent comps
+  energy_class: 18           # A/B efficient & future-proof vs Ε/Ζ/Η liability
+  undervaluation: 16         # priced below hedonic fair value (secondary to quality)
+  price_drop: 8              # dropped since first_seen
+  is_currently_rented: 8     # proven rent (ground-truth comp)
+  is_private_seller: 8       # negotiation room
 
 opportunity_flag:
   price_per_m2_below_median_pct: 0.85
@@ -41,3 +41,4 @@ scoring_reference:
   build_year_floor: 1980     # built in/before 1980 -> newness 0
   build_year_ceiling: 2015   # built in/after 2015 -> newness 1
   target_undervaluation: 0.20  # priced 20% below fair value -> undervaluation signal 1
+  energy_liability_floor: 0.55 # worst energy class (G/Η) keeps 55% of score (EU-EPBD risk)

@@ -134,6 +134,45 @@ def test_undervaluation_falls_back_to_price_vs_median(strategy):
     assert cheap.signals["undervaluation"] > dear.signals["undervaluation"]
 
 
+def test_quality_asset_outranks_high_yield_energy_liability(strategy):
+    """The core fix: a new, efficient flat must outrank an old energy-H flat even when the
+    old one has a higher yield and looks 'cheap'. Otherwise the picks look amateurish."""
+    new_efficient = score(
+        make_listing(year_built=2024, energy_class="A", gross_yield=0.035), _stats(), strategy
+    )
+    old_liability = score(
+        make_listing(year_built=1978, energy_class="H", gross_yield=0.075), _stats(), strategy
+    )
+    assert new_efficient.score > old_liability.score
+
+
+def test_energy_liability_demotes_final_score(strategy):
+    """An energy-H flat's final score is scaled down vs the same flat with a good class."""
+    good = score(make_listing(energy_class="B", year_built=2000), _stats(), strategy)
+    liability = score(make_listing(energy_class="H", year_built=2000), _stats(), strategy)
+    assert liability.score < good.score
+
+
+def test_energy_liability_not_flagged_as_opportunity(strategy):
+    """A cheap energy-H flat must NOT be sold as an 'opportunity' — it's a renovation
+    liability, not a bargain."""
+    cheap_liability = score(
+        make_listing(price_per_m2=2500.0, energy_class="H"), _stats(median_ppm2=3500.0), strategy
+    )
+    assert not cheap_liability.is_opportunity
+
+
+def test_archetype_labels():
+    from scout.scoring import investment_archetype
+
+    assert investment_archetype(2024, None, "A") == "New build"
+    assert investment_archetype(1970, 2022, "B") == "Renovated"
+    assert investment_archetype(2008, None, "C") == "Modern"
+    assert investment_archetype(1978, None, "H") == "Energy liability"
+    assert investment_archetype(1985, None, "C") == "Dated"
+    assert investment_archetype(None, None, None) == "Standard"
+
+
 def test_opportunity_flag_set_when_cheap(strategy):
     # ppm2 = 2500 vs median 3500 -> 2500 < 0.85*3500=2975 -> opportunity
     result = score(make_listing(price_per_m2=2500.0), _stats(median_ppm2=3500.0), strategy)

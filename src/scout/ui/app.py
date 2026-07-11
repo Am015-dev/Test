@@ -26,11 +26,17 @@ import streamlit as st  # noqa: E402
 
 from scout import analytics, comps, finance  # noqa: E402
 from scout.config import Strategy, load_strategy, save_strategy  # noqa: E402
-from scout.scoring import energy_class_score, newness_score  # noqa: E402
+from scout.scoring import (
+    energy_class_score,
+    energy_liability_multiplier,
+    newness_score,
+)  # noqa: E402
 from scout.ui import format as fmt  # noqa: E402
 from scout.ui import queries  # noqa: E402
+from scout.ui.theme import inject_css  # noqa: E402
 
 st.set_page_config(page_title="Holargos Property Scout", page_icon="🏠", layout="wide")
+inject_css()
 
 
 @st.cache_data(ttl=60)
@@ -126,6 +132,7 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
     for d in rows:
         rec = {
             "Score": round(d["score"], 0),
+            "Asset": d.get("archetype", ""),
             "Price": d["price"],
             "Fair value": d.get("predicted_price"),
             "Value gap": (
@@ -149,6 +156,9 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
     column_config = {
         "Score": st.column_config.ProgressColumn(
             "Score", help="0–100 fit vs strategy", min_value=0, max_value=100, format="%.0f"
+        ),
+        "Asset": st.column_config.TextColumn(
+            "Asset", help="asset class — New build / Renovated / Modern / Dated / Energy liability"
         ),
         "Price": st.column_config.NumberColumn("Price", format="€%d"),
         "Fair value": st.column_config.NumberColumn(
@@ -265,8 +275,14 @@ def _investment_bullets(d: dict) -> list[str]:
         bullets.append(f"{label.capitalize()} **{yr}**{tag}")
     ec = d.get("energy_class")
     if ec:
-        good = energy_class_score(ec) >= 0.75
-        bullets.append(f"**Energy class {ec}**" + (" — efficient" if good else ""))
+        score_ec = energy_class_score(ec)
+        if score_ec >= 0.75:
+            note = " — efficient"
+        elif energy_liability_multiplier(ec, get_strategy().scoring_reference) < 0.999:
+            note = " — ⚠️ EU-EPBD renovation liability (score reduced)"
+        else:
+            note = ""
+        bullets.append(f"**Energy class {ec}**{note}")
 
     # Price drop — timing signal
     fp = d.get("first_price")
@@ -397,6 +413,15 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
             "Max": st.column_config.NumberColumn("Max pts", format="%.1f"),
         },
     )
+    # The final score is scaled down for energy-inefficient stock (EU-EPBD liability), so
+    # the weighted rows above don't tell the whole story — surface that adjustment.
+    mult = energy_liability_multiplier(d.get("energy_class"), ref)
+    if mult < 0.999:
+        st.warning(
+            f"⚠️ **Energy-liability adjustment: ×{mult:.2f}** — class "
+            f"{d.get('energy_class') or '?'} faces EU-EPBD renovation mandates, so the "
+            f"final score is reduced ~{(1 - mult) * 100:.0f}% below the weighted total above."
+        )
     st.caption(
         "Undervaluation compares the asking price to a hedonic fair value predicted from "
         "this flat's own size, floor, age, energy class, metro distance and area — so it "
