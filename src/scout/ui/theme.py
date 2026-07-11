@@ -55,12 +55,25 @@ _CSS = f"""
 /* ------------------------------------------------------------------ *
  * Typography — one clear type scale, comfortable rhythm.
  * ------------------------------------------------------------------ */
-html, body, [class*="css"], [class*="st-"],
-[data-testid="stAppViewContainer"], [data-testid="stSidebar"] {{
+/* Apply the UI font to the app containers and let it inherit to text. Do NOT use a
+ * broad [class*="st-"] selector — it also matches Streamlit's Material Symbols icon
+ * <span>s and overrides their icon font, so ligatures like "keyboard_arrow_right" and
+ * the sidebar-collapse chevron render as raw TEXT instead of glyphs. */
+html, body,
+[data-testid="stAppViewContainer"], [data-testid="stSidebar"],
+[data-testid="stMarkdownContainer"], [data-testid="stHeading"],
+button, input, select, textarea, p, label {{
     font-family: {_FONT_STACK};
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+}}
+/* Belt-and-suspenders: never let the UI font touch Streamlit's Material Symbols icon
+ * elements (expander chevrons, sidebar collapse), or their ligatures render as raw
+ * text like "keyboard_arrow_right". */
+[data-testid="stIconMaterial"], .material-symbols-rounded,
+span[class*="material-symbols"] {{
+    font-family: "Material Symbols Rounded", "Material Symbols Outlined" !important;
 }}
 [data-testid="stAppViewContainer"] {{ color: var(--hg-ink-soft); }}
 

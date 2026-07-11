@@ -185,43 +185,6 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
     st.dataframe(df, use_container_width=True, hide_index=True, column_config=column_config)
 
 
-def _top_picks(rows: list[dict]) -> None:
-    """Three highlight cards for the best-scoring opportunities."""
-    if not rows:
-        return
-    st.markdown("#### ⭐ Top picks")
-    cols = st.columns(min(3, len(rows)))
-    for col, d in zip(cols, rows[:3], strict=False):
-        with col.container(border=True):
-            # Header: price + neighborhood
-            st.markdown(f"### {fmt.euro(d['price'])}")
-            dom = fmt.days_on_market(d.get("first_seen"), d.get("last_seen"))
-            dom_str = (
-                ("listed today" if dom == 0 else f"{dom}d on market") if dom is not None else ""
-            )
-            st.caption(
-                f"{d['neighborhood'] or '—'} · {d['area_m2']:.0f} m² · "
-                f"{fmt.euro_per_m2(d['price_per_m2'])} · floor {_floor_label(d['floor'])}"
-                + (f" · {dom_str}" if dom_str else "")
-            )
-
-            # Score bar
-            st.progress(min(max(int(d["score"]), 0), 100) / 100, text=f"Score {d['score']:.0f}/100")
-
-            # Badges
-            flags = " ".join(fmt.badges(d))
-            if flags:
-                st.write(flags)
-
-            # Investment case — the WHY
-            bullets = _investment_bullets(d)
-            if bullets:
-                for b in bullets[:3]:  # top 3 to keep card compact
-                    st.markdown(f"• {b}")
-
-            st.link_button("View listing ↗", d["url"], use_container_width=True)
-
-
 def _kpi_header(listings: list[dict]) -> None:
     eligible = _eligible(listings)
     new = [d for d in eligible if d["is_new"]]
@@ -674,7 +637,6 @@ def page_today(listings: list[dict]) -> None:
     if not today:
         st.info("Nothing new in the last 24 h. See **Opportunities** for the full list.")
         return
-    _top_picks(today)
     components.listing_grid(today)
 
 
