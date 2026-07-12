@@ -90,6 +90,7 @@ def init_db() -> None:
             "predicted_price": "INTEGER",
             "value_gap_pct": "DOUBLE PRECISION",
             "image_url": "VARCHAR(1024)",
+            "negotiation_score": "DOUBLE PRECISION",
         },
     )
     _ensure_index(engine, "ix_listing_search_area", "listing", "search_area")

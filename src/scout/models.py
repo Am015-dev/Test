@@ -148,6 +148,9 @@ class ListingRow(Base):
 
     # Latest computed score (denormalized for fast UI reads).
     score: Mapped[float] = mapped_column(Float, default=0.0)
+    # Negotiation / motivated-seller score (0-100) from price+status history — the
+    # sellable "which owners will deal" signal. Denormalized like `score`.
+    negotiation_score: Mapped[float] = mapped_column(Float, default=0.0)
     is_opportunity: Mapped[bool] = mapped_column(Boolean, default=False)
     excluded: Mapped[bool] = mapped_column(Boolean, default=False)
     exclusion_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)

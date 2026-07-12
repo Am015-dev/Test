@@ -13,6 +13,7 @@ from datetime import datetime
 
 from sqlalchemy import select, update
 
+from . import negotiation
 from .collectors import default_collectors
 from .collectors.base import Collector
 from .config import Strategy, load_strategy
@@ -212,6 +213,25 @@ def run(
                     row.is_opportunity = scored.is_opportunity
                     row.excluded = scored.excluded
                     row.exclusion_reason = scored.exclusion_reason
+                    row.predicted_price = lst.predicted_price
+                    row.value_gap_pct = lst.value_gap_pct
+                    hist = [
+                        (p.observed_at, p.price)
+                        for p in session.scalars(
+                            select(PriceHistoryRow)
+                            .where(PriceHistoryRow.listing_id == row.id)
+                            .order_by(PriceHistoryRow.observed_at)
+                        ).all()
+                    ]
+                    row.negotiation_score = negotiation.analyze(
+                        price_history=hist,
+                        first_seen=row.first_seen,
+                        now=now,
+                        current_price=row.price,
+                        ppm2=lst.price_per_m2,
+                        area_median_ppm2=market_stats.price_per_m2_median_for(lst.neighborhood),
+                        is_private_seller=bool(lst.is_private_seller),
+                    ).score
                 stored += 1
             except Exception as exc:
                 logger.warning("store/score failed for %s: %s", lst.dedup_key, exc)
@@ -284,8 +304,11 @@ def rescore_all(strategy: Strategy | None = None) -> int:
         # live market with per-submarket accuracy.
         fit_and_apply_by_area(listings)
         market_stats = compute_market_stats(listings)
+        histories = _all_price_histories(session, [r.id for r in rows])
+        now = datetime.utcnow()
         for row, lst in zip(rows, listings, strict=True):
-            first_price = _first_price(session, row.id)
+            hist = histories.get(row.id, [])
+            first_price = hist[0][1] if hist else None
             scored = score(lst, market_stats, strategy, first_price=first_price)
             row.score = scored.score
             row.is_opportunity = scored.is_opportunity
@@ -293,7 +316,33 @@ def rescore_all(strategy: Strategy | None = None) -> int:
             row.exclusion_reason = scored.exclusion_reason
             row.predicted_price = lst.predicted_price
             row.value_gap_pct = lst.value_gap_pct
+            # Negotiation / motivated-seller intelligence (the sellable signal).
+            neg = negotiation.analyze(
+                price_history=hist,
+                first_seen=row.first_seen,
+                now=now,
+                current_price=row.price,
+                ppm2=lst.price_per_m2,
+                area_median_ppm2=market_stats.price_per_m2_median_for(lst.neighborhood),
+                is_private_seller=bool(row.is_private_seller),
+            )
+            row.negotiation_score = neg.score
         return len(rows)
+
+
+def _all_price_histories(session, ids: list[int]) -> dict[int, list[tuple]]:
+    """Bulk-load {listing_id: [(observed_at, price), ...]} ascending, for negotiation."""
+    out: dict[int, list[tuple]] = {}
+    if not ids:
+        return out
+    rows = session.scalars(
+        select(PriceHistoryRow)
+        .where(PriceHistoryRow.listing_id.in_(ids))
+        .order_by(PriceHistoryRow.listing_id, PriceHistoryRow.observed_at)
+    ).all()
+    for ph in rows:
+        out.setdefault(ph.listing_id, []).append((ph.observed_at, ph.price))
+    return out
 
 
 def _row_to_listing(row: ListingRow) -> Listing:

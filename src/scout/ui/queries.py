@@ -53,6 +53,7 @@ def _row_to_dict(row: ListingRow, first_price: int | None) -> dict:
         "value_gap_pct": row.value_gap_pct,
         "image_url": row.image_url,
         "score": row.score,
+        "negotiation_score": row.negotiation_score,
         "is_opportunity": row.is_opportunity,
         "excluded": row.excluded,
         "exclusion_reason": row.exclusion_reason,

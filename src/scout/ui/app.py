@@ -992,8 +992,83 @@ def page_neighborhoods(listings: list[dict]) -> None:
         st.caption("The price index builds up over multiple pipeline runs.")
 
 
+def page_deals(listings: list[dict]) -> None:
+    """Motivated-seller intelligence — the sellable core: owners most likely to negotiate,
+    ranked by the negotiation signal, with an exportable agent lead list."""
+    import csv
+    import io
+
+    st.subheader("💰 Deals — motivated sellers")
+    st.caption(
+        "Owners most likely to negotiate, ranked by days-on-market, price cuts, "
+        "over-asked-and-sitting, and relistings — the signals free portals hide. This "
+        "sharpens every day the tracker runs (the price/status history compounds)."
+    )
+    eligible = _eligible(listings)
+    ranked = sorted(eligible, key=lambda d: d.get("negotiation_score") or 0, reverse=True)
+    motivated = [d for d in ranked if (d.get("negotiation_score") or 0) >= 45]
+
+    c = st.columns(3)
+    c[0].metric("Motivated-seller leads", len(motivated))
+    c[1].metric("Tracked & eligible", len(eligible))
+    tracked_days = None
+    seens = [d["first_seen"] for d in eligible if d.get("first_seen")]
+    if seens:
+        tracked_days = (datetime.utcnow() - min(seens)).days
+    c[2].metric("Market tracked for", f"{tracked_days} d" if tracked_days is not None else "—")
+
+    # Agent lead export (the Pro product — a per-territory motivated-seller list).
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(
+        [
+            "negotiation_score",
+            "price_eur",
+            "area_m2",
+            "neighborhood",
+            "days_on_market",
+            "price_cut_pct",
+            "private_seller",
+            "url",
+        ]
+    )
+    for d in ranked:
+        dom = fmt.days_on_market(d.get("first_seen"), d.get("last_seen"))
+        fp, cp = d.get("first_price"), d.get("price", 0)
+        cut = (fp - cp) / fp if (fp and cp < fp) else 0.0
+        w.writerow(
+            [
+                round(d.get("negotiation_score") or 0, 1),
+                d["price"],
+                f"{d['area_m2']:.0f}",
+                d.get("neighborhood") or "",
+                dom if dom is not None else "",
+                f"{cut * 100:.0f}%",
+                "yes" if d.get("is_private_seller") else "no",
+                d["url"],
+            ]
+        )
+    st.download_button(
+        "⬇  Export agent lead list (CSV) — **Pro**",
+        buf.getvalue(),
+        "motivated_sellers.csv",
+        "text/csv",
+        help="The per-territory motivated-seller list agents subscribe for.",
+    )
+
+    if not motivated:
+        st.info(
+            "No strong motivated-seller signals yet — this is expected on a fresh market. "
+            "The signal is built from **change over time** (price cuts, days-on-market, "
+            "relistings); it fills in as the daily tracker accumulates history. Showing the "
+            "current ranking below."
+        )
+    components.listing_grid(ranked[:60])
+
+
 PAGES = {
     "Opportunities": page_opportunities,
+    "Deals": page_deals,
     "Today": page_today,
     "Map": page_map,
     "Neighborhoods": page_neighborhoods,
