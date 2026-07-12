@@ -113,6 +113,9 @@ def run(
     for raw in raws:
         lst = normalize(raw, now=now)
         if lst is not None:
+            # Tag the area NOW (not only at store time) so enrichment's municipality-
+            # centroid location fallback can use it for card-only listings.
+            lst.search_area = effective_area
             listings.append(lst)
     # Portals that produced *usable* listings this run. Only these are eligible for
     # retirement below, so a portal that returned nothing — or only junk that failed

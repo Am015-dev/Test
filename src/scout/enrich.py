@@ -89,6 +89,66 @@ _NEIGHBORHOOD_CENTROIDS: tuple[tuple[str, tuple[float, float]], ...] = (
 )
 
 
+# Approximate municipality centroids (WGS84) for every scraped area, keyed by the exact
+# ``search_area`` string. Used as a free, offline location fallback so a CARD-ONLY listing
+# (collected without a detail-page fetch) still gets a map point and a metro-distance
+# estimate — the difference between "thousands of listings, all locatable" and "thousands
+# with no location". Coarse by design (a municipality centre, ~1-2 km), refined to the real
+# point whenever the detail page is later fetched.
+MUNICIPALITY_CENTROIDS: dict[str, tuple[float, float]] = {
+    # Κέντρο Αθήνας
+    "Koukaki": (37.9655, 23.7255),
+    "Pagkrati": (37.9685, 23.7530),
+    "Ampelokipoi": (37.9872, 23.7577),
+    "Exarcheia": (37.9862, 23.7330),
+    "Kolonaki": (37.9795, 23.7440),
+    "Neos Kosmos": (37.9577, 23.7284),
+    "Metaxourgeio": (37.9865, 23.7205),
+    "Gkyzi": (37.9930, 23.7420),
+    "Kypseli": (37.9930, 23.7360),
+    "Zografou": (37.9790, 23.7700),
+    "Vyronas": (37.9610, 23.7560),
+    "Kaisariani": (37.9660, 23.7660),
+    "Galatsi": (38.0180, 23.7480),
+    # Βόρεια Προάστια
+    "Cholargos": (38.0003, 23.7950),
+    "Papagou": (37.9950, 23.7960),
+    "Agia Paraskevi": (38.0171, 23.8125),
+    "Chalandri": (38.0217, 23.8208),
+    "Vrilissia": (38.0330, 23.8320),
+    "Marousi": (38.0500, 23.8070),
+    # Νότια Προάστια
+    "Nea Smyrni": (37.9450, 23.7140),
+    "Agios Dimitrios": (37.9404, 23.7407),
+    "Dafni": (37.9496, 23.7372),
+    "Ilioupoli": (37.9297, 23.7445),
+    "Alimos": (37.9181, 23.7442),
+    "Argyroupoli": (37.9030, 23.7455),
+    "Elliniko": (37.8926, 23.7471),
+    "Kallithea": (37.9560, 23.7010),
+    "Moschato": (37.9540, 23.6810),
+    "Glyfada": (37.8650, 23.7540),
+    # Δυτικά Προάστια
+    "Aigaleo": (37.9914, 23.6818),
+    "Peristeri": (38.0129, 23.6958),
+    "Haidari": (38.0180, 23.6520),
+    # Πειραιάς
+    "Piraeus": (37.9430, 23.6470),
+    "Nikaia": (37.9658, 23.6473),
+    "Korydallos": (37.9771, 23.6504),
+    "Agios Ioannis Rentis": (37.9640, 23.6690),
+    "Tavros": (37.9640, 23.6960),
+}
+
+
+def municipality_centroid(search_area: str | None) -> tuple[float | None, float | None]:
+    """Approximate (lat, lng) for a scraped municipality, or (None, None) if unknown."""
+    if not search_area:
+        return None, None
+    coords = MUNICIPALITY_CENTROIDS.get(search_area)
+    return coords if coords else (None, None)
+
+
 def neighborhood_centroid(neighborhood: str | None) -> tuple[float | None, float | None]:
     """Best-effort (lat, lng) for a Cholargos sub-neighborhood label, else (None, None).
 
@@ -275,10 +335,13 @@ def enrich_listing(
         listing.lat, listing.lng = geocode(listing.address, session=session, settings=settings)
 
     # Free, offline fallback when per-listing geocoding didn't resolve (e.g. Nominatim
-    # 403s cloud IPs): place the listing at its neighborhood centroid so the map and
-    # metro distance still work instead of showing "unknown" for every listing.
+    # 403s cloud IPs, or a card-only listing with no detail-page coordinates): place the
+    # listing at its neighborhood centroid, then at its municipality centroid, so the map
+    # and metro distance still work instead of showing "unknown" for every listing.
     if listing.lat is None or listing.lng is None:
         listing.lat, listing.lng = neighborhood_centroid(listing.neighborhood)
+    if listing.lat is None or listing.lng is None:
+        listing.lat, listing.lng = municipality_centroid(listing.search_area)
 
     metro = nearest_metro(listing.lat, listing.lng, settings=settings, use_osrm=use_network)
     listing.nearest_metro = metro.nearest_metro
