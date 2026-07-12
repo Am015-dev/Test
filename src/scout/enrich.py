@@ -323,25 +323,36 @@ def enrich_listing(
     session=None,
     settings: Settings | None = None,
     use_network: bool = True,
+    rent_is_comp: bool = False,
 ) -> Listing:
     """Populate computed fields on a listing in place and return it.
 
     Pure computations (EUR/m2, rent, yield) always run. Network steps (geocode,
     OSRM) run only when ``use_network`` and degrade gracefully.
+
+    ``rent_is_comp`` tells us whether ``median_rent_per_m2`` is a REAL local rent comp
+    (a scraped/neighbourhood median) or the flat fallback baseline. It's recorded on
+    ``rent_estimated`` so scoring won't treat a baseline-derived yield as a real signal.
     """
     settings = settings or get_settings()
 
-    if (listing.lat is None or listing.lng is None) and listing.address and use_network:
+    # Track how precisely we located the listing. A real point (its own coordinates, or a
+    # geocoded street address) is "exact"; a centroid fallback is "approx" — the same point
+    # for a whole area, which must not masquerade as a precise per-listing metro distance.
+    had_own_point = listing.lat is not None and listing.lng is not None
+    if not had_own_point and listing.address and use_network:
         listing.lat, listing.lng = geocode(listing.address, session=session, settings=settings)
+    geocoded = not had_own_point and listing.lat is not None and listing.lng is not None
 
     # Free, offline fallback when per-listing geocoding didn't resolve (e.g. Nominatim
     # 403s cloud IPs, or a card-only listing with no detail-page coordinates): place the
     # listing at its neighborhood centroid, then at its municipality centroid, so the map
-    # and metro distance still work instead of showing "unknown" for every listing.
+    # still shows an area — but flagged "approx" so metro distance isn't scored as precise.
     if listing.lat is None or listing.lng is None:
         listing.lat, listing.lng = neighborhood_centroid(listing.neighborhood)
     if listing.lat is None or listing.lng is None:
         listing.lat, listing.lng = municipality_centroid(listing.search_area)
+    listing.location_precision = "exact" if (had_own_point or geocoded) else "approx"
 
     metro = nearest_metro(listing.lat, listing.lng, settings=settings, use_osrm=use_network)
     listing.nearest_metro = metro.nearest_metro
@@ -349,6 +360,9 @@ def enrich_listing(
 
     listing.price_per_m2 = price_per_m2(listing.price, listing.area_m2)
     listing.est_monthly_rent = estimate_monthly_rent(listing, median_rent_per_m2)
+    # Rent is a real datapoint only if the listing stated its own rent, or the median we
+    # applied was a genuine local comp; otherwise it's the flat baseline (an estimate).
+    listing.rent_estimated = not (listing.listed_rent or rent_is_comp)
     listing.gross_yield = gross_yield(listing.est_monthly_rent, listing.price)
     # Net yield after Greek acquisition + holding costs and vacancy (finance.py) — the
     # honest return an investor keeps. Fails soft to None (blank field) on missing rent.

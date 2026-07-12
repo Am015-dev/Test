@@ -68,8 +68,15 @@ class Listing(BaseModel):
     # enriched (computed, not scraped)
     metro_distance_m: int | None = None
     nearest_metro: str | None = None
+    # How the (lat, lng) was obtained: "exact" (detail-page/geocoded point) or "approx"
+    # (a municipality/neighbourhood centroid — same point for a whole area). The metro
+    # signal and the map must not present an approx point as a precise per-listing figure.
+    location_precision: str | None = None
     price_per_m2: float | None = None
     est_monthly_rent: int | None = None
+    # True when est_monthly_rent is the flat fallback baseline (no real/neighbourhood rent
+    # comp) — so yield is an estimate and must not be scored as if it were a real signal.
+    rent_estimated: bool = True
     gross_yield: float | None = None
     # Net yield after Greek acquisition + holding costs and vacancy (finance.py). The
     # honest headline return an investor actually keeps, versus the naive gross figure.
@@ -149,8 +156,10 @@ class ListingRow(Base):
 
     metro_distance_m: Mapped[int | None] = mapped_column(Integer, nullable=True)
     nearest_metro: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    location_precision: Mapped[str | None] = mapped_column(String(16), nullable=True)
     price_per_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
     est_monthly_rent: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rent_estimated: Mapped[bool] = mapped_column(Boolean, default=True)
     gross_yield: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Net yield after Greek costs + vacancy (see Listing.net_yield). Denormalized for
     # fast UI reads and used by scoring's yield signal.

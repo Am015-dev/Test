@@ -87,30 +87,39 @@ def _card_html(d: dict) -> str:
     if en_pill:
         specs.append(en_pill)
 
-    # Signal row: value gap, net yield, days on market, metro
+    # Signal row: value gap (only when the model actually priced it), net yield, DOM, metro.
     signals = []
     gap = d.get("value_gap_pct")
     if gap is not None:
         gcls = "pos" if gap > 0.02 else ("neg" if gap < -0.02 else "neutral")
         signals.append(
-            f'<div class="ph-sig ph-sig-{gcls}"><b>{gap * 100:+.0f}%</b><span>vs fair value</span></div>'
+            f'<div class="ph-sig ph-sig-{gcls}"><b>{gap * 100:+.0f}%</b><span>vs model value</span></div>'
         )
-    # Prefer NET yield (the honest after-cost return); fall back to gross when unknown.
+    # Prefer NET yield (the honest after-cost return); fall back to gross. Rent is imputed
+    # for most card-only listings, so mark those "est." rather than implying a real comp.
+    est = " (est.)" if d.get("rent_estimated") else ""
     ny = d.get("net_yield")
     if ny is not None:
-        signals.append(f'<div class="ph-sig"><b>{ny * 100:.1f}%</b><span>net yield</span></div>')
+        signals.append(
+            f'<div class="ph-sig"><b>{ny * 100:.1f}%</b><span>net yield{est}</span></div>'
+        )
     else:
         gy = d.get("gross_yield")
         if gy:
             signals.append(
-                f'<div class="ph-sig"><b>{gy * 100:.1f}%</b><span>gross yield</span></div>'
+                f'<div class="ph-sig"><b>{gy * 100:.1f}%</b><span>gross yield{est}</span></div>'
             )
     dom = d.get("days_on_market")
     if dom is not None:
         signals.append(f'<div class="ph-sig"><b>{dom}d</b><span>on market</span></div>')
     metro = d.get("metro_distance_m")
     if metro is not None:
-        signals.append(f'<div class="ph-sig"><b>{metro} m</b><span>to metro</span></div>')
+        # A centroid-only location gives an area-level distance, not a per-listing one —
+        # label it "~" and "area" so a buyer never treats it as an exact walk time.
+        approx = d.get("location_precision") != "exact"
+        pfx = "~" if approx else ""
+        lbl = "to metro (area)" if approx else "to metro"
+        signals.append(f'<div class="ph-sig"><b>{pfx}{metro} m</b><span>{lbl}</span></div>')
 
     badges = "".join(
         f'<span class="ph-badge">{_esc(b)}</span>'
@@ -126,6 +135,16 @@ def _card_html(d: dict) -> str:
     # Deal thesis: the actionable recommended-offer line — the decision worth paying for.
     thesis = d.get("deal_thesis")
     thesis_html = f'<div class="ph-thesis">💡 {_esc(thesis)}</div>' if thesis else ""
+
+    # Honest data-completeness note: say plainly what we DON'T know for this listing rather
+    # than dressing gaps up as confident numbers (the single biggest trust fix from review).
+    missing = d.get("data_missing") or []
+    completeness_html = (
+        f'<div class="ph-incomplete">⚠ Limited data — missing: {_esc(", ".join(missing))}. '
+        f"Verify on the listing.</div>"
+        if missing
+        else ""
+    )
 
     # Photo header: a coloured gradient placeholder always shows (so the card never
     # looks empty), with the real listing photo layered on top when it loads.
@@ -157,6 +176,7 @@ def _card_html(d: dict) -> str:
     <div class="ph-specs">{"".join(specs)}</div>
     <div class="ph-signals">{"".join(signals)}</div>
     {thesis_html}
+    {completeness_html}
     <div class="ph-card-foot">
       <div class="ph-badges">{badges}</div>
       <a class="ph-cta" href="{url}" target="_blank" rel="noopener">View listing ↗</a>

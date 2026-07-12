@@ -27,12 +27,32 @@ def _market_age_days(row: ListingRow) -> int | None:
     return max((datetime.utcnow() - min(anchors)).days, 0)
 
 
-def _row_to_dict(row: ListingRow, first_price: int | None) -> dict:
+def _data_completeness(row: ListingRow) -> list[str]:
+    """Which trust-critical fields are still MISSING for this listing (empty = complete).
+
+    Card-only listings from the breadth sweep lack most of these; surfacing exactly what's
+    unknown is the honest alternative to printing confident-looking numbers over gaps."""
+    # Per-listing SCRAPE gaps only. Rent is a systemic estimate (flagged inline as "est."
+    # on the yield chip, since real rent comps aren't yet available market-wide), so it is
+    # deliberately NOT a per-listing completeness item — otherwise the badge would fire on
+    # every listing and mean nothing.
+    missing: list[str] = []
+    if not (row.energy_class or "").strip():
+        missing.append("energy")
+    if not (row.year_built or row.renovated_year):
+        missing.append("year")
+    if row.location_precision != "exact":
+        missing.append("exact location")
+    return missing
+
+
+def _row_to_dict(row: ListingRow, first_price: int | None, num_cuts: int = 0) -> dict:
     price_dropped = bool(first_price and row.price < first_price)
     days_on_market = _market_age_days(row)
     # A confident fair value is exactly the case where value_gap_pct survived the
-    # valuation confidence gate (it is set to None in low-confidence submarkets).
+    # valuation confidence + real-attributes gate (None otherwise).
     value_confident = row.value_gap_pct is not None
+    missing = _data_completeness(row)
     # One-line recommended offer + thesis — the actionable decision surfaced in the UI.
     deal = _advise_deal(
         asking=row.price,
@@ -40,6 +60,7 @@ def _row_to_dict(row: ListingRow, first_price: int | None) -> dict:
         value_confident=value_confident,
         negotiation_score=row.negotiation_score or 0.0,
         days_on_market=days_on_market,
+        num_cuts=num_cuts,
         net_yield=row.net_yield,
     )
     return {
@@ -75,6 +96,10 @@ def _row_to_dict(row: ListingRow, first_price: int | None) -> dict:
         "est_monthly_rent": row.est_monthly_rent,
         "gross_yield": row.gross_yield,
         "net_yield": row.net_yield,
+        "rent_estimated": bool(row.rent_estimated),
+        "location_precision": row.location_precision,
+        "data_missing": missing,
+        "data_complete": not missing,
         "predicted_price": row.predicted_price,
         "value_gap_pct": row.value_gap_pct,
         "value_confident": value_confident,
@@ -111,6 +136,25 @@ def _first_prices(session, ids: list[int]) -> dict[int, int]:
     return out
 
 
+def _cut_counts(session, ids: list[int]) -> dict[int, int]:
+    """Number of downward price steps in each listing's history (for the deal thesis)."""
+    out: dict[int, int] = {}
+    if not ids:
+        return out
+    rows = session.scalars(
+        select(PriceHistoryRow)
+        .where(PriceHistoryRow.listing_id.in_(ids))
+        .order_by(PriceHistoryRow.listing_id, PriceHistoryRow.observed_at)
+    ).all()
+    prev: dict[int, int] = {}
+    for ph in rows:
+        last = prev.get(ph.listing_id)
+        if last is not None and ph.price < last:
+            out[ph.listing_id] = out.get(ph.listing_id, 0) + 1
+        prev[ph.listing_id] = ph.price
+    return out
+
+
 def load_listings(include_excluded: bool = True, only_active: bool = True) -> list[dict]:
     """Load all listings as dicts, annotated with first_price / price_dropped / is_new."""
     with session_scope() as session:
@@ -120,11 +164,13 @@ def load_listings(include_excluded: bool = True, only_active: bool = True) -> li
         if not include_excluded:
             stmt = stmt.where(ListingRow.excluded.is_(False))
         rows = session.scalars(stmt).all()
-        firsts = _first_prices(session, [r.id for r in rows])
+        ids = [r.id for r in rows]
+        firsts = _first_prices(session, ids)
+        cuts = _cut_counts(session, ids)
         cutoff = datetime.utcnow() - timedelta(hours=24)
         out = []
         for r in rows:
-            d = _row_to_dict(r, firsts.get(r.id))
+            d = _row_to_dict(r, firsts.get(r.id), num_cuts=cuts.get(r.id, 0))
             d["is_new"] = r.first_seen is not None and r.first_seen >= cutoff
             out.append(d)
         return out

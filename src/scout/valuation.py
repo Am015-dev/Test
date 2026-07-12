@@ -27,6 +27,10 @@ from .scoring import energy_class_score
 
 # Below this many usable comps a fitted model is noise; fall back to the naive signal.
 _MIN_SAMPLES = 25
+# Minimum training-fold size during cross-validation. Kept below _MIN_SAMPLES so an area
+# with exactly _MIN_SAMPLES comps can still be cross-validated (a 5-fold split leaves ~20
+# training rows) instead of silently scoring cv_r2=0 and never becoming "confident".
+_MIN_CV_TRAIN = 18
 # Clamp the reported gap so one wild prediction can't dominate the score.
 _MAX_ABS_GAP = 0.6
 
@@ -130,7 +134,16 @@ def apply_valuations(listings: list[Listing], model: ValuationModel | None) -> N
     for lst in listings:
         predicted = model.predict_price(lst)
         lst.predicted_price = int(round(predicted)) if predicted else None
-        lst.value_gap_pct = model.value_gap(lst) if confident else None
+        # value_gap_pct drives the "undervalued" badge and the undervaluation score, so it
+        # must only be trusted when the model both (a) is confident for this area AND (b)
+        # priced THIS listing from its own REAL age and energy — not area-median imputations.
+        # Otherwise a cheap old/inefficient flat with no scraped year/energy is priced as if
+        # it were median-age/median-energy and mislabelled a bargain (the exact error the
+        # hedonic model exists to prevent). Un-gated ⇒ scoring falls back to the €/m² signal.
+        has_real_attrs = bool((lst.energy_class or "").strip()) and bool(
+            lst.year_built or lst.renovated_year
+        )
+        lst.value_gap_pct = model.value_gap(lst) if (confident and has_real_attrs) else None
 
 
 def fit_and_apply_by_area(listings: list[Listing]) -> dict[str, ValuationModel]:
@@ -204,7 +217,7 @@ def _cross_val_r2(rows: list[Listing], folds: int = 5) -> float:
     for f in range(folds):
         test = buckets[f]
         train = [r for j in range(folds) if j != f for r in buckets[j]]
-        if len(train) < _MIN_SAMPLES or not test:
+        if len(train) < _MIN_CV_TRAIN or not test:
             continue
         m, _, _ = _build_model(train)
         med = statistics.median([math.log(r.price) for r in train])

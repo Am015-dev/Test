@@ -8,8 +8,14 @@ from .conftest import make_listing
 
 
 def _stats(median_ppm2: float = 2800.0) -> MarketStats:
+    # price_sample_count must clear the ≥3 threshold or the median is treated as too thin
+    # to trust (and the undervaluation/opportunity signal is dropped as unknown).
     return MarketStats(
-        by_neighborhood={"Ano Cholargos": NeighborhoodStats(median_price_per_m2=median_ppm2)},
+        by_neighborhood={
+            "Ano Cholargos": NeighborhoodStats(
+                median_price_per_m2=median_ppm2, price_sample_count=8
+            )
+        },
         overall_median_price_per_m2=median_ppm2,
     )
 
@@ -85,6 +91,43 @@ def test_net_yield_falls_back_to_gross_when_absent(strategy):
     """No net yield → the signal uses gross (backward compatible)."""
     s = score(make_listing(gross_yield=0.08, net_yield=None), _stats(), strategy)
     assert s.signals["gross_yield"] > 0.9  # gross at the ceiling → near-full signal
+
+
+def test_unknown_attributes_are_not_penalised_by_renormalization(strategy):
+    """A listing missing energy/year must not be scored like the worst-energy/oldest flat.
+
+    With renormalization, unknown signals drop out of the denominator, so a fully-unknown
+    listing scores on ONLY what's known — never capped low just for missing scraped data."""
+    known = make_listing(energy_class="A", year_built=2020, value_gap_pct=0.20)
+    # Same listing but energy/year unknown and no hedonic gap (a card-only listing).
+    unknown = make_listing(energy_class=None, year_built=None, value_gap_pct=None)
+    s_known = score(known, _stats(), strategy)
+    s_unknown = score(unknown, _stats(), strategy)
+    # The unknown one isn't floored at "worst": it still scores on yield + area €/m² etc.
+    assert s_unknown.score > 20
+    # And a listing that is genuinely excellent on KNOWN attributes still outranks it.
+    assert s_known.score > s_unknown.score
+
+
+def test_imputed_rent_does_not_count_as_yield_signal(strategy):
+    """When rent is the flat baseline (rent_estimated=True), yield must be excluded so it
+    doesn't double-count €/m² — two listings differing only in a baseline yield tie."""
+    a = score(
+        make_listing(rent_estimated=True, gross_yield=0.03, net_yield=None), _stats(), strategy
+    )
+    b = score(
+        make_listing(rent_estimated=True, gross_yield=0.07, net_yield=None), _stats(), strategy
+    )
+    assert a.score == b.score  # yield ignored → identical
+
+
+def test_centroid_location_not_scored_as_precise_metro(strategy):
+    """An approx (centroid) location must not earn the metro-proximity bonus."""
+    exact = make_listing(metro_distance_m=150, location_precision="exact")
+    approx = make_listing(metro_distance_m=150, location_precision="approx")
+    s_exact = score(exact, _stats(), strategy)
+    s_approx = score(approx, _stats(), strategy)
+    assert s_exact.score > s_approx.score  # only the exact one banks the metro bonus
 
 
 def test_price_drop_increases_score(strategy):

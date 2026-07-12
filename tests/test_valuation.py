@@ -110,6 +110,7 @@ def test_fit_by_area_fits_each_submarket_separately():
                 neighborhood="Cheap",
                 floor=2.0,
                 year_built=2000,
+                energy_class="B",
             )
         )
     for i in range(60):
@@ -123,6 +124,7 @@ def test_fit_by_area_fits_each_submarket_separately():
                 neighborhood="Pricey",
                 floor=2.0,
                 year_built=2000,
+                energy_class="B",
             )
         )
     models = fit_and_apply_by_area(listings)
@@ -153,3 +155,45 @@ def test_noisy_fit_is_not_confident():
     assert not model.is_confident  # honestly refuses to claim precision
     lo, hi = model.price_band(listings[0])
     assert (hi - lo) / model.predict_price(listings[0]) > 0.2  # wide band signals low trust
+
+
+def test_value_gap_gated_on_real_attributes():
+    """value_gap_pct (the undervalued-badge driver) must stay None when a listing's own
+    energy/year were imputed — even in a confident area — so an old inefficient flat with no
+    scraped attributes can't be re-badged a bargain from median imputations."""
+    from scout.valuation import fit_and_apply_by_area
+
+    # 60 comps with real attributes → a confident model.
+    listings = []
+    for i in range(60):
+        area = 50.0 + (i % 40)
+        listings.append(
+            make_listing(
+                source_id=f"c{i}",
+                area_m2=area,
+                price=int(2500 * area),
+                search_area="Area",
+                neighborhood="Area",
+                floor=2.0,
+                year_built=2000,
+                energy_class="B",
+            )
+        )
+    # One extra listing with NO energy/year (card-only) in the same area.
+    cardonly = make_listing(
+        source_id="card1",
+        area_m2=70.0,
+        price=int(2500 * 70),
+        search_area="Area",
+        neighborhood="Area",
+        floor=2.0,
+        year_built=None,
+        energy_class=None,
+    )
+    listings.append(cardonly)
+    models = fit_and_apply_by_area(listings)
+    assert models["Area"].is_confident
+    # The fully-attributed comps get a value gap; the card-only one does not.
+    assert listings[0].value_gap_pct is not None
+    assert cardonly.value_gap_pct is None
+    assert cardonly.predicted_price is not None  # still shown as a rough estimate

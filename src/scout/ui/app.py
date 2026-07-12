@@ -93,17 +93,21 @@ def _valuation_banner() -> dict:
     r2, n, n_areas = o["r2"], o["n"], o.get("n_areas", 1)
     band = f"±{(pow(2.718281828, o['residual_std']) - 1) * 100:.0f}%"
     scope = f"{n_areas} area-specific models over {n} comparables"
+    basis = (
+        "Values are **relative to ASKING prices** in each submarket (Greek sold prices "
+        "aren't public), so read them as *priced-vs-comparable-listings*, not vs. what "
+        "flats actually sell for."
+    )
     if o["is_confident"]:
         st.success(
-            f"**Fair-value model:** {scope}, out-of-sample R²={r2:.2f}. Each estimate is "
-            f"shown with its area's ± range (typ. {band})."
+            f"**Relative-value model:** {scope}, out-of-sample R²={r2:.2f}. Each estimate is "
+            f"shown with its area's ± range (typ. {band}). {basis}"
         )
     else:
         st.warning(
-            f"**Fair-value model:** {scope}, out-of-sample R²={r2:.2f} — some submarkets "
-            f"don't predict held-out sales reliably, so their fair values are *indicative* "
-            f"(typ. range {band}). Rank on them to shortlist, then verify each listing; "
-            "don't treat the € figure as exact."
+            f"**Relative-value model:** {scope}, out-of-sample R²={r2:.2f} — some submarkets "
+            f"don't predict held-out listings reliably, so their figures are *indicative* "
+            f"(typ. range {band}). Rank to shortlist, then verify each listing. {basis}"
         )
     return v
 
@@ -139,7 +143,12 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
             "Score": round(d["score"], 0),
             "Asset": d.get("archetype", ""),
             "Price": d["price"],
-            "Fair value": d.get("predicted_price"),
+            # Only show a "Fair value" figure the model could actually stand behind (its
+            # value_gap survived the confidence + real-attributes gate); blank otherwise so
+            # an imputed prediction isn't read as a precise valuation.
+            "Fair value": (
+                d.get("predicted_price") if d.get("value_gap_pct") is not None else None
+            ),
             "Value gap": (
                 (d.get("value_gap_pct") * 100) if d.get("value_gap_pct") is not None else None
             ),
@@ -644,7 +653,12 @@ def page_opportunities(listings: list[dict]) -> None:
 
     st.markdown(f"**{len(rows)}** opportunities match your filters (of {len(eligible)} eligible)")
     if rows:
-        components.listing_grid(rows)
+        # Cap the card grid to the top N by score — rendering all ~9k cards ships a
+        # multi-megabyte DOM that janks the browser. The full set stays in the table/CSV.
+        grid_cap = 60
+        components.listing_grid(rows[:grid_cap])
+        if len(rows) > grid_cap:
+            st.caption(f"Showing the top {grid_cap} cards by score. Full list in the table below.")
         with st.expander("Table view (sort / export)"):
             _table(rows)
     else:

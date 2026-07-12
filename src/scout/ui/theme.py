@@ -366,6 +366,9 @@ footer {{ visibility: hidden; height: 0; }}
 .ph-thesis {{ font-size: .8rem; line-height: 1.35; color: var(--hg-ink);
     background: #FFF7ED; border: 1px solid #FED7AA; border-radius: 9px;
     padding: 8px 10px; margin: 2px 0; }}
+.ph-incomplete {{ font-size: .72rem; line-height: 1.3; color: #92400E;
+    background: #FEFCE8; border: 1px solid #FEF08A; border-radius: 8px;
+    padding: 6px 9px; margin: 2px 0; }}
 .ph-card-foot {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; }}
 .ph-badges {{ display: flex; flex-wrap: wrap; gap: 5px; }}
 .ph-badge {{ font-size: .66rem; font-weight: 600; color: var(--hg-accent);

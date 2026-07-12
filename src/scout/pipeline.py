@@ -135,12 +135,17 @@ def run(
         prelim_stats = compute_market_stats(listings)
         for lst in listings:
             try:
-                # Prefer the real rental-market median for this neighbourhood/area.
+                # Prefer the real rental-market median for this neighbourhood/area. Track
+                # whether the rent is a genuine local comp (so yield counts as a real
+                # signal) or the flat baseline (an estimate that must not be scored).
                 median_rent = rent_comps_for(rent_comps, lst.neighborhood)
+                rent_is_comp = median_rent is not None
                 if not median_rent:
                     n_stats = prelim_stats.by_neighborhood.get(lst.neighborhood or "")
                     median_rent = n_stats.median_rent_per_m2 if n_stats else None
-                # Fall back to the configured baseline so yield is always computable.
+                    rent_is_comp = median_rent is not None
+                # Fall back to the configured baseline so yield is always computable
+                # (marked as an estimate via rent_is_comp=False).
                 if not median_rent:
                     median_rent = strategy.search.est_rent_eur_per_m2
                 # SAVEPOINT per listing: enrich_listing writes the geocode cache via
@@ -153,6 +158,7 @@ def run(
                         median_rent_per_m2=median_rent,
                         session=session,
                         use_network=use_network,
+                        rent_is_comp=rent_is_comp,
                     )
                 enriched.append(result)
             except Exception as exc:

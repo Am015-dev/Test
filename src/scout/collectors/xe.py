@@ -83,6 +83,10 @@ _LD_JSON_RE = re.compile(
 )
 
 
+# Renovation year stated in prose — "ανακαινισμένο/ανακαίνιση (το) 2019" and Latin variants.
+_RENO_YEAR_RE = re.compile(r"(?:ανακαιν\w*|renovat\w*)[^0-9]{0,20}(19\d{2}|20\d{2})", re.IGNORECASE)
+
+
 def _feature_value(name: str) -> tuple[str, str] | None:
     """Split a JSON-LD feature string 'Έτος κατασκευής: 1984' into (key, value)."""
     if ":" not in name:
@@ -182,6 +186,14 @@ def parse_detail_jsonld(html: str) -> dict:
             desc = node.get("description")
             if desc:
                 out["description"] = desc
+                # Renovation year is never a structured field, but listings routinely state
+                # it in prose ("ανακαινισμένο το 2019"). Capturing it makes the "Renovated"
+                # archetype and the newness signal reflect reality instead of build-year only.
+                reno = _RENO_YEAR_RE.search(desc)
+                if reno:
+                    year = parse_int(reno.group(1))
+                    if year and 1950 <= year <= datetime.utcnow().year:
+                        out["renovated_year"] = year
     return out
 
 
@@ -389,7 +401,7 @@ class XeCollector(Collector):
         except Exception as exc:
             logger.warning("xe: detail parse error for %s: %s", raw.get("url"), exc)
             return
-        for key in ("year_built", "bedrooms", "energy_class", "heating"):
+        for key in ("year_built", "renovated_year", "bedrooms", "energy_class", "heating"):
             if detail.get(key) is not None:
                 raw[key] = detail[key]
         if detail.get("area_m2") and not raw.get("area_m2"):

@@ -33,21 +33,35 @@ class NeighborhoodStats:
 
 @dataclass
 class MarketStats:
-    """Per-neighborhood medians, computed from the DB each run and passed in."""
+    """Per-neighborhood and per-municipality medians, computed each run and passed in."""
 
     by_neighborhood: dict[str, NeighborhoodStats] = field(default_factory=dict)
+    by_area: dict[str, NeighborhoodStats] = field(default_factory=dict)
     overall_median_price_per_m2: float | None = None
 
-    def price_per_m2_median_for(self, neighborhood: str | None) -> float | None:
-        # Use the neighborhood median only when it rests on enough samples; small
-        # sub-neighborhoods otherwise compare a listing against (mostly) itself.
+    def price_per_m2_median_for(
+        self, neighborhood: str | None, search_area: str | None = None
+    ) -> float | None:
+        """The €/m² benchmark to judge a listing against: its own neighbourhood (if that
+        bucket has enough samples), else its MUNICIPALITY. Deliberately does NOT fall back
+        to the all-Athens median — comparing a Peristeri flat to a pooled Kolonaki-included
+        average would flag entire cheap municipalities as "undervalued". Returns None when
+        neither local bucket qualifies, so the undervaluation signal is treated as unknown
+        rather than computed against a misleading pool."""
         if neighborhood and neighborhood in self.by_neighborhood:
             ns = self.by_neighborhood[neighborhood]
             if ns.median_price_per_m2 is not None and (
                 ns.price_sample_count >= _MIN_NEIGHBORHOOD_SAMPLES
             ):
                 return ns.median_price_per_m2
-        return self.overall_median_price_per_m2
+        if search_area and search_area in self.by_area:
+            a = self.by_area[search_area]
+            if (
+                a.median_price_per_m2 is not None
+                and a.price_sample_count >= _MIN_NEIGHBORHOOD_SAMPLES
+            ):
+                return a.median_price_per_m2
+        return None
 
 
 def _clamp01(x: float) -> float:
@@ -55,8 +69,14 @@ def _clamp01(x: float) -> float:
 
 
 def compute_market_stats(listings: Iterable[Listing]) -> MarketStats:
-    """Compute per-neighborhood median EUR/m2 and median rent EUR/m2."""
+    """Compute per-neighborhood AND per-municipality median EUR/m2 (+ median rent EUR/m2).
+
+    The municipality (``search_area``) tier is what the undervaluation/opportunity signals
+    compare against when a neighbourhood bucket is too thin — an honest local benchmark
+    instead of the all-Athens pool.
+    """
     buckets: dict[str, list[float]] = {}
+    area_buckets: dict[str, list[float]] = {}
     rent_buckets: dict[str, list[float]] = {}
     all_ppm2: list[float] = []
 
@@ -68,9 +88,12 @@ def compute_market_stats(listings: Iterable[Listing]) -> MarketStats:
             all_ppm2.append(ppm2)
             if lst.neighborhood:
                 buckets.setdefault(lst.neighborhood, []).append(ppm2)
+            if lst.search_area:
+                area_buckets.setdefault(lst.search_area, []).append(ppm2)
 
-        # Rent comps: only listings with a known rent contribute.
-        rent = lst.listed_rent or lst.est_monthly_rent
+        # Rent comps: only listings with a REAL rent (a stated listed_rent) contribute — an
+        # imputed baseline rent must never seed the rent median it was derived from.
+        rent = lst.listed_rent
         if rent and lst.area_m2 and lst.neighborhood:
             rent_buckets.setdefault(lst.neighborhood, []).append(rent / lst.area_m2)
 
@@ -82,8 +105,15 @@ def compute_market_stats(listings: Iterable[Listing]) -> MarketStats:
     for n, vals in rent_buckets.items():
         by_n.setdefault(n, NeighborhoodStats()).median_rent_per_m2 = statistics.median(vals)
 
+    by_a: dict[str, NeighborhoodStats] = {
+        a: NeighborhoodStats(
+            median_price_per_m2=statistics.median(vals), price_sample_count=len(vals)
+        )
+        for a, vals in area_buckets.items()
+    }
+
     overall = statistics.median(all_ppm2) if all_ppm2 else None
-    return MarketStats(by_neighborhood=by_n, overall_median_price_per_m2=overall)
+    return MarketStats(by_neighborhood=by_n, by_area=by_a, overall_median_price_per_m2=overall)
 
 
 def _excluded(listing: Listing, reason: str) -> ScoredListing:
@@ -120,21 +150,23 @@ def _price_vs_median_signal(listing: Listing, median_ppm2: float | None) -> floa
 
 def _undervaluation_signal(
     listing: Listing, median_ppm2: float | None, strategy: Strategy
-) -> float:
-    """How far below fair value the asking price sits, 0..1.
+) -> tuple[float, bool]:
+    """How far below fair value the asking price sits, as ``(value 0..1, is_known)``.
 
-    Prefers the hedonic model's ``value_gap_pct`` — which controls for the property's
-    own size/floor/age/energy/metro, so it separates *mispriced* (a real bargain) from
-    merely *cheap because inferior*. A gap of ``target_undervaluation`` (default 20%
-    below fair value) scores a full 1.0; at/above fair value scores 0.
-
-    Falls back to the raw €/m²-vs-neighborhood-median signal when the model couldn't
-    price this listing (too few comps, or missing price/area)."""
+    Prefers the hedonic model's ``value_gap_pct`` — which controls for the property's own
+    size/floor/age/energy/metro (and is only populated when the model priced this listing
+    from REAL, non-imputed attributes), so it separates *mispriced* from merely *cheap
+    because inferior*. Falls back to the raw €/m²-vs-local-median signal when the model
+    couldn't price it. ``is_known`` is False only when neither a hedonic gap nor a local
+    median exists — in which case the signal is dropped from the (renormalized) score
+    rather than computed against a misleading benchmark."""
     gap = listing.value_gap_pct
     if gap is not None:
         target = max(strategy.scoring_reference.target_undervaluation, 1e-9)
-        return _clamp01(gap / target)
-    return _price_vs_median_signal(listing, median_ppm2)
+        return _clamp01(gap / target), True
+    if median_ppm2:
+        return _price_vs_median_signal(listing, median_ppm2), True
+    return 0.0, False
 
 
 def _metro_proximity_signal(listing: Listing, strategy: Strategy) -> float:
@@ -279,32 +311,55 @@ def score(
     # proximity is a weighted SIGNAL (below) plus an optional UI filter, so a great flat
     # that happens to be far from Line 2/3 is ranked lower, not thrown away.
 
-    # 2. Weighted, normalized signals.
-    median_ppm2 = market_stats.price_per_m2_median_for(listing.neighborhood)
-    signals = {
-        "undervaluation": _undervaluation_signal(listing, median_ppm2, strategy),
-        "gross_yield": _yield_signal(listing, strategy),
-        "newness": _newness_signal(listing, strategy),
-        "energy_class": _energy_signal(listing),
-        "metro_proximity": _metro_proximity_signal(listing, strategy),
-        "price_drop": _price_drop_signal(listing, first_price, strategy),
-        "is_currently_rented": 1.0 if listing.is_currently_rented else 0.0,
-        "is_private_seller": 1.0 if listing.is_private_seller else 0.0,
-    }
+    # 2. Weighted, normalized signals — RENORMALIZED over the signals we can actually
+    # evaluate for this listing. An unknown attribute (no scraped energy/year, an imputed
+    # rent, a centroid-only location) is EXCLUDED from both the numerator and the weight
+    # denominator, rather than scored 0 — otherwise a listing would be punished for missing
+    # data (scored like the worst energy / oldest build), which with ~90% card-only
+    # inventory would bury every un-enriched listing regardless of its merits.
+    median_ppm2 = market_stats.price_per_m2_median_for(listing.neighborhood, listing.search_area)
+    uv_value, uv_known = _undervaluation_signal(listing, median_ppm2, strategy)
+
+    # Yield counts as a REAL signal only when rent is a genuine comp (not the flat baseline);
+    # otherwise gross_yield is a deterministic inverse of €/m² and would double-count the
+    # undervaluation signal.
+    yield_known = not listing.rent_estimated and (
+        listing.net_yield is not None or bool(listing.gross_yield)
+    )
+    year_known = bool(listing.year_built or listing.renovated_year)
+    energy_known = bool((listing.energy_class or "").strip())
+    # A centroid-only location gives one identical distance for a whole municipality, so it
+    # must not be scored as a precise per-listing signal.
+    metro_known = listing.metro_distance_m is not None and listing.location_precision == "exact"
+
     w = strategy.weights
-    weights = {
-        "undervaluation": w.undervaluation,
-        "gross_yield": w.gross_yield,
-        "newness": w.newness,
-        "energy_class": w.energy_class,
-        "metro_proximity": w.metro_proximity,
-        "price_drop": w.price_drop,
-        "is_currently_rented": w.is_currently_rented,
-        "is_private_seller": w.is_private_seller,
+    # (value, weight, is_known) per signal. price_drop / rented / private are always
+    # evaluable (absence = 0), so they stay in the denominator.
+    contributions = {
+        "undervaluation": (uv_value, w.undervaluation, uv_known),
+        "gross_yield": (_yield_signal(listing, strategy), w.gross_yield, yield_known),
+        "newness": (_newness_signal(listing, strategy), w.newness, year_known),
+        "energy_class": (_energy_signal(listing), w.energy_class, energy_known),
+        "metro_proximity": (
+            _metro_proximity_signal(listing, strategy),
+            w.metro_proximity,
+            metro_known,
+        ),
+        "price_drop": (_price_drop_signal(listing, first_price, strategy), w.price_drop, True),
+        "is_currently_rented": (
+            1.0 if listing.is_currently_rented else 0.0,
+            w.is_currently_rented,
+            True,
+        ),
+        "is_private_seller": (1.0 if listing.is_private_seller else 0.0, w.is_private_seller, True),
     }
-    total_weight = w.total() or 1.0
-    raw = sum(signals[k] * weights[k] for k in signals)
-    final = raw / total_weight * 100.0
+    signals = {k: v for k, (v, _, _) in contributions.items()}
+    total_weight = sum(wt for (_, wt, known) in contributions.values() if known)
+    if total_weight <= 0:
+        final = 0.0
+    else:
+        raw = sum(v * wt for (v, wt, known) in contributions.values() if known)
+        final = raw / total_weight * 100.0
 
     # 2b. Energy-liability demotion: scale the whole score down for inefficient stock so a
     # cheap, high-yield energy-H flat (an EU-EPBD renovation liability) can't outrank an
@@ -320,8 +375,8 @@ def score(
     if ppm2 and median_ppm2:
         threshold = strategy.opportunity_flag.price_per_m2_below_median_pct * median_ppm2
         energy = energy_class_score(listing.energy_class)
-        energy_known = (listing.energy_class or "").strip().upper() in _ENERGY_SCORE
-        is_opp = ppm2 < threshold and (not energy_known or energy > 0.12)
+        energy_in_scale = (listing.energy_class or "").strip().upper() in _ENERGY_SCORE
+        is_opp = ppm2 < threshold and (not energy_in_scale or energy > 0.12)
 
     return ScoredListing(
         listing=listing,

@@ -123,19 +123,33 @@ def deduplicate(listings: list[Listing]) -> list[DedupGroup]:
         by_key[lst.dedup_key] = lst
     unique = list(by_key.values())
 
+    # Blocking key: two listings can only match if their areas are within AREA_TOL_M2, so a
+    # listing is only ever compared against groups in nearby area buckets instead of the
+    # whole set. This turns the pairwise scan from O(n²) into roughly linear as the dataset
+    # grows. A group is filed under its (first) canonical's rounded area; the ±window lookup
+    # covers the tolerance plus rounding slack. A rare missed cross-source merge only costs a
+    # duplicate — which this module already prefers over a false merge.
+    window = int(AREA_TOL_M2) + 1
+    buckets: dict[int, list[DedupGroup]] = {}
     groups: list[DedupGroup] = []
     for lst in unique:
+        key = int(round(lst.area_m2))
         placed = False
-        for group in groups:
-            if _similar(group.canonical, lst):
-                # Keep the cheaper one canonical; demote the other.
-                if lst.price < group.canonical.price:
-                    group.duplicates.append(group.canonical)
-                    group.canonical = lst
-                else:
-                    group.duplicates.append(lst)
-                placed = True
+        for k in range(key - window, key + window + 1):
+            for group in buckets.get(k, ()):
+                if _similar(group.canonical, lst):
+                    # Keep the cheaper one canonical; demote the other.
+                    if lst.price < group.canonical.price:
+                        group.duplicates.append(group.canonical)
+                        group.canonical = lst
+                    else:
+                        group.duplicates.append(lst)
+                    placed = True
+                    break
+            if placed:
                 break
         if not placed:
-            groups.append(DedupGroup(canonical=lst))
+            group = DedupGroup(canonical=lst)
+            groups.append(group)
+            buckets.setdefault(key, []).append(group)
     return groups
