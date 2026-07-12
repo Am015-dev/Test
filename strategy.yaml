@@ -31,7 +31,7 @@ search:
 
 hard_filters:
   min_floor: 1               # exclude ground/semi-basement/mezzanine (floor <= 0)
-  max_metro_distance_m: 600
+  max_metro_distance_m: 1000  # ~12-min walk to a Line 2/3 station (tune on the Strategy page)
 
 weights:                     # contribution to the 0-100 score (quality-first)
   newness: 20                # build/renovation year — favour new/renovated stock
