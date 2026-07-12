@@ -67,18 +67,28 @@ def analyze(
     area_median_ppm2: float | None,
     is_private_seller: bool = False,
     relisted: bool = False,
+    listed_date: datetime | None = None,
 ) -> NegotiationResult:
     """Score how motivated/negotiable the seller is from the recorded history.
 
     ``price_history`` is ``[(observed_at, price), ...]`` ascending (as stored). All
-    signals degrade gracefully when history is short — a freshly-seen listing simply
-    scores low until the daily tracker accumulates its story.
+    signals degrade gracefully when history is short.
+
+    ``listed_date`` is the portal's OWN posting date (XE ``datePosted``). When present it
+    anchors the true market age — so a flat that has already sat 200 days reads as
+    motivated on the very first sight, with no need to watch it daily for weeks. Without
+    it (or before it was captured) the tool falls back to ``first_seen`` and the dwell
+    time simply grows as the daily tracker runs.
     """
     res = NegotiationResult()
 
-    # Days on market (since first tracked; becomes the true dwell time as the tool runs).
-    if first_seen is not None:
-        res.days_on_market = max((now - first_seen).days, 0)
+    # Real market age: anchor to the EARLIEST evidence the listing was live — the portal's
+    # own posting date when we have it, else when we first tracked it. The portal date is
+    # what makes days-on-market real from day one (answering "why scrape daily?").
+    anchors = [d for d in (listed_date, first_seen) if d is not None]
+    market_start = min(anchors) if anchors else None
+    if market_start is not None:
+        res.days_on_market = max((now - market_start).days, 0)
     stale = _clamp01((res.days_on_market or 0) / _STALE_DAYS_FULL)
 
     # Price cuts from the history.

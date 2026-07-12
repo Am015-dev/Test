@@ -115,13 +115,22 @@ def apply_valuations(listings: list[Listing], model: ValuationModel | None) -> N
     """Annotate each listing in place with ``predicted_price`` and ``value_gap_pct``.
 
     No-op when the model is ``None`` (too few comps to fit) — listings keep their default
-    ``None`` valuation fields and scoring falls back to the naive €/m² signal."""
+    ``None`` valuation fields and scoring falls back to the naive €/m² signal.
+
+    Confidence gate: ``value_gap_pct`` — the number that DRIVES the undervaluation score
+    and the "undervalued" badge — is only populated when the model is confident
+    (out-of-sample ``cv_r2`` clears the bar). In a low-confidence submarket the gap is a
+    coin-flip, so we leave it ``None`` and scoring falls back to the naive €/m² signal
+    rather than badging a listing as a bargain on noise. ``predicted_price`` is still
+    filled (the UI shows it with its wide ±band and a low-confidence caveat), but it never
+    silently moves the score in an area the model can't actually price."""
     if model is None:
         return
+    confident = model.is_confident
     for lst in listings:
         predicted = model.predict_price(lst)
         lst.predicted_price = int(round(predicted)) if predicted else None
-        lst.value_gap_pct = model.value_gap(lst)
+        lst.value_gap_pct = model.value_gap(lst) if confident else None
 
 
 def fit_and_apply_by_area(listings: list[Listing]) -> dict[str, ValuationModel]:

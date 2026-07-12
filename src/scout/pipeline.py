@@ -25,6 +25,7 @@ from .db import (
 )
 from .dedup import deduplicate
 from .enrich import enrich_listing
+from .finance import net_yield as _net_yield_after_costs
 from .models import Listing, ListingRow, PriceHistoryRow
 from .normalize import normalize
 from .rent_comps import compute_rent_comps
@@ -231,6 +232,7 @@ def run(
                         ppm2=lst.price_per_m2,
                         area_median_ppm2=market_stats.price_per_m2_median_for(lst.neighborhood),
                         is_private_seller=bool(lst.is_private_seller),
+                        listed_date=lst.listed_date,
                     ).score
                 stored += 1
             except Exception as exc:
@@ -309,6 +311,14 @@ def rescore_all(strategy: Strategy | None = None) -> int:
         for row, lst in zip(rows, listings, strict=True):
             hist = histories.get(row.id, [])
             first_price = hist[0][1] if hist else None
+            # Recompute net yield from the stored rent so rows scraped before net-yield
+            # existed get the honest after-cost figure without a re-scrape (same "use the
+            # data we already have" principle as the listed_date backfill).
+            annual_rent = lst.est_monthly_rent * 12 if lst.est_monthly_rent else None
+            lst.net_yield = _net_yield_after_costs(
+                lst.price, annual_rent, lst.area_m2, bool(lst.is_private_seller)
+            )
+            row.net_yield = lst.net_yield
             scored = score(lst, market_stats, strategy, first_price=first_price)
             row.score = scored.score
             row.is_opportunity = scored.is_opportunity
@@ -325,6 +335,7 @@ def rescore_all(strategy: Strategy | None = None) -> int:
                 ppm2=lst.price_per_m2,
                 area_median_ppm2=market_stats.price_per_m2_median_for(lst.neighborhood),
                 is_private_seller=bool(row.is_private_seller),
+                listed_date=row.listed_date,
             )
             row.negotiation_score = neg.score
         return len(rows)

@@ -91,9 +91,17 @@ def _excluded(listing: Listing, reason: str) -> ScoredListing:
 
 
 def _yield_signal(listing: Listing, strategy: Strategy) -> float:
+    """Reward realistic rental return. Prefers NET yield (after Greek acquisition/holding
+    costs and vacancy — what the investor actually keeps) scored against its own,
+    lower net band; falls back to gross yield only when net couldn't be computed. Scoring
+    on gross overstates returns, which is exactly the "unreliable core claim" a buyer
+    would call out — net is the honest headline."""
+    ref = strategy.scoring_reference
+    if listing.net_yield is not None:
+        span = max(ref.net_yield_ceiling - ref.net_yield_floor, 1e-9)
+        return _clamp01((listing.net_yield - ref.net_yield_floor) / span)
     if not listing.gross_yield:
         return 0.0
-    ref = strategy.scoring_reference
     span = max(ref.yield_ceiling - ref.yield_floor, 1e-9)
     return _clamp01((listing.gross_yield - ref.yield_floor) / span)
 

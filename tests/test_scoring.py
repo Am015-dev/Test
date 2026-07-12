@@ -66,6 +66,22 @@ def test_higher_yield_scores_higher(strategy):
     assert high.score > low.score
 
 
+def test_net_yield_preferred_over_gross(strategy):
+    """When a net yield is present it drives the yield signal (against its own band), not
+    the gross figure — the honest after-cost return."""
+    higher_net = score(make_listing(gross_yield=0.07, net_yield=0.05), _stats(), strategy)
+    lower_net = score(make_listing(gross_yield=0.07, net_yield=0.02), _stats(), strategy)
+    # Same gross, different net → the one with the better NET yield scores higher.
+    assert higher_net.signals["gross_yield"] > lower_net.signals["gross_yield"]
+    assert higher_net.score > lower_net.score
+
+
+def test_net_yield_falls_back_to_gross_when_absent(strategy):
+    """No net yield → the signal uses gross (backward compatible)."""
+    s = score(make_listing(gross_yield=0.08, net_yield=None), _stats(), strategy)
+    assert s.signals["gross_yield"] > 0.9  # gross at the ceiling → near-full signal
+
+
 def test_price_drop_increases_score(strategy):
     no_drop = score(make_listing(price=200_000), _stats(), strategy, first_price=200_000)
     dropped = score(make_listing(price=180_000), _stats(), strategy, first_price=200_000)

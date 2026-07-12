@@ -99,6 +99,31 @@ _COORDS_RE = re.compile(r"property_location\.coordinates\"\s*:\s*(\{.*?\}\s*\})"
 _LAT_RE = re.compile(r"\"lat\"\s*:\s*(-?\d+\.\d+)")
 _LON_RE = re.compile(r"\"lon\"\s*:\s*(-?\d+\.\d+)")
 
+# The listing's own posting date — present on ~100% of XE detail pages as the schema.org
+# ``datePosted`` field (ISO-8601, usually with a trailing Z). This is the REAL market age,
+# so days-on-market / negotiation work from the first sight instead of only after the daily
+# tracker has watched the listing for weeks. This is the answer to "why scrape daily".
+_DATE_POSTED_RE = re.compile(r'"datePosted"\s*:\s*"([^"]+)"')
+
+
+def parse_listed_date(html: str) -> datetime | None:
+    """Return the listing's posting date from the detail page's ``datePosted``, or None.
+
+    Accepts the common ISO-8601 forms XE emits (``2026-07-09T13:49:08Z`` and the
+    offset-less ``2026-07-09T13:49:08``). Fails soft: an absent or unparseable value
+    yields None so the listing simply falls back to first-seen for its market age.
+    """
+    m = _DATE_POSTED_RE.search(html)
+    if not m:
+        return None
+    raw = m.group(1).strip()
+    try:
+        # Normalize a trailing Z to a form fromisoformat accepts, then drop tz so the
+        # value is comparable with the pipeline's naive UTC ``now``.
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
+
 
 def parse_detail_coordinates(html: str) -> tuple[float | None, float | None]:
     """Return the listing's (lat, lng) from the detail page's geo bounding box, or
@@ -355,6 +380,10 @@ class XeCollector(Collector):
             m_img = _OG_IMAGE_RE.search(html)
             if m_img:
                 raw["image_url"] = unescape(m_img.group(1))
+        if not raw.get("listed_date"):
+            listed = parse_listed_date(html)
+            if listed is not None:
+                raw["listed_date"] = listed
         try:
             detail = parse_detail_jsonld(html)
         except Exception as exc:

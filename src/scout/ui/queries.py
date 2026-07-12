@@ -12,12 +12,35 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from ..db import session_scope
+from ..deal import advise as _advise_deal
 from ..models import HealthReportRow, ListingRow, PriceHistoryRow
 from ..scoring import investment_archetype
 
 
+def _market_age_days(row: ListingRow) -> int | None:
+    """True days on market: from the portal's own posting date when known, else from when
+    we first tracked it — whichever is earlier (the earliest evidence it was live)."""
+    anchors = [d for d in (row.listed_date, row.first_seen) if d is not None]
+    if not anchors:
+        return None
+    return max((datetime.utcnow() - min(anchors)).days, 0)
+
+
 def _row_to_dict(row: ListingRow, first_price: int | None) -> dict:
     price_dropped = bool(first_price and row.price < first_price)
+    days_on_market = _market_age_days(row)
+    # A confident fair value is exactly the case where value_gap_pct survived the
+    # valuation confidence gate (it is set to None in low-confidence submarkets).
+    value_confident = row.value_gap_pct is not None
+    # One-line recommended offer + thesis — the actionable decision surfaced in the UI.
+    deal = _advise_deal(
+        asking=row.price,
+        predicted_price=row.predicted_price,
+        value_confident=value_confident,
+        negotiation_score=row.negotiation_score or 0.0,
+        days_on_market=days_on_market,
+        net_yield=row.net_yield,
+    )
     return {
         "archetype": investment_archetype(row.year_built, row.renovated_year, row.energy_class),
         "id": row.id,
@@ -49,8 +72,15 @@ def _row_to_dict(row: ListingRow, first_price: int | None) -> dict:
         "price_per_m2": row.price_per_m2,
         "est_monthly_rent": row.est_monthly_rent,
         "gross_yield": row.gross_yield,
+        "net_yield": row.net_yield,
         "predicted_price": row.predicted_price,
         "value_gap_pct": row.value_gap_pct,
+        "value_confident": value_confident,
+        "listed_date": row.listed_date,
+        "days_on_market": days_on_market,
+        "suggested_offer": deal.suggested_offer if deal else None,
+        "offer_discount_pct": deal.discount_pct if deal else None,
+        "deal_thesis": deal.thesis if deal else None,
         "image_url": row.image_url,
         "score": row.score,
         "negotiation_score": row.negotiation_score,

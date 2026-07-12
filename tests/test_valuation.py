@@ -95,8 +95,11 @@ def test_clean_fit_is_confident_with_tight_band():
 def test_fit_by_area_fits_each_submarket_separately():
     # Two areas priced at very different €/m²; a pooled model would blur them, per-area
     # models price each correctly and flag a within-area bargain.
+    # 60 comps/area so each per-area model is genuinely CONFIDENT under 5-fold CV (train
+    # folds of ~48 clear the 25-sample floor) — otherwise the confidence gate correctly
+    # withholds value_gap_pct and this accuracy check would have nothing to read.
     listings = []
-    for i in range(30):
+    for i in range(60):
         area = 50.0 + (i % 40)
         listings.append(
             make_listing(
@@ -109,7 +112,7 @@ def test_fit_by_area_fits_each_submarket_separately():
                 year_built=2000,
             )
         )
-    for i in range(30):
+    for i in range(60):
         area = 50.0 + (i % 40)
         listings.append(
             make_listing(
@@ -124,7 +127,9 @@ def test_fit_by_area_fits_each_submarket_separately():
         )
     models = fit_and_apply_by_area(listings)
     assert set(models) == {"Cheap", "Pricey"}
-    # Each area's model learned its own price level, so a listing on-line has ~0 gap.
+    # Both models are confident, so value_gap_pct is populated; each learned its own price
+    # level, so a listing priced on-line shows ~0 gap.
+    assert all(m.is_confident for m in models.values())
     assert all(abs(x.value_gap_pct) < 0.1 for x in listings)
     # Each model is priced near its own market, not the pooled ~3500 €/m² average.
     cheap_fair = models["Cheap"].predict_price(

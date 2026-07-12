@@ -54,11 +54,13 @@ _SNAPSHOT_FIELDS = (
     "is_private_seller",
     "is_currently_rented",
     "listed_rent",
+    "listed_date",
     "metro_distance_m",
     "nearest_metro",
     "price_per_m2",
     "est_monthly_rent",
     "gross_yield",
+    "net_yield",
     "predicted_price",
     "value_gap_pct",
     "image_url",
@@ -91,6 +93,8 @@ def init_db() -> None:
             "value_gap_pct": "DOUBLE PRECISION",
             "image_url": "VARCHAR(1024)",
             "negotiation_score": "DOUBLE PRECISION",
+            "listed_date": "TIMESTAMP",
+            "net_yield": "DOUBLE PRECISION",
         },
     )
     _ensure_index(engine, "ix_listing_search_area", "listing", "search_area")

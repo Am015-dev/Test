@@ -85,7 +85,7 @@ def _card_html(d: dict) -> str:
     if en_pill:
         specs.append(en_pill)
 
-    # Signal row: value gap, yield, metro
+    # Signal row: value gap, net yield, days on market, metro
     signals = []
     gap = d.get("value_gap_pct")
     if gap is not None:
@@ -93,9 +93,19 @@ def _card_html(d: dict) -> str:
         signals.append(
             f'<div class="ph-sig ph-sig-{gcls}"><b>{gap * 100:+.0f}%</b><span>vs fair value</span></div>'
         )
-    gy = d.get("gross_yield")
-    if gy:
-        signals.append(f'<div class="ph-sig"><b>{gy * 100:.1f}%</b><span>gross yield</span></div>')
+    # Prefer NET yield (the honest after-cost return); fall back to gross when unknown.
+    ny = d.get("net_yield")
+    if ny is not None:
+        signals.append(f'<div class="ph-sig"><b>{ny * 100:.1f}%</b><span>net yield</span></div>')
+    else:
+        gy = d.get("gross_yield")
+        if gy:
+            signals.append(
+                f'<div class="ph-sig"><b>{gy * 100:.1f}%</b><span>gross yield</span></div>'
+            )
+    dom = d.get("days_on_market")
+    if dom is not None:
+        signals.append(f'<div class="ph-sig"><b>{dom}d</b><span>on market</span></div>')
     metro = d.get("metro_distance_m")
     if metro is not None:
         signals.append(f'<div class="ph-sig"><b>{metro} m</b><span>to metro</span></div>')
@@ -110,6 +120,10 @@ def _card_html(d: dict) -> str:
         and "LIABILITY" not in b  # archetype shown as its own pill
     )
     url = _esc(d.get("url") or "#")
+
+    # Deal thesis: the actionable recommended-offer line — the decision worth paying for.
+    thesis = d.get("deal_thesis")
+    thesis_html = f'<div class="ph-thesis">💡 {_esc(thesis)}</div>' if thesis else ""
 
     # Photo header: a coloured gradient placeholder always shows (so the card never
     # looks empty), with the real listing photo layered on top when it loads.
@@ -140,6 +154,7 @@ def _card_html(d: dict) -> str:
     <div class="ph-hood">📍 {hood}</div>
     <div class="ph-specs">{"".join(specs)}</div>
     <div class="ph-signals">{"".join(signals)}</div>
+    {thesis_html}
     <div class="ph-card-foot">
       <div class="ph-badges">{badges}</div>
       <a class="ph-cta" href="{url}" target="_blank" rel="noopener">View listing ↗</a>

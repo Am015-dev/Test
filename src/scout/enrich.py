@@ -14,6 +14,7 @@ from datetime import datetime
 import requests
 
 from .config import Settings, get_settings
+from .finance import net_yield as _net_yield_after_costs
 from .models import Listing
 
 # Metro **Line 2 (red)** and **Line 3 (blue)** stations — the modern metro the strategy
@@ -286,4 +287,10 @@ def enrich_listing(
     listing.price_per_m2 = price_per_m2(listing.price, listing.area_m2)
     listing.est_monthly_rent = estimate_monthly_rent(listing, median_rent_per_m2)
     listing.gross_yield = gross_yield(listing.est_monthly_rent, listing.price)
+    # Net yield after Greek acquisition + holding costs and vacancy (finance.py) — the
+    # honest return an investor keeps. Fails soft to None (blank field) on missing rent.
+    annual_rent = listing.est_monthly_rent * 12 if listing.est_monthly_rent else None
+    listing.net_yield = _net_yield_after_costs(
+        listing.price, annual_rent, listing.area_m2, bool(listing.is_private_seller)
+    )
     return listing

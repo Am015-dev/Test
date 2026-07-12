@@ -59,12 +59,21 @@ class Listing(BaseModel):
     is_currently_rented: bool = False
     listed_rent: int | None = None  # if "currently rented for EUR X"
 
+    # The portal's own posting date (XE detail-page ``datePosted``). This is the
+    # listing's REAL market age, known on first sight — so days-on-market and the
+    # negotiation signal work from day one instead of only after the daily tracker has
+    # watched the listing for weeks.
+    listed_date: datetime | None = None
+
     # enriched (computed, not scraped)
     metro_distance_m: int | None = None
     nearest_metro: str | None = None
     price_per_m2: float | None = None
     est_monthly_rent: int | None = None
     gross_yield: float | None = None
+    # Net yield after Greek acquisition + holding costs and vacancy (finance.py). The
+    # honest headline return an investor actually keeps, versus the naive gross figure.
+    net_yield: float | None = None
 
     # Hedonic valuation (computed): the model's fair price given this property's own
     # attributes, and the gap to the asking price. value_gap_pct > 0 = priced below fair
@@ -135,11 +144,17 @@ class ListingRow(Base):
     is_currently_rented: Mapped[bool] = mapped_column(Boolean, default=False)
     listed_rent: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Portal posting date — the listing's real market age (see Listing.listed_date).
+    listed_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     metro_distance_m: Mapped[int | None] = mapped_column(Integer, nullable=True)
     nearest_metro: Mapped[str | None] = mapped_column(String(64), nullable=True)
     price_per_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
     est_monthly_rent: Mapped[int | None] = mapped_column(Integer, nullable=True)
     gross_yield: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Net yield after Greek costs + vacancy (see Listing.net_yield). Denormalized for
+    # fast UI reads and used by scoring's yield signal.
+    net_yield: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Hedonic fair-value estimate and gap to asking price (see Listing above).
     predicted_price: Mapped[int | None] = mapped_column(Integer, nullable=True)

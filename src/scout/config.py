@@ -169,6 +169,11 @@ class OpportunityFlag(BaseModel):
 class ScoringReference(BaseModel):
     yield_floor: float = 0.02
     yield_ceiling: float = 0.08
+    # Net-yield band (after Greek acquisition/holding costs + vacancy). Net yields run
+    # ~1.5-2 pts below gross, so they get their own, lower band: a ~1.5% net return scores
+    # ~0 and a ~5.5% net return scores a full 1.0. The yield signal prefers net over gross.
+    net_yield_floor: float = 0.015
+    net_yield_ceiling: float = 0.055
     max_price_drop_pct: float = 0.20
     # Newness normalization: a build/renovation year at/below the floor scores 0, at/above
     # the ceiling scores 1 (linear between). Unknown year is treated as neutral-low.
