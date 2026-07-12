@@ -53,3 +53,26 @@ def test_search_urls_fall_back_when_no_candidates(monkeypatch):
     monkeypatch.setattr(xemod.requests, "get", lambda *a, **k: _FakeResp([]))
     urls = XeCollector(Strategy()).search_urls(Strategy())
     assert urls and all("geo_place_id" not in u for u in urls)
+
+
+def _card(uuid: str) -> str:
+    return f'<div class="common-ad-body"><a href="/property/d/cat/{uuid}/area">x</a></div>'
+
+
+def test_collect_paginates_dedups_and_stops(monkeypatch):
+    """collect() walks pages, de-duplicates source_ids across them, and stops when a
+    page returns nothing (end of results)."""
+    pages = {
+        "base": _card("A") + _card("B"),
+        "base&page=2": _card("B") + _card("C"),  # B repeats -> deduped
+        "base&page=3": None,  # end of results -> stop
+    }
+    c = XeCollector(Strategy())
+    monkeypatch.setattr(c, "search_urls", lambda strat: ["base"])
+    monkeypatch.setattr(c, "_new_session", lambda: None)
+    monkeypatch.setattr(c, "_fetch_html", lambda sess, url, max_attempts=None: pages.get(url))
+    monkeypatch.setattr(c, "_enrich_from_detail", lambda sess, raw: None)
+    monkeypatch.setattr(xemod.time, "sleep", lambda *a, **k: None)
+
+    ids = [r["source_id"] for r in c.collect()]
+    assert ids == ["A", "B", "C"]
