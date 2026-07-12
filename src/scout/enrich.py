@@ -45,6 +45,23 @@ METRO_STATIONS: dict[str, tuple[float, float]] = {
     "Alimos": (37.9181, 23.7442),
     "Argyroupoli": (37.9030, 23.7455),
     "Elliniko": (37.8926, 23.7471),
+    # Line 2 (red) — north-west leg (Peristeri)
+    "Larissa Station": (37.9923, 23.7207),
+    "Attiki": (37.9995, 23.7228),
+    "Sepolia": (38.0026, 23.7140),
+    "Agios Antonios": (38.0061, 23.6997),
+    "Peristeri": (38.0129, 23.6958),
+    "Anthoupoli": (38.0171, 23.6909),
+    # Line 3 (blue) — west leg to Piraeus (Aigaleo / Nikaia / Korydallos / Piraeus)
+    "Kerameikos": (37.9787, 23.7110),
+    "Eleonas": (37.9878, 23.6934),
+    "Aigaleo": (37.9914, 23.6818),
+    "Agia Marina": (37.9969, 23.6671),
+    "Nikaia": (37.9658, 23.6473),
+    "Korydallos": (37.9771, 23.6504),
+    "Maniatika": (37.9596, 23.6398),
+    "Piraeus": (37.9481, 23.6423),
+    "Dimotiko Theatro": (37.9429, 23.6476),
 }
 
 EARTH_RADIUS_M = 6_371_000

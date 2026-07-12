@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     scrape_max_retries: int = 4
     scrape_retry_backoff_s: float = 8.0
     scrape_cache_ttl_minutes: int = 360
+    # How many result PAGES to walk per area (XE returns ~36 per page; `&page=N`
+    # advances). Deeper collection = more inventory; the crawl stops early when a page
+    # returns no new listings, so a small area never wastes requests.
+    scrape_max_pages: int = 4
 
     # Fetch each listing's detail page for the rich investment signals the search cards
     # lack (year built, energy class, bedrooms, full description → rent/rented/private).

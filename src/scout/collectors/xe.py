@@ -278,43 +278,43 @@ class XeCollector(Collector):
     def _has_cards(self, html: str) -> bool:
         return bool(HTMLParser(html).css_first(self.CARD_SELECTOR))
 
-    def _fetch_html(self, session: requests.Session, url: str) -> str | None:
+    def _fetch_html(
+        self, session: requests.Session, url: str, max_attempts: int | None = None
+    ) -> str | None:
         """Fetch a results page, retrying transient empty/blocked responses.
 
         XE rate-limits per IP: an over-frequent request returns a page with zero
         cards. We treat that as a transient block and retry with growing backoff;
         a successful page is cached so re-runs within the TTL don't re-hit XE.
+
+        ``max_attempts`` overrides the retry budget — pagination passes a small value so
+        a genuinely empty page *past the last result* (0 cards, not a block) ends the
+        walk quickly instead of burning the full backoff sequence on every area's tail.
         """
         settings = get_settings()
+        attempts = max_attempts or settings.scrape_max_retries
         cached = self._read_cache(url, settings.scrape_cache_ttl_minutes)
         if cached is not None and self._has_cards(cached):
             logger.info("xe: served %s from cache", url)
             return cached
 
-        for attempt in range(1, settings.scrape_max_retries + 1):
+        for attempt in range(1, attempts + 1):
             html = ""
             try:
                 resp = session.get(url, timeout=30)
                 resp.raise_for_status()
                 html = resp.text
             except requests.RequestException as exc:
-                logger.warning(
-                    "xe: fetch failed (attempt %d/%d): %s",
-                    attempt,
-                    settings.scrape_max_retries,
-                    exc,
-                )
+                logger.warning("xe: fetch failed (attempt %d/%d): %s", attempt, attempts, exc)
             if html and self._has_cards(html):
                 self._write_cache(url, html)
                 return html
             logger.warning(
-                "xe: empty/blocked page (attempt %d/%d) — backing off",
-                attempt,
-                settings.scrape_max_retries,
+                "xe: empty/blocked page (attempt %d/%d) — backing off", attempt, attempts
             )
-            if attempt < settings.scrape_max_retries:
+            if attempt < attempts:
                 time.sleep(settings.scrape_retry_backoff_s * attempt + random.uniform(0, 3))
-        logger.warning("xe: gave up on %s after %d attempts", url, settings.scrape_max_retries)
+        logger.warning("xe: gave up on %s after %d attempts", url, attempts)
         return None
 
     @staticmethod
@@ -403,29 +403,53 @@ class XeCollector(Collector):
         settings = get_settings()
         session = self._new_session()
         cap = settings.scrape_detail_max_per_area
-        for url in self.search_urls(self.strategy):
-            html = self._fetch_html(session, url)
-            if not html:
-                continue
-            cards = HTMLParser(html).css(self.CARD_SELECTOR)
-            logger.info("xe: %d cards on %s", len(cards), url)
+        for base_url in self.search_urls(self.strategy):
             enriched = 0
-            for card in cards:
-                try:
-                    raw = self.parse_card(card.html, base_url=url)
-                except Exception as exc:  # fail soft per card
-                    logger.warning("xe: card parse error: %s", exc)
-                    continue
-                if not raw:
-                    continue
-                if settings.scrape_detail_pages and raw.get("url") and (cap == 0 or enriched < cap):
-                    self._enrich_from_detail(session, raw)
-                    enriched += 1
-                    time.sleep(
-                        random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s)
-                    )
-                yield raw
-            time.sleep(random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s))
+            seen_ids: set[str] = set()
+            # Walk pages (XE ~36/page; `&page=N` advances) until a page adds nothing new
+            # or we hit the page cap — deeper collection, but no wasted requests.
+            for page in range(1, settings.scrape_max_pages + 1):
+                url = base_url if page == 1 else f"{base_url}&page={page}"
+                # Page 1 gets the full retry budget (transient blocks matter); later pages
+                # get a small budget so an empty page past the last result ends fast.
+                html = self._fetch_html(session, url, max_attempts=None if page == 1 else 2)
+                if not html:
+                    break
+                cards = HTMLParser(html).css(self.CARD_SELECTOR)
+                new_on_page = 0
+                for card in cards:
+                    try:
+                        raw = self.parse_card(card.html, base_url=url)
+                    except Exception as exc:  # fail soft per card
+                        logger.warning("xe: card parse error: %s", exc)
+                        continue
+                    if not raw:
+                        continue
+                    sid = raw.get("source_id")
+                    if sid and sid in seen_ids:
+                        continue  # already yielded on an earlier page
+                    if sid:
+                        seen_ids.add(sid)
+                    new_on_page += 1
+                    if (
+                        settings.scrape_detail_pages
+                        and raw.get("url")
+                        and (cap == 0 or enriched < cap)
+                    ):
+                        self._enrich_from_detail(session, raw)
+                        enriched += 1
+                        time.sleep(
+                            random.uniform(
+                                settings.scrape_request_min_s, settings.scrape_request_max_s
+                            )
+                        )
+                    yield raw
+                logger.info("xe: page %d -> %d new listings (%s)", page, new_on_page, base_url)
+                if new_on_page == 0:
+                    break  # exhausted this area's results
+                time.sleep(
+                    random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s)
+                )
 
     def parse_card(self, html: str, base_url: str) -> dict:
         tree = HTMLParser(html)

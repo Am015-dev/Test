@@ -23,6 +23,13 @@ search:
     - Argyroupoli
     - Elliniko
     - Nea Smyrni
+    # Line 2 (red) — north-west
+    - Peristeri
+    # Line 3 (blue) — west leg to Piraeus
+    - Aigaleo
+    - Nikaia
+    - Korydallos
+    - Piraeus
   neighborhoods: [Faneromeni, Ano Cholargos, Plateia Dimokratias, Lofos Tsakou]
   est_rent_eur_per_m2: 11.0   # baseline monthly rent estimate for gross-yield scoring
   price_min: 120000
