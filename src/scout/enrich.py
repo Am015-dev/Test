@@ -16,18 +16,35 @@ import requests
 from .config import Settings, get_settings
 from .models import Listing
 
-# Metro **Line 3** (blue) stations along the north-east corridor that serves the target
-# suburbs. Deliberately Line 3 only — the strategy counts the modern metro (Lines 2/3),
-# NOT the Line 1 / ISAP electric railway (Kifisia, Marousi, Nea Ionia), so listings out
-# there correctly fall outside the max-metro-distance filter.
+# Metro **Line 2 (red)** and **Line 3 (blue)** stations — the modern metro the strategy
+# counts. The Line 1 / ISAP electric railway (Kifisia, Marousi, Nea Ionia) is deliberately
+# excluded, so listings out there correctly fall outside the max-metro-distance filter.
+# Coordinates are OSM station nodes (~11 m precision), cross-checked against Wikipedia.
 METRO_STATIONS: dict[str, tuple[float, float]] = {
-    "Katehaki": (37.9869, 23.7776),
-    "Ethniki Amyna": (37.9946, 23.7856),
-    "Holargos": (37.9998, 23.7963),
-    "Nomismatokopio": (38.0058, 23.8090),
-    "Agia Paraskevi": (38.0166, 23.8229),
-    "Chalandri": (38.0216, 23.8186),
-    "Doukissis Plakentias": (38.0331, 23.8330),
+    # Line 3 (blue) — north-east corridor
+    "Evangelismos": (37.9761, 23.7471),
+    "Megaro Moussikis": (37.9790, 23.7530),
+    "Ambelokipi": (37.9872, 23.7577),
+    "Panormou": (37.9932, 23.7636),
+    "Katehaki": (37.9931, 23.7764),
+    "Ethniki Amyna": (37.9992, 23.7845),
+    "Holargos": (38.0049, 23.7947),
+    "Nomismatokopio": (38.0091, 23.8058),
+    "Agia Paraskevi": (38.0171, 23.8125),
+    "Chalandri": (38.0217, 23.8208),
+    "Doukissis Plakentias": (38.0240, 23.8326),
+    # Line 2 (red) — southern corridor
+    "Syntagma": (37.9755, 23.7357),
+    "Akropoli": (37.9689, 23.7295),
+    "Syngrou-Fix": (37.9646, 23.7268),
+    "Neos Kosmos": (37.9577, 23.7284),
+    "Agios Ioannis": (37.9564, 23.7347),
+    "Dafni": (37.9496, 23.7372),
+    "Agios Dimitrios": (37.9404, 23.7407),
+    "Ilioupoli": (37.9297, 23.7445),
+    "Alimos": (37.9181, 23.7442),
+    "Argyroupoli": (37.9030, 23.7455),
+    "Elliniko": (37.8926, 23.7471),
 }
 
 EARTH_RADIUS_M = 6_371_000

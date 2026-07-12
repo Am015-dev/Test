@@ -3,14 +3,26 @@
 
 search:
   municipality: Cholargos   # anchor area (XE geo_place_id); scraped first
-  # Northern suburbs on Metro LINE 3 (the modern metro) only — Line 1/ISAP suburbs
-  # (Kifisia, Marousi, Nea Ionia) and no-rail suburbs are deliberately excluded, since
-  # the thesis wants genuine metro proximity. The per-listing metro-distance filter is
-  # the real gate; these are the areas where listings can actually pass it.
+  # Municipalities on the MODERN metro (Lines 2 & 3) — the Line 1 / ISAP electric
+  # railway suburbs (Kifisia, Marousi, Nea Ionia) are deliberately excluded, since the
+  # thesis wants genuine metro proximity. The per-listing metro-distance filter is the
+  # real gate (station coords for both lines live in enrich.py); these are the areas
+  # where listings can actually pass it.
   areas:
+    # Line 3 (blue) — north-east corridor
     - Papagou
     - Agia Paraskevi
     - Chalandri
+    - Zografou
+    - Vrilissia
+    # Line 2 (red) — southern corridor
+    - Ilioupoli
+    - Agios Dimitrios
+    - Dafni
+    - Alimos
+    - Argyroupoli
+    - Elliniko
+    - Nea Smyrni
   neighborhoods: [Faneromeni, Ano Cholargos, Plateia Dimokratias, Lofos Tsakou]
   est_rent_eur_per_m2: 11.0   # baseline monthly rent estimate for gross-yield scoring
   price_min: 120000

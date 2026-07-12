@@ -17,7 +17,9 @@ over time, and surfaces the best opportunities in a Streamlit web app.
 - **Normalize** — every portal maps onto one canonical `Listing` schema.
 - **Dedup** — the same flat across portals collapses to one record (cheapest kept).
 - **Enrich** — €/m², geocoding (Nominatim, cached), walking distance to the nearest
-  Metro Line 3 station (OSRM with haversine×1.3 fallback), estimated rent, gross yield.
+  Metro **Line 2 / Line 3** station (OSRM with haversine×1.3 fallback), estimated rent,
+  gross yield. Coverage spans the metro-served municipalities on both modern lines (the
+  Line 1 / ISAP suburbs are deliberately excluded).
 - **Score** — pure, unit-tested engine driven entirely by `strategy.yaml`: hard
   filters (exclude floor ≤ 0, exclude > 600 m from metro) + weighted soft signals
   (yield, price-vs-median, price drop, currently-rented, private-seller) → 0–100.
