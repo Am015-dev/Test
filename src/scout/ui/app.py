@@ -26,6 +26,7 @@ import streamlit as st  # noqa: E402
 
 from scout import analytics, comps, finance  # noqa: E402
 from scout.config import Strategy, load_strategy, save_strategy  # noqa: E402
+from scout.regions import REGIONS  # noqa: E402
 from scout.scoring import (
     energy_class_score,
     energy_liability_multiplier,
@@ -565,6 +566,19 @@ def page_opportunities(listings: list[dict]) -> None:
     # Sidebar filters — defaults include everything so nothing hides silently.
     with st.sidebar:
         st.subheader("Filters")
+        # Region filter — the classic Attica grouping (Κέντρο / Βόρεια / Νότια / Δυτικά /
+        # Πειραιάς). Default = all regions present, so nothing hides until the user picks.
+        present_regions = [r for r in REGIONS if any(d.get("region") == r for d in eligible)]
+        chosen_regions = (
+            st.multiselect("Περιοχή / Region", present_regions, default=present_regions)
+            if present_regions
+            else []
+        )
+        near_metro_only = st.checkbox(
+            "🚇 Μόνο κοντά σε μετρό / Near metro only",
+            value=False,
+            help="Keep only listings within the metro distance below (Line 2/3).",
+        )
         prices = [d["price"] for d in eligible]
         pmin, pmax = min(prices), max(prices)
         price_range = (
@@ -589,13 +603,15 @@ def page_opportunities(listings: list[dict]) -> None:
         min_year = st.slider("Built/renovated after", 1950, 2025, 1950, step=5)
         new_only = st.checkbox("New builds only (≥ 2010)", value=False)
         include_unknown_year = st.checkbox("Include unknown build year", value=True)
-        max_metro = st.slider("Max metro distance (m)", 0, 2000, 2000, step=50)
+        max_metro = st.slider("Max metro distance (m)", 0, 5000, 5000, step=50)
         include_unknown_metro = st.checkbox("Include unknown metro distance", value=True)
 
     def _built_year(d: dict) -> int | None:
         return d.get("renovated_year") or d.get("year_built")
 
     def keep(d: dict) -> bool:
+        if chosen_regions and d.get("region") not in chosen_regions:
+            return False
         if not (price_range[0] <= d["price"] <= price_range[1]):
             return False
         if not (area_range[0] <= d["area_m2"] <= area_range[1]):
@@ -614,8 +630,15 @@ def page_opportunities(listings: list[dict]) -> None:
         elif yr < effective_min:
             return False
         if d["metro_distance_m"] is None:
-            return include_unknown_metro
-        return d["metro_distance_m"] <= max_metro
+            # "Near metro only" is a hard walk-to-metro requirement: an unlocatable
+            # listing can't prove it qualifies, so it's excluded when the toggle is on.
+            return include_unknown_metro and not near_metro_only
+        limit = (
+            min(max_metro, get_strategy().hard_filters.max_metro_distance_m)
+            if near_metro_only
+            else max_metro
+        )
+        return d["metro_distance_m"] <= limit
 
     rows = sorted([d for d in eligible if keep(d)], key=lambda d: d["score"], reverse=True)
 

@@ -62,6 +62,8 @@ def _card_html(d: dict) -> str:
     price = fmt.euro(d.get("price"))
     ppm2 = fmt.euro_per_m2(d.get("price_per_m2"))
     hood = _esc(d.get("neighborhood") or d.get("search_area") or "—")
+    region = d.get("region")
+    hood_full = f"{hood} · {_esc(region)}" if region else hood
 
     archetype = d.get("archetype") or "Standard"
     arch_cls = _ARCHETYPE_CLASS.get(archetype, "std")
@@ -151,7 +153,7 @@ def _card_html(d: dict) -> str:
       </div>
       <span class="ph-arch ph-arch-{arch_cls}">{_esc(archetype)}</span>
     </div>
-    <div class="ph-hood">📍 {hood}</div>
+    <div class="ph-hood">📍 {hood_full}</div>
     <div class="ph-specs">{"".join(specs)}</div>
     <div class="ph-signals">{"".join(signals)}</div>
     {thesis_html}

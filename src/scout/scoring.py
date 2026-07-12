@@ -137,6 +137,19 @@ def _undervaluation_signal(
     return _price_vs_median_signal(listing, median_ppm2)
 
 
+def _metro_proximity_signal(listing: Listing, strategy: Strategy) -> float:
+    """Walk-to-metro bonus, 0..1: at the station → 1.0, at/beyond the ceiling → 0 (linear).
+
+    Unknown distance → 0 (neutral, no bonus) rather than a penalty — a listing we couldn't
+    locate simply doesn't earn the proximity points; it isn't punished for missing data.
+    Replaces the old hard metro cutoff now that coverage spans all of Athens."""
+    metro = listing.metro_distance_m
+    if metro is None:
+        return 0.0
+    ceiling = max(strategy.scoring_reference.metro_distance_ceiling_m, 1)
+    return _clamp01(1.0 - metro / ceiling)
+
+
 def _price_drop_signal(listing: Listing, first_price: int | None, strategy: Strategy) -> float:
     if not first_price or first_price <= 0 or listing.price >= first_price:
         return 0.0
@@ -262,13 +275,9 @@ def score(
     # reports floor has every one of its listings wrongly excluded.
     if listing.floor is not None and listing.floor < strategy.hard_filters.min_floor:
         return _excluded(listing, "ground/low floor")
-    metro = listing.metro_distance_m
-    # Only exclude when we KNOW it's too far. Unknown distance (geocoding
-    # unavailable) must not silently drop the listing under a false "too far"
-    # reason — that empties the whole dashboard whenever geocoding hiccups. Such
-    # listings are kept and surfaced with metro shown as unknown for the user to verify.
-    if metro is not None and metro > strategy.hard_filters.max_metro_distance_m:
-        return _excluded(listing, "too far from metro")
+    # Metro distance is NO LONGER a hard cutoff: coverage now spans all of Athens and metro
+    # proximity is a weighted SIGNAL (below) plus an optional UI filter, so a great flat
+    # that happens to be far from Line 2/3 is ranked lower, not thrown away.
 
     # 2. Weighted, normalized signals.
     median_ppm2 = market_stats.price_per_m2_median_for(listing.neighborhood)
@@ -277,6 +286,7 @@ def score(
         "gross_yield": _yield_signal(listing, strategy),
         "newness": _newness_signal(listing, strategy),
         "energy_class": _energy_signal(listing),
+        "metro_proximity": _metro_proximity_signal(listing, strategy),
         "price_drop": _price_drop_signal(listing, first_price, strategy),
         "is_currently_rented": 1.0 if listing.is_currently_rented else 0.0,
         "is_private_seller": 1.0 if listing.is_private_seller else 0.0,
@@ -287,6 +297,7 @@ def score(
         "gross_yield": w.gross_yield,
         "newness": w.newness,
         "energy_class": w.energy_class,
+        "metro_proximity": w.metro_proximity,
         "price_drop": w.price_drop,
         "is_currently_rented": w.is_currently_rented,
         "is_private_seller": w.is_private_seller,

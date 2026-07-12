@@ -41,17 +41,22 @@ def test_missing_floor_is_not_excluded(strategy):
     assert not result.excluded
 
 
-def test_too_far_from_metro_is_excluded(strategy):
-    result = score(make_listing(metro_distance_m=900), _stats(), strategy)
-    assert result.excluded
-    assert result.exclusion_reason == "too far from metro"
+def test_far_from_metro_is_not_excluded_but_scores_lower(strategy):
+    """Metro distance is a SIGNAL now, not a cutoff (all-Athens coverage): a far listing
+    is kept and ranked, just with a lower metro-proximity contribution."""
+    near = score(make_listing(metro_distance_m=100), _stats(), strategy)
+    far = score(make_listing(metro_distance_m=3000), _stats(), strategy)
+    assert not near.excluded and not far.excluded
+    assert near.signals["metro_proximity"] > far.signals["metro_proximity"]
+    assert far.signals["metro_proximity"] == 0.0  # beyond the ceiling
+    assert near.score > far.score
 
 
 def test_missing_metro_distance_is_not_excluded(strategy):
-    """Unknown metro distance must not hard-exclude (would blank the dashboard on a
-    geocoding outage). It's kept and scored; the UI flags the distance as unknown."""
+    """Unknown metro distance must not exclude; it simply earns no proximity bonus."""
     result = score(make_listing(metro_distance_m=None), _stats(), strategy)
     assert not result.excluded
+    assert result.signals["metro_proximity"] == 0.0
 
 
 def test_passing_listing_scores_in_range(strategy):

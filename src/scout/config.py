@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     # How many result PAGES to walk per area (XE returns ~36 per page; `&page=N`
     # advances). Deeper collection = more inventory; the crawl stops early when a page
     # returns no new listings, so a small area never wastes requests.
-    scrape_max_pages: int = 4
+    scrape_max_pages: int = 20
 
     # Fetch each listing's detail page for the rich investment signals the search cards
     # lack (year built, energy class, bedrooms, full description → rent/rented/private).
@@ -142,13 +142,16 @@ class Weights(BaseModel):
     # an efficient, well-built property near metro ranks above an old energy-H flat that
     # merely looks "cheap for its (poor) attributes". On top of these weights, the score
     # is further scaled down for energy-liability stock (see energy_liability_floor).
-    newness: float = 20  # build/renovation year — new stock rents better, costs less to hold
-    gross_yield: float = 22  # realistic rental income (from real rent comps)
-    energy_class: float = 18  # A/B rent higher and are future-proof vs EU efficiency rules
-    undervaluation: float = 16  # priced below hedonic fair value (secondary to quality now)
-    price_drop: float = 8
-    is_currently_rented: float = 8
-    is_private_seller: float = 8
+    newness: float = 18  # build/renovation year — new stock rents better, costs less to hold
+    gross_yield: float = 20  # realistic rental income (net yield preferred when known)
+    energy_class: float = 16  # A/B rent higher and are future-proof vs EU efficiency rules
+    undervaluation: float = 15  # priced below hedonic fair value (secondary to quality now)
+    # Walk-to-metro bonus. Replaces the old hard metro cutoff now that coverage spans all
+    # of Athens: proximity to a Line 2/3 station lifts the score instead of gating entry.
+    metro_proximity: float = 14
+    price_drop: float = 6
+    is_currently_rented: float = 6
+    is_private_seller: float = 5
 
     def total(self) -> float:
         return (
@@ -156,6 +159,7 @@ class Weights(BaseModel):
             + self.gross_yield
             + self.newness
             + self.energy_class
+            + self.metro_proximity
             + self.price_drop
             + self.is_currently_rented
             + self.is_private_seller
@@ -174,6 +178,8 @@ class ScoringReference(BaseModel):
     # ~0 and a ~5.5% net return scores a full 1.0. The yield signal prefers net over gross.
     net_yield_floor: float = 0.015
     net_yield_ceiling: float = 0.055
+    # Metro-proximity signal: 0 m scores 1.0, at/beyond this ceiling scores 0 (linear).
+    metro_distance_ceiling_m: int = 1200
     max_price_drop_pct: float = 0.20
     # Newness normalization: a build/renovation year at/below the floor scores 0, at/above
     # the ceiling scores 1 (linear between). Unknown year is treated as neutral-low.

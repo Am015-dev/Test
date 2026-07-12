@@ -14,6 +14,7 @@ from sqlalchemy import select
 from ..db import session_scope
 from ..deal import advise as _advise_deal
 from ..models import HealthReportRow, ListingRow, PriceHistoryRow
+from ..regions import region_of
 from ..scoring import investment_archetype
 
 
@@ -62,6 +63,7 @@ def _row_to_dict(row: ListingRow, first_price: int | None) -> dict:
         "neighborhood": row.neighborhood,
         "address": row.address,
         "search_area": row.search_area,
+        "region": region_of(row.search_area),
         "lat": row.lat,
         "lng": row.lng,
         "is_private_seller": row.is_private_seller,
