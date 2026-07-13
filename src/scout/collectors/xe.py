@@ -397,7 +397,9 @@ class XeCollector(Collector):
                 logger.warning("xe: detail fetch failed (%d/2) for %s: %s", attempt, url, exc)
             if html and self._has_jsonld(html):
                 self._write_cache(url, html)
+                self._register_ok()  # clean detail fetch → ease the adaptive throttle
                 return html
+            self._register_block()  # a 403 here too → widen subsequent pauses
             if attempt < 2:
                 time.sleep(settings.scrape_retry_backoff_s)
         return None

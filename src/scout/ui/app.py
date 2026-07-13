@@ -694,7 +694,13 @@ def page_opportunities(listings: list[dict]) -> None:
         )
         return d["metro_distance_m"] <= limit
 
-    rows = sorted([d for d in eligible if keep(d)], key=lambda d: d["score"], reverse=True)
+    # Rank by score, but break ties toward listings we fully KNOW — a complete listing is a
+    # more actionable pick than a same-score card-only one built on imputations.
+    rows = sorted(
+        [d for d in eligible if keep(d)],
+        key=lambda d: (d["score"], d.get("data_complete", False)),
+        reverse=True,
+    )
 
     st.markdown(f"**{len(rows)}** opportunities match your filters (of {len(eligible)} eligible)")
     if rows:

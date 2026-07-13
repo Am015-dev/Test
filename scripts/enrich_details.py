@@ -108,6 +108,9 @@ def enrich(limit: int, rescore: bool = True) -> dict:
             lat, lng = parse_detail_coordinates(html)
             if lat is not None and lng is not None:
                 row.lat, row.lng = lat, lng
+                # A detail-page coordinate is the listing's real point — mark it EXACT so
+                # the metro signal + map treat it precisely (a card-only row is "approx").
+                row.location_precision = "exact"
                 filled["coords"] += 1
             desc = detail.get("description")
             if desc:
