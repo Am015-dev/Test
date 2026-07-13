@@ -3,6 +3,15 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 4 — real rent comps (loop-selected: audit top gap was real_rent 0%)
+- New `rent_comp` table + persistence; `rescore_all` applies real per-area/hood rent; new
+  `scrape_rent_comps.py`; `run()` persists comps for the cron.
+- Swept 37 areas → 159 comp rows (9-18 €/m²/mo; Kolonaki 18.1 vs west 9.0).
+- **real_rent 0% → 100%**; net yield now a REAL, independent signal (median 3.2%), no longer
+  a double-count of €/m². Audit's next target auto-shifted to `year_or_reno` (more depth).
+- Sellability ~47 → ~50. Blockers now: sold prices (data partnership), deeper attribute
+  coverage (detail-enrich more), 2nd portal.
+
 ## Cycle 3 — depth recovery + autonomy tooling
 - Fixed: `enrich_details` now flags detail coords `location_precision="exact"` (was left
   approx) — **data-complete 8% → 32%, exact-location 11% → 37%, top-100 complete 32 → 95**.

@@ -12,7 +12,7 @@ we can't get** (sold prices, owner phone numbers) — those are go-to-market, no
 1. ✅ Flag detail-page coordinates as `location_precision="exact"` (was silently left approx). ★4 S
 2. ☐ Cron `enrich_details.py` daily (recover energy/year/coords for the top-scored backlog). ★5 S
 3. ☐ Retry the ~12 rate-limited/blocked areas + finish the full 37-area sweep. ★4 M
-4. ☐ Rental sweep per region → real €/m²/month comps (kill the flat imputed rent). ★5 M
+4. ✅ Rental sweep per region → real €/m²/month comps (rent now 100% real). ★5 M
 5. ☐ Parse street address from detail JSON-LD → geocode → sub-listing precision. ★3 M
 6. ☐ Extract `image_url` for all detailed listings (card carousel / og:image). ★2 S
 7. ☐ Parse more fields: heating type, parking, balcony m², orientation, condition. ★3 M
@@ -29,7 +29,7 @@ we can't get** (sold prices, owner phone numbers) — those are go-to-market, no
 16. ☐ Bootstrap prediction intervals (honest ± per listing, not one area band). ★3 M
 17. ☐ Recency-weight comps (a 200-day-old asking is weaker evidence). ★3 M
 18. ☐ Outlier detection on price/area before fitting (garbage in → garbage fit). ★3 S
-19. ☐ Rent model per area × size-band (replaces the flat baseline; pairs with #4). ★4 M
+19. ◐ Rent model per area × size-band (area+hood medians live; size-band TODO). ★4 M
 20. ☐ Calibrate `energy_liability_floor` / band ceilings from the data, not hand-set. ★2 M
 21. ☐ "Own-use" vs "investment" scoring modes (different weightings). ★2 M
 22. ☐ Net-yield sensitivity range (vacancy/rate/cost bands), not a point figure. ★3 S
