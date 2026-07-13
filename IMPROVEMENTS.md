@@ -10,7 +10,7 @@ we can't get** (sold prices, owner phone numbers) — those are go-to-market, no
 
 ## A. Data depth & coverage — the biggest lever
 1. ✅ Flag detail-page coordinates as `location_precision="exact"` (was silently left approx). ★4 S
-2. ☐ Cron `enrich_details.py` daily (recover energy/year/coords for the top-scored backlog). ★5 S
+2. ✅ Daily operator (scripts/daily.py) enriches + refreshes rent + rescores + alerts. ★5 S
 3. ☐ Retry the ~12 rate-limited/blocked areas + finish the full 37-area sweep. ★4 M
 4. ✅ Rental sweep per region → real €/m²/month comps (rent now 100% real). ★5 M
 5. ☐ Parse street address from detail JSON-LD → geocode → sub-listing precision. ★3 M
@@ -51,7 +51,7 @@ we can't get** (sold prices, owner phone numbers) — those are go-to-market, no
 ## D. Product / UX / trust
 35. ✅ Per-listing "limited data — missing: …" badge. ★3 S
 36. ✅ Coverage/freshness panel per region. ★2 S
-37. ☐ Alerts (email/telegram) actually wired + a send test in CI. ★4 M
+37. ◐ Alerts wired into the daily operator (fires when a sink is configured). ★4 M
 38. ✅ Saved searches (table + CRUD + matching + UI page + alerts). ★4 M
 39. ◐ Score exposes signal_known (real vs unknown); UI breakdown TODO. ★3 S
 40. ☐ Per-field source attribution (scraped vs imputed) on the detail page. ★2 S
@@ -65,8 +65,8 @@ we can't get** (sold prices, owner phone numbers) — those are go-to-market, no
 46. ✅ Scrape-health monitor (stale/thin areas) — scrape_health.py. ★3 S
 47. ☐ Incremental scrape (skip unchanged listings by hash) to go deeper cheaper. ★3 M
 48. ☐ Real migrations framework (Alembic) instead of ad-hoc `_ensure_columns`. ★2 M
-49. ☐ CI (GitHub Actions) running the gate (pytest + ruff + black) on every push. ★3 S
-50. ☐ Structured logging + run metrics (listings/hr, block rate) for observability. ★2 M
+49. ✅ CI (.github/workflows/ci.yml) runs ruff+black+pytest on push. ★3 S
+50. ◐ Daily run emits metrics (listings, complete %, top gap). ★2 M
 
 ---
 The **data-quality-audit** skill measures A/D state each cycle; the **improvement-loop**

@@ -3,6 +3,15 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 7-8 — decision calculators + operational readiness (autonomous)
+- Cycle 7: recency-weighted comps (weighted ridge), renovation-ROI, Greek rental tax, exit-value,
+  scrape-health monitor. Corrected the "needs weeks" claim (days-on-market is 100% live from
+  datePosted; verified XE has no per-listing price history).
+- Cycle 8: scripts/daily.py — unattended operator (enrich → rent refresh → rescore → health →
+  saved-search alerts → metrics), CI workflow, run metrics. Proven end-to-end network-free:
+  7,664 listings, 48% complete, health caught a thin area. This is the operational loop that
+  makes it a running product (the €19/mo readiness piece). 235 tests pass.
+
 ## Cycle 6 — recurring-value batch (goal: justify €19/mo subscription)
 - Saved searches: SavedSearchRow + saved_search.py (CRUD + pure matching) + a Saved-searches
   UI page — the persisted investor mandate a monthly sub actually pays for.
