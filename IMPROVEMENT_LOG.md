@@ -3,6 +3,22 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 9 — visual-QA truth pass (look at the rendered product, then fix)
+Adopted the visual-qa discipline: launch the app, screenshot every page, fix what the
+BUYER sees, re-screenshot to prove it. Root-caused and fixed, each verified by screenshot:
+- **Cards looked broken/unfinished** — footer rendered as raw HTML (blank-line ended
+  Streamlit's HTML block); collapse inter-tag whitespace. Empty 96px photo blocks on the
+  ~8,300 photo-less listings → thin archetype accent bar; real photos (811) keep full header.
+- **Duplicate listings** — XE relistings (same flat, fresh id, reset DOM clock) showed as
+  twin cards. load_listings collapses them to one richest-data card, anchors DOM to the
+  oldest posting, and surfaces "🔁 RELISTED" as a motivated-seller tell. 285 dupes collapsed.
+- **"0 m to metro" on ~2,000 listings** (provably false) — municipality centroids had been
+  set to the metro-STATION coordinate. Replaced 16 with real town centres; guarded degenerate
+  OSRM zeros. recompute_metro relocated 2,151 listings, fixed 8,070 distances, 0 zeros remain.
+- **Deals page red "1" score chips** on genuine leads — the page ranks by motivation, so the
+  big chip now shows the motivation score (grade chip still carries quality).
+- 243 tests pass (added card-render, relist-collapse, metro-distance regression guards).
+
 ## Cycle 7-8 — decision calculators + operational readiness (autonomous)
 - Cycle 7: recency-weighted comps (weighted ridge), renovation-ROI, Greek rental tax, exit-value,
   scrape-health monitor. Corrected the "needs weeks" claim (days-on-market is 100% live from
