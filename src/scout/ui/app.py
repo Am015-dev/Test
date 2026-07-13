@@ -725,7 +725,11 @@ def page_today(listings: list[dict]) -> None:
     if not today:
         st.info("Nothing new in the last 24 h. See **Opportunities** for the full list.")
         return
-    components.listing_grid(today)
+    st.markdown(f"**{len(today)}** new in the last 24 h.")
+    cap = 60
+    components.listing_grid(today[:cap])
+    if len(today) > cap:
+        st.caption(f"Showing the top {cap} by score.")
 
 
 def page_map(listings: list[dict]) -> None:
@@ -789,7 +793,7 @@ def page_map(listings: list[dict]) -> None:
         )
         st.pydeck_chart(
             pdk.Deck(
-                map_style=None,
+                map_style="light",  # token-free Carto basemap so pins sit on real streets
                 initial_view_state=pdk.ViewState(
                     latitude=center["lat"].mean(), longitude=center["lon"].mean(), zoom=13
                 ),
@@ -1206,24 +1210,17 @@ def page_neighborhoods(listings: list[dict]) -> None:
         {
             "Neighborhood": s["neighborhood"],
             "Listings": s["count"],
-            "Median price": s["median_price"],
-            "Median €/m²": s["median_ppm2"],
-            "Median yield": s["median_yield_pct"],
+            "Median price": fmt.euro(s["median_price"]),
+            "Median €/m²": fmt.euro_per_m2(s["median_ppm2"]),
+            "Median yield": (
+                f"{s['median_yield_pct']:.1f}%" if s["median_yield_pct"] is not None else "—"
+            ),
             "Opportunities": s["opportunities"],
             "Rented": s["rented"],
         }
         for s in stats
     ]
-    st.dataframe(
-        pd.DataFrame(records),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Median price": st.column_config.NumberColumn("Median price", format="€%d"),
-            "Median €/m²": st.column_config.NumberColumn("Median €/m²", format="€%.0f"),
-            "Median yield": st.column_config.NumberColumn("Median yield", format="%.1f%%"),
-        },
-    )
+    st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
 
     st.markdown("#### 📈 Market price index (monthly median)")
     idx = analytics.market_price_index(get_all_price_history())
