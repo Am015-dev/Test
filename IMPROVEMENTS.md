@@ -25,44 +25,44 @@ we can't get** (sold prices, owner phone numbers) — those are go-to-market, no
 14. ☐ Deduplicate/junk-filter spam & agent-farm duplicate listings. ★3 M
 
 ## B. Valuation & scoring quality
-15. ☐ Ridge/regularized regression to stabilise small-area hedonic fits. ★3 M
+15. ✅ Ridge regression stabilises small-area hedonic fits. ★3 M
 16. ☐ Bootstrap prediction intervals (honest ± per listing, not one area band). ★3 M
-17. ☐ Recency-weight comps (a 200-day-old asking is weaker evidence). ★3 M
-18. ☐ Outlier detection on price/area before fitting (garbage in → garbage fit). ★3 S
+17. ✅ Recency-weighted comps (120-day half-life) in the fit. ★3 M
+18. ✅ €/m² outlier trimming (MAD band) before fitting. ★3 S
 19. ◐ Rent model per area × size-band (area+hood medians live; size-band TODO). ★4 M
 20. ☐ Calibrate `energy_liability_floor` / band ceilings from the data, not hand-set. ★2 M
 21. ☐ "Own-use" vs "investment" scoring modes (different weightings). ★2 M
-22. ☐ Net-yield sensitivity range (vacancy/rate/cost bands), not a point figure. ★3 S
+22. ✅ Net-yield sensitivity range (pessimistic/base/optimistic). ★3 S
 23. ☐ Detect & down-rank listings whose area/price/energy are internally inconsistent. ★2 S
-24. ☐ Confidence-weighted ranking: a complete listing outranks a same-score card-only one. ★4 S
+24. ✅ Ranking tie-breaks toward complete data; per-listing confidence score. ★4 S
 
 ## C. Decision tools (value a buyer pays for)
 25. ◐ Mortgage cash-on-cash one-liner (done) → interactive slider (deposit/rate/term). ★3 S
-26. ☐ Break-even & payback-period per listing. ★3 S
+26. ✅ Break-even rent + unlevered payback per listing. ★3 S
 27. ☐ Sensitivity table (rate × vacancy → net yield / cashflow). ★2 M
 28. ☐ Portfolio compare view (shortlist several, rank side-by-side). ★3 M
 29. ☐ Neighborhood price-trend index over time (from `price_history`). ★3 M
-30. ☐ Rent-vs-buy calculator per area. ★2 M
-31. ☐ Explicit Greek tax breakdown (ENFIA, rental income tax) in the net figure. ★2 S
-32. ☐ Renovation-ROI estimator (pairs with the EPBD capex flag). ★3 M
-33. ☐ Exit-value projection from area trend + liquidity. ★2 M
+30. ✅ Rent-vs-buy monthly calculator. ★2 M
+31. ✅ Greek rental-income tax (progressive) surfaced on the detail page. ★2 S
+32. ✅ Renovation-ROI estimator (capex vs rent uplift), pairs with EPBD. ★3 M
+33. ✅ Exit-value projection from the area €/m² trend. ★2 M
 34. ☐ One-page PDF per listing (the deliverable an agent hands a client). ★3 M
 
 ## D. Product / UX / trust
 35. ✅ Per-listing "limited data — missing: …" badge. ★3 S
 36. ✅ Coverage/freshness panel per region. ★2 S
 37. ☐ Alerts (email/telegram) actually wired + a send test in CI. ★4 M
-38. ☐ Saved searches persisted in a table (area/budget/yield mandate). ★4 M
-39. ☐ Full "why this score" per-listing breakdown (known vs unknown signals). ★3 S
+38. ✅ Saved searches (table + CRUD + matching + UI page + alerts). ★4 M
+39. ◐ Score exposes signal_known (real vs unknown); UI breakdown TODO. ★3 S
 40. ☐ Per-field source attribution (scraped vs imputed) on the detail page. ★2 S
 41. ☐ Strategy/onboarding wizard for a new investor. ★2 M
 42. ☐ Mobile-responsive card grid. ★2 M
-43. ☐ Watchlist with price-drop notifications. ★3 S
+43. ◐ Watchlist price-cut section in the digest. ★3 S
 44. ☐ Multi-user auth (SaaS multi-tenant) — only once single-user value is proven. ★2 L
 
 ## E. Infra / ops / reliability / autonomy
 45. ◐ Adaptive throttle (results done) → extend to detail fetches + persist learned rate. ★3 S
-46. ☐ Scrape-health monitor + alert when an area silently returns nothing. ★3 S
+46. ✅ Scrape-health monitor (stale/thin areas) — scrape_health.py. ★3 S
 47. ☐ Incremental scrape (skip unchanged listings by hash) to go deeper cheaper. ★3 M
 48. ☐ Real migrations framework (Alembic) instead of ad-hoc `_ensure_columns`. ★2 M
 49. ☐ CI (GitHub Actions) running the gate (pytest + ruff + black) on every push. ★3 S

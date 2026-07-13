@@ -34,6 +34,9 @@ _MIN_CV_TRAIN = 18
 # Ridge penalty (Tikhonov). Small — just enough to stabilise collinear/near-constant feature
 # columns without materially biasing a well-conditioned fit.
 _RIDGE_LAMBDA = 0.05
+# Recency half-life (days): an asking observed this many days ago counts half as much in the
+# fit as a fresh one. Missing posting date → neutral weight 1.0.
+_RECENCY_HALFLIFE_DAYS = 120.0
 # Clamp the reported gap so one wild prediction can't dominate the score.
 _MAX_ABS_GAP = 0.6
 
@@ -190,14 +193,25 @@ def _build_model(rows: list[Listing]) -> tuple[ValuationModel, np.ndarray, np.nd
     areas = sorted({r.search_area for r in rows if r.search_area})
     model = ValuationModel(beta=None, medians=medians, areas=areas, ref_year=ref_year)
 
-    feats, targets = [], []
+    # Recency weights: an asking price posted long ago is weaker evidence of TODAY's market,
+    # so it counts less in the fit. Half-life ~120 days; a listing with no posting date gets a
+    # neutral weight of 1.0 (never penalised for missing data).
+    now = datetime.utcnow()
+    feats, targets, weights = [], [], []
     for r in rows:
         row = model._features(r)
-        if row is not None:
-            feats.append(row)
-            targets.append(math.log(r.price))
+        if row is None:
+            continue
+        feats.append(row)
+        targets.append(math.log(r.price))
+        if r.listed_date is not None:
+            age_days = max((now - r.listed_date).days, 0)
+            weights.append(0.5 ** (age_days / _RECENCY_HALFLIFE_DAYS))
+        else:
+            weights.append(1.0)
     x = np.array(feats)
     y = np.array(targets)
+    w = np.array(weights)
     # Ridge (Tikhonov) instead of plain least squares: a tiny penalty on the non-intercept
     # coefficients stabilises the fit where features are collinear or near-constant — exactly
     # the card-only submarkets where most attributes are median-imputed and OLS min-norm
@@ -205,7 +219,9 @@ def _build_model(rows: list[Listing]) -> tuple[ValuationModel, np.ndarray, np.nd
     try:
         reg = _RIDGE_LAMBDA * np.eye(x.shape[1])
         reg[0, 0] = 0.0
-        beta = np.linalg.solve(x.T @ x + reg, x.T @ y)
+        # Weighted ridge: (Xᵀ W X + λR) β = Xᵀ W y, with W the diagonal recency weights.
+        xtw = x.T * w
+        beta = np.linalg.solve(xtw @ x + reg, xtw @ y)
     except np.linalg.LinAlgError:
         beta, *_ = np.linalg.lstsq(x, y, rcond=None)
     model.beta = beta

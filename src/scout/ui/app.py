@@ -862,6 +862,19 @@ def _scenarios_block(d: dict) -> None:
     pb = investment.payback_years(price, annual, area, priv)
     if pb:
         c2[2].metric("Payback (unlevered)", f"~{pb:.0f} yrs")
+    tax = investment.greek_rental_tax(annual)
+    if tax:
+        st.caption(
+            f"🧾 Greek rental-income tax ≈ **{fmt.euro(tax['annual_tax'])}/yr** "
+            f"({tax['effective_rate'] * 100:.0f}% effective) — inside the net figures above."
+        )
+    reno = investment.renovation_roi(d.get("energy_class"), area, annual)
+    if reno:
+        st.caption(
+            f"🔧 Retrofit case: ~{fmt.euro(reno['capex'])} capex → "
+            f"+{fmt.euro(reno['annual_rent_uplift'])}/yr rent "
+            f"({reno['roi_pct'] * 100:.0f}% ROI, ~{reno['payback_years']:.0f}yr payback)."
+        )
     if d.get("rent_estimated"):
         st.caption(
             "_Rent is an area estimate — treat these as indicative until a real comp lands._"

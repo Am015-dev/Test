@@ -168,3 +168,65 @@ def deal_grade(
         grade = "B" if grade == "A" else "C"
         reasons.append("capped — incomplete data")
     return DealGrade(grade=grade, rationale=", ".join(reasons) or "limited signals")
+
+
+def renovation_roi(
+    energy_class: str | None,
+    area_m2: float | None,
+    annual_rent: float | None,
+    rent_uplift_pct: float = 0.12,
+) -> dict | None:
+    """For an EPBD-liability flat (E/F/G), the rough return on funding the retrofit: the
+    indicative capex vs. the annual rent uplift a modern, efficient flat commands. Pairs with
+    epbd.epbd_flag. Returns None when there's no liability or no rent to uplift."""
+    from .epbd import epbd_flag
+
+    flag = epbd_flag(energy_class, area_m2)
+    if not flag.at_risk or not flag.est_capex or not annual_rent or annual_rent <= 0:
+        return None
+    annual_uplift = annual_rent * rent_uplift_pct
+    payback = flag.est_capex / annual_uplift if annual_uplift else None
+    return {
+        "capex": flag.est_capex,
+        "annual_rent_uplift": int(round(annual_uplift)),
+        "roi_pct": round(annual_uplift / flag.est_capex, 3),
+        "payback_years": round(payback, 1) if payback else None,
+    }
+
+
+# Greek rental-income tax brackets (individuals): 15% to €12k, 35% to €35k, 45% above.
+_TAX_BRACKETS = ((12_000, 0.15), (35_000, 0.35), (float("inf"), 0.45))
+
+
+def greek_rental_tax(annual_rent: float | None) -> dict | None:
+    """Progressive Greek tax on gross annual rental income, with the effective rate — the
+    line item investors most often forget when they eyeball 'yield'."""
+    if not annual_rent or annual_rent <= 0:
+        return None
+    tax, lo = 0.0, 0.0
+    for hi, rate in _TAX_BRACKETS:
+        if annual_rent <= lo:
+            break
+        band = min(annual_rent, hi) - lo
+        tax += band * rate
+        lo = hi
+    return {"annual_tax": int(round(tax)), "effective_rate": round(tax / annual_rent, 3)}
+
+
+def exit_value(
+    price: int,
+    area_median_ppm2_trend_pct: float | None,
+    hold_years: int = 5,
+) -> dict | None:
+    """A simple exit projection: compound the area's €/m² trend over the hold period. Honest
+    about being a projection off a thin trend — a range, not a promise. None without a trend."""
+    if area_median_ppm2_trend_pct is None:
+        return None
+    factor = (1 + area_median_ppm2_trend_pct) ** hold_years
+    projected = int(round(price * factor))
+    return {
+        "hold_years": hold_years,
+        "annual_trend_pct": round(area_median_ppm2_trend_pct, 4),
+        "projected_value": projected,
+        "total_gain_pct": round(factor - 1, 3),
+    }

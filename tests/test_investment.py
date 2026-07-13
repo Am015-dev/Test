@@ -67,3 +67,43 @@ def test_listing_confidence_scales_with_known_fields():
     )
     assert listing_confidence(full) == 100
     assert listing_confidence(bare) == 0
+
+
+def test_renovation_roi_for_liability():
+    from scout.investment import renovation_roi
+
+    r = renovation_roi("G", area_m2=80.0, annual_rent=9_600)
+    assert r and r["capex"] > 0 and r["roi_pct"] > 0
+    assert renovation_roi("A", 80.0, 9_600) is None  # no liability → no reno case
+
+
+def test_greek_rental_tax_progressive():
+    from scout.investment import greek_rental_tax
+
+    t = greek_rental_tax(20_000)  # 12k@15% + 8k@35% = 1800 + 2800 = 4600
+    assert t["annual_tax"] == 4600
+    assert 0.22 < t["effective_rate"] < 0.24
+
+
+def test_exit_value_projection():
+    from scout.investment import exit_value
+
+    e = exit_value(200_000, 0.03, hold_years=5)
+    assert e and e["projected_value"] > 200_000
+    assert exit_value(200_000, None) is None
+
+
+def test_scrape_health_flags_stale_and_thin():
+    from datetime import datetime, timedelta
+
+    from scout.scrape_health import check
+
+    now = datetime.utcnow()
+    fresh = [{"search_area": "Big", "last_seen": now} for _ in range(30)]
+    stale = [{"search_area": "Old", "last_seen": now - timedelta(hours=100)} for _ in range(30)]
+    thin = [{"search_area": "Thin", "last_seen": now}]
+    r = check(fresh + stale + thin)
+    assert not r["healthy"]
+    assert any("Old" in i for i in r["issues"])
+    assert any("Thin" in i for i in r["issues"])
+    assert r["areas"]["Big"]["stale"] is False
