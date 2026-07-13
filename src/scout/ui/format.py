@@ -52,6 +52,8 @@ def badges(row: dict) -> list[str]:
         out.append("🆕 NEW")
     if row.get("price_dropped"):
         out.append("📉 PRICE ↓")
+    if (row.get("relist_count") or 0) > 1:
+        out.append("🔁 RELISTED")
     if row.get("is_opportunity"):
         out.append("💎 OPPORTUNITY")
     if row.get("is_private_seller"):

@@ -324,6 +324,9 @@ footer {{ visibility: hidden; height: 0; }}
 .ph-photo-liability {{ background: linear-gradient(135deg, #B91C1C, #F87171); }}
 .ph-photo-dated, .ph-photo-std {{ background: linear-gradient(135deg, #64748B, #94A3B8); }}
 .ph-photo img {{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }}
+/* No-photo header: a thin archetype-coloured accent bar so the card reads finished
+   without a big empty image block (most card-only listings have no photo). */
+.ph-accent {{ display: block; height: 6px; width: 100%; }}
 .ph-card-head {{ display: flex; align-items: center; gap: 14px; }}
 .ph-score {{
     flex: 0 0 auto; width: 52px; height: 52px; border-radius: 14px;

@@ -184,8 +184,75 @@ def _cut_counts(session, ids: list[int]) -> dict[int, int]:
     return out
 
 
-def load_listings(include_excluded: bool = True, only_active: bool = True) -> list[dict]:
-    """Load all listings as dicts, annotated with first_price / price_dropped / is_new."""
+def _relist_signature(d: dict):
+    """Strong same-flat key, or None when the row is too sparse to safely collapse."""
+    price = d.get("price")
+    area = d.get("area_m2")
+    if not price or not area:  # need both to be confident two rows are one flat
+        return None
+    return (
+        d.get("source"),
+        (d.get("neighborhood") or "").strip().lower(),
+        int(price),
+        round(float(area)),
+        d.get("floor"),
+        d.get("bedrooms"),
+    )
+
+
+def _collapse_relistings(rows: list[dict]) -> list[dict]:
+    """Collapse same-flat relistings into one card.
+
+    XE issues a fresh listing id when an owner re-posts the same flat, which resets the
+    portal's days-on-market clock — a distress tell, not two flats. Two active rows with
+    the same source, neighborhood, price, area, floor and bedrooms are almost certainly
+    the same property, and showing both twice reads as junk data. We keep ONE
+    representative — the richest-data record — but anchor its days-on-market to the
+    EARLIEST posting (the flat has really been trying to sell that long) and expose a
+    ``relist_count`` so the UI can treat repeats as a motivated-seller signal instead of
+    silently double-counting inventory.
+    """
+    groups: dict = {}
+    passthrough: list[dict] = []
+    for d in rows:
+        sig = _relist_signature(d)
+        if sig is None:
+            passthrough.append(d)
+        else:
+            groups.setdefault(sig, []).append(d)
+
+    out = list(passthrough)
+    for members in groups.values():
+        if len(members) == 1:
+            out.append(members[0])
+            continue
+        # Representative = fewest missing fields, then highest data confidence.
+        rep = min(
+            members,
+            key=lambda m: (len(m.get("data_missing") or []), -(m.get("data_confidence") or 0)),
+        )
+        rep = dict(rep)
+        doms = [m.get("days_on_market") for m in members if m.get("days_on_market") is not None]
+        if doms:
+            rep["days_on_market"] = max(doms)  # oldest posting = true time on market
+        dates = [m.get("listed_date") for m in members if m.get("listed_date") is not None]
+        if dates:
+            rep["listed_date"] = min(dates)
+        rep["relist_count"] = len(members)
+        out.append(rep)
+    return out
+
+
+def load_listings(
+    include_excluded: bool = True,
+    only_active: bool = True,
+    collapse_relistings: bool = True,
+) -> list[dict]:
+    """Load all listings as dicts, annotated with first_price / price_dropped / is_new.
+
+    ``collapse_relistings`` merges same-flat re-postings into one card (see
+    ``_collapse_relistings``); the Debug page turns it off to inspect raw inventory.
+    """
     with session_scope() as session:
         stmt = select(ListingRow)
         if only_active:
@@ -202,6 +269,8 @@ def load_listings(include_excluded: bool = True, only_active: bool = True) -> li
             d = _row_to_dict(r, firsts.get(r.id), num_cuts=cuts.get(r.id, 0))
             d["is_new"] = r.first_seen is not None and r.first_seen >= cutoff
             out.append(d)
+        if collapse_relistings:
+            out = _collapse_relistings(out)
         return out
 
 

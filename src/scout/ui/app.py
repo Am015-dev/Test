@@ -56,7 +56,9 @@ def get_strategy() -> Strategy:
 @st.cache_data(ttl=60)
 def get_all_listings_debug() -> list[dict]:
     """Everything, including excluded and inactive (gone) listings — for the Debug page."""
-    return queries.load_listings(include_excluded=True, only_active=False)
+    return queries.load_listings(
+        include_excluded=True, only_active=False, collapse_relistings=False
+    )
 
 
 @st.cache_data(ttl=60)

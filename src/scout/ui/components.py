@@ -159,19 +159,19 @@ def _card_html(d: dict) -> str:
         else ""
     )
 
-    # Photo header: a coloured gradient placeholder always shows (so the card never
-    # looks empty), with the real listing photo layered on top when it loads.
+    # Header strip. When we have a real listing photo we show it full-bleed (96px).
+    # When we DON'T (most card-only listings), a big empty gradient block just makes
+    # every card look unfinished — so we collapse to a thin archetype-coloured accent
+    # bar instead. Same colour language, a fraction of the visual weight.
     img = d.get("image_url")
-    img_layer = (
-        f'<img src="{_esc(img)}" loading="lazy" alt="" '
-        f'onerror="this.style.display=&quot;none&quot;">'
-        if img
-        else ""
-    )
-    photo = (
-        f'<a class="ph-photo ph-photo-{arch_cls}" href="{url}" target="_blank" rel="noopener">'
-        f"{img_layer}</a>"
-    )
+    if img:
+        photo = (
+            f'<a class="ph-photo ph-photo-{arch_cls}" href="{url}" target="_blank" rel="noopener">'
+            f'<img src="{_esc(img)}" loading="lazy" alt="" '
+            f'onerror="this.style.display=&quot;none&quot;"></a>'
+        )
+    else:
+        photo = f'<a class="ph-accent ph-photo-{arch_cls}" href="{url}" target="_blank" rel="noopener"></a>'
 
     return f"""
 <div class="ph-card">
