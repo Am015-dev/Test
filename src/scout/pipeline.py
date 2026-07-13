@@ -26,10 +26,11 @@ from .db import (
 )
 from .dedup import deduplicate
 from .enrich import enrich_listing
+from .enrich import gross_yield as _gross_yield
 from .finance import net_yield as _net_yield_after_costs
 from .models import Listing, ListingRow, PriceHistoryRow
 from .normalize import normalize
-from .rent_comps import compute_rent_comps
+from .rent_comps import OVERALL_KEY, compute_rent_comps, load_rent_comps
 from .rent_comps import rent_for as rent_comps_for
 from .scoring import compute_market_stats, score
 from .valuation import fit_and_apply_by_area
@@ -128,6 +129,14 @@ def run(
     rent_comps: dict[str, float] = {}
     if use_network:
         rent_comps = _fetch_rent_comps(collectors)
+        # Persist them so a later rescore (which never scrapes) applies real rent too.
+        if rent_comps:
+            from .rent_comps import save_rent_comps
+
+            try:
+                save_rent_comps(effective_area, rent_comps)
+            except Exception as exc:  # persistence must never break a run
+                logger.warning("rent comps: persist failed for %s: %s", effective_area, exc)
 
     # 2. Enrich (network steps degrade gracefully). Fail-soft per listing.
     enriched: list[Listing] = []
@@ -323,14 +332,28 @@ def rescore_all(strategy: Strategy | None = None, chunk: int = 2000) -> int:
         # live market with per-submarket accuracy.
         fit_and_apply_by_area(listings)
         market_stats = compute_market_stats(listings)
+        # Persisted real rental comps → a real rent for the yield signal without re-scraping.
+        rent_store = load_rent_comps()
         histories = _all_price_histories(session, [r.id for r in rows])
         now = datetime.utcnow()
         for i, (row, lst) in enumerate(zip(rows, listings, strict=True), 1):
             hist = histories.get(row.id, [])
             first_price = hist[0][1] if hist else None
-            # Recompute net yield from the stored rent so rows scraped before net-yield
-            # existed get the honest after-cost figure without a re-scrape (same "use the
-            # data we already have" principle as the listed_date backfill).
+            # Apply a REAL local rent comp when we have one (neighbourhood, else area-wide):
+            # the yield stops being an imputed inverse of €/m² and becomes a real signal.
+            area_comps = rent_store.get(lst.search_area or "")
+            if area_comps and lst.area_m2 and not lst.listed_rent:
+                ppm = area_comps.get(lst.neighborhood) or area_comps.get(OVERALL_KEY)
+                if ppm:
+                    lst.est_monthly_rent = int(round(ppm * lst.area_m2))
+                    lst.rent_estimated = False
+                    row.est_monthly_rent = lst.est_monthly_rent
+                    row.rent_estimated = False
+                    row.gross_yield = lst.gross_yield = _gross_yield(
+                        lst.est_monthly_rent, lst.price
+                    )
+            # Recompute net yield from the (now possibly real) rent so the after-cost figure
+            # is honest without a re-scrape.
             annual_rent = lst.est_monthly_rent * 12 if lst.est_monthly_rent else None
             lst.net_yield = _net_yield_after_costs(
                 lst.price, annual_rent, lst.area_m2, bool(lst.is_private_seller)

@@ -258,6 +258,25 @@ class ScrapeJobRow(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class RentCompRow(Base):
+    """Persisted real rental comp — median €/m²/month for an area (and neighbourhood).
+
+    Scraped from the actual RENTAL market and stored so the yield signal uses a real local
+    rent instead of the flat baseline — and so a rescore (which doesn't scrape) can still
+    apply it. ``neighborhood`` NULL = the area-wide median (the fallback within an area).
+    """
+
+    __tablename__ = "rent_comp"
+    __table_args__ = (UniqueConstraint("area", "neighborhood", name="uq_rent_comp_area_hood"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    area: Mapped[str] = mapped_column(String(128), index=True)
+    neighborhood: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    rent_per_m2: Mapped[float] = mapped_column(Float)
+    samples: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class HealthReportRow(Base):
     """One healthcheck snapshot, written after every ``check_health()`` run.
 

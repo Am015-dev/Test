@@ -69,3 +69,19 @@ def test_leverage_oneliner_none_without_rent():
     assert (
         leverage_oneliner(200_000, annual_rent=None, area_m2=80.0, is_private_seller=False) is None
     )
+
+
+def test_compute_rent_comps_with_counts():
+    from scout.rent_comps import OVERALL_KEY, compute_rent_comps_with_counts
+
+    rows = [
+        {"rent": 800, "area_m2": 80, "neighborhood": "A"},  # 10 €/m²
+        {"rent": 900, "area_m2": 90, "neighborhood": "A"},  # 10
+        {"rent": 1000, "area_m2": 100, "neighborhood": "A"},  # 10
+        {"rent": 600, "area_m2": 60, "neighborhood": "B"},  # only 1 → below min
+        {"rent": 999999, "area_m2": 50, "neighborhood": "A"},  # junk (>60 €/m²) dropped
+    ]
+    comps, counts = compute_rent_comps_with_counts(rows)
+    assert comps["A"] == 10.0 and counts["A"] == 3
+    assert "B" not in comps  # too few samples
+    assert comps[OVERALL_KEY] == 10.0
