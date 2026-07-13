@@ -32,6 +32,25 @@ def _has(row: dict, field: str) -> bool:
     return False
 
 
+def listing_confidence(row: dict) -> int:
+    """A 0-100 data-confidence score for one listing — how much of what we say about it rests
+    on real scraped data vs imputation. Drives the UI "confidence" chip and ranking tie-break.
+
+    Weighted: energy 25, year 20, exact location 25, real rent 20, a real posting date 10."""
+    pts = 0
+    if (row.get("energy_class") or "").strip():
+        pts += 25
+    if row.get("year_built") or row.get("renovated_year"):
+        pts += 20
+    if row.get("location_precision") == "exact":
+        pts += 25
+    if not row.get("rent_estimated", True):
+        pts += 20
+    if row.get("listed_date"):
+        pts += 10
+    return pts
+
+
 def audit(listings: list[dict] | None = None) -> dict:
     """Return a structured data-quality report over the active, non-excluded listings.
 

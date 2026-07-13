@@ -132,6 +132,18 @@ def _card_html(d: dict) -> str:
     )
     url = _esc(d.get("url") or "#")
 
+    # Deal grade (A-D) + data-confidence chip — a glanceable verdict and how much to trust it.
+    grade = d.get("deal_grade")
+    conf = d.get("data_confidence")
+    grade_html = (
+        f'<span class="ph-grade ph-grade-{_esc(grade)}">{_esc(grade)}</span>' if grade else ""
+    )
+    conf_html = (
+        f'<span class="ph-conf" title="data confidence">{conf}%<small>data</small></span>'
+        if conf is not None
+        else ""
+    )
+
     # Deal thesis: the actionable recommended-offer line — the decision worth paying for.
     thesis = d.get("deal_thesis")
     thesis_html = f'<div class="ph-thesis">💡 {_esc(thesis)}</div>' if thesis else ""
@@ -166,6 +178,7 @@ def _card_html(d: dict) -> str:
   <div class="ph-body">
     <div class="ph-card-head">
       <div class="ph-score" style="--hue:{hue}"><span>{score}</span><small>score</small></div>
+      {grade_html}{conf_html}
       <div class="ph-price-wrap">
         <div class="ph-price">{price}</div>
         <div class="ph-ppm2">{ppm2}</div>

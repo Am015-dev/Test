@@ -363,6 +363,15 @@ footer {{ visibility: hidden; height: 0; }}
 .ph-sig span {{ font-size: .66rem; color: var(--hg-muted); text-transform: uppercase; letter-spacing: .03em; }}
 .ph-sig-pos b {{ color: #15803D; }}
 .ph-sig-neg b {{ color: #B91C1C; }}
+.ph-grade {{ font-size: 1rem; font-weight: 800; color: #fff; border-radius: 8px;
+    padding: 2px 9px; align-self: center; }}
+.ph-grade-A {{ background: #15803D; }}
+.ph-grade-B {{ background: #65A30D; }}
+.ph-grade-C {{ background: #CA8A04; }}
+.ph-grade-D {{ background: #9CA3AF; }}
+.ph-conf {{ display: flex; flex-direction: column; align-items: center; font-size: .8rem;
+    font-weight: 700; color: var(--hg-muted); align-self: center; line-height: 1; }}
+.ph-conf small {{ font-size: .55rem; text-transform: uppercase; letter-spacing: .03em; }}
 .ph-thesis {{ font-size: .8rem; line-height: 1.35; color: var(--hg-ink);
     background: #FFF7ED; border: 1px solid #FED7AA; border-radius: 9px;
     padding: 8px 10px; margin: 2px 0; }}

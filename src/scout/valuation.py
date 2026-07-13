@@ -31,6 +31,9 @@ _MIN_SAMPLES = 25
 # with exactly _MIN_SAMPLES comps can still be cross-validated (a 5-fold split leaves ~20
 # training rows) instead of silently scoring cv_r2=0 and never becoming "confident".
 _MIN_CV_TRAIN = 18
+# Ridge penalty (Tikhonov). Small — just enough to stabilise collinear/near-constant feature
+# columns without materially biasing a well-conditioned fit.
+_RIDGE_LAMBDA = 0.05
 # Clamp the reported gap so one wild prediction can't dominate the score.
 _MAX_ABS_GAP = 0.6
 
@@ -195,9 +198,33 @@ def _build_model(rows: list[Listing]) -> tuple[ValuationModel, np.ndarray, np.nd
             targets.append(math.log(r.price))
     x = np.array(feats)
     y = np.array(targets)
-    beta, *_ = np.linalg.lstsq(x, y, rcond=None)
+    # Ridge (Tikhonov) instead of plain least squares: a tiny penalty on the non-intercept
+    # coefficients stabilises the fit where features are collinear or near-constant — exactly
+    # the card-only submarkets where most attributes are median-imputed and OLS min-norm
+    # solutions swing wildly. Intercept is left unpenalised. Falls back to lstsq if singular.
+    try:
+        reg = _RIDGE_LAMBDA * np.eye(x.shape[1])
+        reg[0, 0] = 0.0
+        beta = np.linalg.solve(x.T @ x + reg, x.T @ y)
+    except np.linalg.LinAlgError:
+        beta, *_ = np.linalg.lstsq(x, y, rcond=None)
     model.beta = beta
     return model, x, y
+
+
+def _drop_price_outliers(rows: list[Listing]) -> list[Listing]:
+    """Drop gross €/m² outliers (mis-parses, garbage, or a mansion in a flats submarket)
+    before fitting, so one bad row can't tilt the whole regression. Uses a robust MAD band;
+    never drops so many that the fit falls below the minimum sample size."""
+    ppm = [(r, r.price / r.area_m2) for r in rows if r.area_m2]
+    if len(ppm) < _MIN_SAMPLES:
+        return rows
+    vals = sorted(p for _, p in ppm)
+    med = statistics.median(vals)
+    mad = statistics.median([abs(p - med) for p in vals]) or 1.0
+    lo, hi = med - 5 * 1.4826 * mad, med + 5 * 1.4826 * mad
+    kept = [r for r, p in ppm if lo <= p <= hi]
+    return kept if len(kept) >= _MIN_SAMPLES else rows
 
 
 def _cross_val_r2(rows: list[Listing], folds: int = 5) -> float:
@@ -233,6 +260,9 @@ def fit_valuation_model(listings: list[Listing]) -> ValuationModel | None:
     rows = [lst for lst in listings if _usable(lst)]
     if len(rows) < _MIN_SAMPLES:
         return None
+    # Fit on the outlier-trimmed set; the model still PRICES every listing (apply_valuations
+    # runs over the full group) — we just don't let garbage rows warp the fitted line.
+    rows = _drop_price_outliers(rows)
 
     model, x, y = _build_model(rows)
 

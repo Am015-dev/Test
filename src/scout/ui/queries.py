@@ -11,8 +11,11 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
+from ..data_quality import listing_confidence
 from ..db import session_scope
 from ..deal import advise as _advise_deal
+from ..investment import deal_grade as _deal_grade
+from ..investment import yield_on_offer as _yield_on_offer
 from ..models import HealthReportRow, ListingRow, PriceHistoryRow
 from ..regions import region_of
 from ..scoring import investment_archetype
@@ -63,6 +66,23 @@ def _row_to_dict(row: ListingRow, first_price: int | None, num_cuts: int = 0) ->
         num_cuts=num_cuts,
         net_yield=row.net_yield,
     )
+    _confidence = listing_confidence(
+        {
+            "energy_class": row.energy_class,
+            "year_built": row.year_built,
+            "renovated_year": row.renovated_year,
+            "location_precision": row.location_precision,
+            "rent_estimated": row.rent_estimated,
+            "listed_date": row.listed_date,
+        }
+    )
+    _grade = _deal_grade(
+        score=row.score or 0.0,
+        data_complete=not missing,
+        net_yield=row.net_yield,
+        value_gap_pct=row.value_gap_pct,
+        negotiation_score=row.negotiation_score or 0.0,
+    )
     return {
         "archetype": investment_archetype(row.year_built, row.renovated_year, row.energy_class),
         "id": row.id,
@@ -108,6 +128,15 @@ def _row_to_dict(row: ListingRow, first_price: int | None, num_cuts: int = 0) ->
         "suggested_offer": deal.suggested_offer if deal else None,
         "offer_discount_pct": deal.discount_pct if deal else None,
         "deal_thesis": deal.thesis if deal else None,
+        "data_confidence": _confidence,
+        "deal_grade": _grade.grade,
+        "deal_grade_reason": _grade.rationale,
+        "yield_on_offer": _yield_on_offer(
+            deal.suggested_offer if deal else None,
+            (row.est_monthly_rent * 12) if row.est_monthly_rent else None,
+            row.area_m2,
+            bool(row.is_private_seller),
+        ),
         "image_url": row.image_url,
         "score": row.score,
         "negotiation_score": row.negotiation_score,

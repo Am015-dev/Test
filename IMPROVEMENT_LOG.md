@@ -3,6 +3,18 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 5 — decision calculators + valuation quality + grade/confidence (batch of the 30)
+- Valuation: ridge regularisation (stabilises collinear card-only areas) + €/m² outlier
+  trimming before fit (garbage can't tilt the line); model still prices every listing.
+- New investment.py: net-yield SENSITIVITY range (pessimistic/base/optimistic), yield-on-OFFER,
+  break-even rent, unlevered payback, rent-vs-buy, and an A-D deal grade (capped at B without
+  complete data). All pure + unit-tested.
+- Per-listing data-confidence score (0-100) surfaced as a chip; ranking already tie-breaks on
+  completeness. Deal grade + confidence on every card; a "Downside & scenarios" block on the
+  detail page.
+- 225 tests pass, ruff+black clean. ~10 of the 30 planned shipped; rest remain in IMPROVEMENTS.md
+  for the loop. Depth enrich (year/energy — the audit's current top gap) running in background.
+
 ## Cycle 4 — real rent comps (loop-selected: audit top gap was real_rent 0%)
 - New `rent_comp` table + persistence; `rescore_all` applies real per-area/hood rent; new
   `scrape_rent_comps.py`; `run()` persists comps for the cron.

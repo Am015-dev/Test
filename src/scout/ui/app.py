@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from scout import analytics, comps, epbd, finance, liquidity  # noqa: E402
+from scout import analytics, comps, epbd, finance, investment, liquidity  # noqa: E402
 from scout.config import Strategy, load_strategy, save_strategy  # noqa: E402
 from scout.regions import REGIONS  # noqa: E402
 from scout.scoring import (
@@ -821,6 +821,53 @@ def get_area_liquidity() -> dict:
     return out
 
 
+def _scenarios_block(d: dict) -> None:
+    """Downside range + the questions a buyer underwrites on: net-yield under good/bad
+    assumptions, yield if they land the recommended offer, break-even rent, and payback."""
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if not monthly:
+        return
+    annual = monthly * 12
+    price, area, priv = d["price"], d.get("area_m2"), bool(d.get("is_private_seller"))
+    st.markdown("#### 📉 Downside & scenarios")
+    sens = investment.net_yield_sensitivity(price, annual, area, priv)
+    if sens:
+        c = st.columns(3)
+        c[0].metric(
+            "Net yield — pessimistic",
+            fmt.pct(sens["pessimistic"]),
+            help="12% vacancy + higher maintenance",
+        )
+        c[1].metric("Net yield — base", fmt.pct(sens["base"]))
+        c[2].metric(
+            "Net yield — optimistic",
+            fmt.pct(sens["optimistic"]),
+            help="2% vacancy + light maintenance",
+        )
+    c2 = st.columns(3)
+    yoo = d.get("yield_on_offer")
+    if yoo is not None:
+        c2[0].metric(
+            "Net yield at suggested offer",
+            fmt.pct(yoo),
+            help=f"if you land it at {fmt.euro(d.get('suggested_offer'))}",
+        )
+    be = investment.break_even_rent(price, area, priv)
+    if be:
+        c2[1].metric(
+            "Break-even rent",
+            fmt.euro(be) + "/mo",
+            help="rent below which it bleeds cash before financing",
+        )
+    pb = investment.payback_years(price, annual, area, priv)
+    if pb:
+        c2[2].metric("Payback (unlevered)", f"~{pb:.0f} yrs")
+    if d.get("rent_estimated"):
+        st.caption(
+            "_Rent is an area estimate — treat these as indicative until a real comp lands._"
+        )
+
+
 def _risk_and_context(d: dict, listings: list[dict]) -> None:
     """EPBD renovation liability, transparent price percentile, area liquidity, and a
     leverage one-liner — the decision context portals don't give."""
@@ -926,6 +973,9 @@ def page_detail(listings: list[dict]) -> None:
 
     # --- risk & context: EPBD liability, price percentile, area liquidity, leverage ---
     _risk_and_context(d, listings)
+
+    # --- downside & scenarios: the numbers an investor underwrites on ---
+    _scenarios_block(d)
 
     # --- score breakdown ---
     strategy = get_strategy()
