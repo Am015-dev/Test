@@ -8,13 +8,15 @@ script re-visits detail pages for the rows that are missing them and back-fills:
     energy_class, year_built, bedrooms, heating, exact lat/lng, listed_date,
     and description-derived rented/private/rent.
 
-XE rate-limits per IP, so requests are spaced (SCRAPE_REQUEST_MIN_S/MAX_S) and the run is
-capped (--limit) and fully resumable: it always picks the still-incomplete rows, highest
-score first (enrich what users see soonest), and cached detail pages are instant. Run it
-repeatedly (or from cron) to deepen coverage over time.
+XE rate-limits per IP, but DETAIL pages tolerate a steady ~5 s cadence cleanly (measured:
+25/25 fetched with zero 403s at 4-7 s spacing) — the earlier blocks came from fetching too
+fast (<3.5 s), not a hard cap. So a full-depth pass is HOURS, not weeks: ~650 pages/hour,
+and only the top-scored listings users actually see need enriching. The run is capped
+(--limit) and fully resumable: it always picks the still-incomplete rows, highest score
+first, and cached detail pages are instant.
 
-Usage:
-    python scripts/enrich_details.py --limit 300
+Usage (safe cadence — keep min ≥ 4 s to avoid rate-limiting):
+    SCRAPE_REQUEST_MIN_S=4 SCRAPE_REQUEST_MAX_S=7 python scripts/enrich_details.py --limit 1500
 """
 
 from __future__ import annotations
