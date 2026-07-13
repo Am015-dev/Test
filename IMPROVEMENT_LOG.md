@@ -3,6 +3,15 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 6 — recurring-value batch (goal: justify €19/mo subscription)
+- Saved searches: SavedSearchRow + saved_search.py (CRUD + pure matching) + a Saved-searches
+  UI page — the persisted investor mandate a monthly sub actually pays for.
+- Saved-search alerts: per-mandate digest (build_saved_search_digest + run_saved_search_alerts)
+  so the daily run delivers only what matches ME.
+- "Why this score": ScoredListing now exposes signal_known (real vs unknown signals).
+- Negotiation playbook: concrete per-motivated-seller moves (the actionable half of the moat).
+- 230 tests pass. Depth enrich (year/energy) finishing in background → rescore + score next.
+
 ## Cycle 5 — decision calculators + valuation quality + grade/confidence (batch of the 30)
 - Valuation: ridge regularisation (stabilises collinear card-only areas) + €/m² outlier
   trimming before fit (garbage can't tilt the line); model still prices every listing.

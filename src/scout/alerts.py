@@ -203,3 +203,38 @@ def send_digest(settings: Settings | None = None) -> bool:
     """Send the digest via any configured sink. Returns True if anything was sent."""
     settings = settings or get_settings()
     return send_alert(build_digest(settings), subject=DIGEST_SUBJECT, settings=settings)
+
+
+def build_saved_search_digest(search, settings: Settings | None = None) -> str:
+    """A digest scoped to ONE saved search (the subscriber's mandate) — the personalised,
+    recurring value a €19/mo plan is really paying for."""
+    from .saved_search import matching_listings
+
+    settings = settings or get_settings()
+    listings = [d for d in load_listings() if not d["excluded"]]
+    matched = matching_listings(search, listings)
+    new = [d for d in matched if d.get("is_new")]
+    lines = [
+        f"Holargos — saved search: {search.name}",
+        f"{len(matched)} listings match your mandate · {len(new)} new today",
+        "",
+    ]
+    if new:
+        lines += ["🆕 NEW MATCHES:"] + [_line(d) for d in new[:10]]
+    lines += ["", "⭐ TOP MATCHES:"] + ([_line(d) for d in matched[:10]] or ["  (none)"])
+    return "\n".join(lines)
+
+
+def run_saved_search_alerts(settings: Settings | None = None) -> int:
+    """Send a per-saved-search digest for every saved search. Returns how many were sent.
+
+    Fail-soft and dry when no alert sink is configured (build only, no send)."""
+    from .saved_search import list_saved_searches
+
+    settings = settings or get_settings()
+    sent = 0
+    for search in list_saved_searches():
+        text = build_saved_search_digest(search, settings)
+        if send_alert(text, subject=f"Holargos — {search.name}", settings=settings):
+            sent += 1
+    return sent

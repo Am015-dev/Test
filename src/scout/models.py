@@ -108,6 +108,9 @@ class ScoredListing(BaseModel):
     exclusion_reason: str | None = None
     is_opportunity: bool = False
     signals: dict[str, float] = Field(default_factory=dict)
+    # Which signals were actually KNOWN (evaluable) for this listing vs dropped as unknown —
+    # lets the UI show a transparent "why this score", real signals vs data gaps.
+    signal_known: dict[str, bool] = Field(default_factory=dict)
 
 
 # ---- SQLAlchemy ORM tables -------------------------------------------------
@@ -275,6 +278,23 @@ class RentCompRow(Base):
     rent_per_m2: Mapped[float] = mapped_column(Float)
     samples: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class SavedSearchRow(Base):
+    """A persisted investor mandate — the recurring "watch THIS for me" that a monthly
+    subscription is actually paying for. Filters are a region list (JSON) + price/yield/grade
+    floors; the daily digest can then deliver only what matches, per saved search."""
+
+    __tablename__ = "saved_search"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128))
+    regions: Mapped[str | None] = mapped_column(String(512), nullable=True)  # JSON list
+    min_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    min_net_yield: Mapped[float | None] = mapped_column(Float, nullable=True)
+    min_grade: Mapped[str | None] = mapped_column(String(2), nullable=True)  # "A"/"B"/"C"
+    created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class HealthReportRow(Base):

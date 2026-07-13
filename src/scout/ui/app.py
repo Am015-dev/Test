@@ -1296,9 +1296,70 @@ def page_deals(listings: list[dict]) -> None:
     components.listing_grid(ranked[:60])
 
 
+def page_saved_searches(listings: list[dict]) -> None:
+    """Saved searches — the recurring investor mandate. Create one, see live matches, and
+    (with an alert sink configured) get only these delivered daily. The €19/mo core loop."""
+    from scout import saved_search as ss
+
+    st.subheader("🔔 Saved searches")
+    st.caption(
+        "Define your mandate once — region, budget, min net yield, min deal grade. The daily "
+        "digest then delivers only what matches, before you'd find it yourself."
+    )
+    eligible = _eligible(listings)
+
+    with st.form("new_saved_search"):
+        name = st.text_input("Name", placeholder="e.g. Centre ≤€200k, ≥4% net")
+        regions = st.multiselect("Regions", list(REGIONS.keys()))
+        c = st.columns(3)
+        max_price = c[0].number_input("Max price (€)", 0, 2_000_000, 250_000, step=10_000)
+        min_ny = c[1].slider("Min net yield (%)", 0.0, 8.0, 3.0, step=0.5) / 100
+        min_grade = c[2].selectbox("Min grade", ["", "A", "B", "C"], index=0)
+        if st.form_submit_button("💾 Save search") and name:
+            ss.create_saved_search(
+                ss.SavedSearch(
+                    id=None,
+                    name=name,
+                    regions=regions,
+                    max_price=int(max_price) or None,
+                    min_net_yield=min_ny or None,
+                    min_grade=min_grade or None,
+                )
+            )
+            st.success(f"Saved '{name}'. It will appear below.")
+            st.rerun()
+
+    searches = ss.list_saved_searches()
+    if not searches:
+        st.info("No saved searches yet — create one above.")
+        return
+    for s in searches:
+        matched = ss.matching_listings(s, eligible)
+        new = [d for d in matched if d.get("is_new")]
+        with st.expander(
+            f"**{s.name}** — {len(matched)} matches · {len(new)} new today", expanded=False
+        ):
+            bits = []
+            if s.regions:
+                bits.append("/".join(s.regions))
+            if s.max_price:
+                bits.append(f"≤{fmt.euro(s.max_price)}")
+            if s.min_net_yield:
+                bits.append(f"≥{s.min_net_yield * 100:.1f}% net")
+            if s.min_grade:
+                bits.append(f"≥grade {s.min_grade}")
+            st.caption(" · ".join(bits) or "no filters")
+            if matched:
+                components.listing_grid(matched[:12])
+            if st.button("🗑 Delete", key=f"del-{s.id}"):
+                ss.delete_saved_search(s.id)
+                st.rerun()
+
+
 PAGES = {
     "Opportunities": page_opportunities,
     "Deals": page_deals,
+    "Saved searches": page_saved_searches,
     "Today": page_today,
     "Map": page_map,
     "Neighborhoods": page_neighborhoods,

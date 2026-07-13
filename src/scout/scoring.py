@@ -354,6 +354,7 @@ def score(
         "is_private_seller": (1.0 if listing.is_private_seller else 0.0, w.is_private_seller, True),
     }
     signals = {k: v for k, (v, _, _) in contributions.items()}
+    signal_known = {k: known for k, (_, _, known) in contributions.items()}
     total_weight = sum(wt for (_, wt, known) in contributions.values() if known)
     if total_weight <= 0:
         final = 0.0
@@ -384,4 +385,5 @@ def score(
         excluded=False,
         is_opportunity=is_opp,
         signals=signals,
+        signal_known=signal_known,
     )

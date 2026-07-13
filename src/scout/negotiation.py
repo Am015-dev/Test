@@ -135,3 +135,31 @@ def analyze(
     if is_private_seller:
         res.reasons.append("Private seller (direct negotiation)")
     return res
+
+
+def playbook(res: NegotiationResult, suggested_offer: int | None = None) -> list[str]:
+    """A short, human negotiation playbook from the recorded signal — the concrete moves an
+    agent/investor makes. Portals give none of this; it's the actionable half of the moat."""
+    tips: list[str] = []
+    dom = res.days_on_market or 0
+    if dom >= 120:
+        tips.append(
+            f"On market {dom} days — well past the ~90-day point where sellers soften. "
+            "Lead with time-on-market: 'it's been listed a while — is the price still firm?'"
+        )
+    elif dom >= 45:
+        tips.append(f"On market {dom} days — old enough to open with a below-ask offer.")
+    if res.num_cuts >= 1:
+        tips.append(
+            f"Already cut {res.num_cuts}× (−{res.total_cut_pct * 100:.0f}%). The seller is "
+            "moving on price — anchor to the trend, not the current ask."
+        )
+    if any("Over-asked" in r for r in res.reasons):
+        tips.append("Priced above the area — use comparable €/m² to justify a lower number.")
+    if any("Private" in r for r in res.reasons):
+        tips.append("Private seller — no agent buffer; negotiate directly and move fast.")
+    if suggested_offer:
+        tips.append(f"Open near €{suggested_offer:,} and hold; let the days-on-market do the work.")
+    if not tips:
+        tips.append("Fresh listing with no motivation signals yet — little negotiating room today.")
+    return tips
