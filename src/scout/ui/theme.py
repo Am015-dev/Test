@@ -315,7 +315,7 @@ footer {{ visibility: hidden; height: 0; }}
 
 /* Photo header: gradient placeholder (always visible) + real image on top. */
 .ph-photo {{
-    display: block; position: relative; height: 168px; width: 100%;
+    display: block; position: relative; height: 96px; width: 100%;
     background: linear-gradient(135deg, #64748B, #94A3B8);
 }}
 .ph-photo-new {{ background: linear-gradient(135deg, #15803D, #4ADE80); }}

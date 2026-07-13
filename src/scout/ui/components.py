@@ -10,6 +10,7 @@ classes); this module only builds the markup from listing dicts.
 from __future__ import annotations
 
 import html as _html
+import re as _re
 
 import streamlit as st
 
@@ -203,4 +204,10 @@ def listing_grid(rows: list[dict]) -> None:
     if not rows:
         return
     cards = "".join(_card_html(d) for d in rows)
+    # CRITICAL: collapse all whitespace BETWEEN tags to a single stream. Streamlit renders
+    # this via a CommonMark parser, which treats a blank line inside a raw-HTML block as the
+    # end of that block — so an empty optional section (no thesis / no completeness note)
+    # left a blank line that made the browser render the rest of every card as literal text.
+    # Removing inter-tag whitespace makes that impossible.
+    cards = _re.sub(r">\s+<", "><", cards)
     st.markdown(f'<div class="ph-grid">{cards}</div>', unsafe_allow_html=True)
