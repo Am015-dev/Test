@@ -1305,7 +1305,7 @@ def page_deals(listings: list[dict]) -> None:
             "relistings); it fills in as the daily tracker accumulates history. Showing the "
             "current ranking below."
         )
-    components.listing_grid(ranked[:60])
+    components.listing_grid(ranked[:60], metric="negotiation_score")
 
 
 def page_saved_searches(listings: list[dict]) -> None:

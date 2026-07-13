@@ -57,9 +57,19 @@ def _esc(v) -> str:
     return _html.escape(str(v)) if v is not None else ""
 
 
-def _card_html(d: dict) -> str:
-    score = round(d.get("score") or 0)
-    hue = _score_hue(score)
+def _card_html(d: dict, metric: str = "score") -> str:
+    # Which value fills the big chip. Default is the investment-quality score; the Deals
+    # page leads with the motivation score instead (a red "1" investment score on a
+    # genuine motivated-seller lead reads as broken — the page is ranked by motivation,
+    # so show motivation). The A–D grade chip still carries the quality verdict.
+    if metric == "negotiation_score":
+        score = round(d.get("negotiation_score") or 0)
+        hue = int(max(0.0, min(1.0, score / 100.0)) * 130)
+        score_label = "motiv"
+    else:
+        score = round(d.get("score") or 0)
+        hue = _score_hue(score)
+        score_label = "score"
     price = fmt.euro(d.get("price"))
     ppm2 = fmt.euro_per_m2(d.get("price_per_m2"))
     hood = _esc(d.get("neighborhood") or d.get("search_area") or "—")
@@ -178,7 +188,7 @@ def _card_html(d: dict) -> str:
   {photo}
   <div class="ph-body">
     <div class="ph-card-head">
-      <div class="ph-score" style="--hue:{hue}"><span>{score}</span><small>score</small></div>
+      <div class="ph-score" style="--hue:{hue}"><span>{score}</span><small>{score_label}</small></div>
       {grade_html}{conf_html}
       <div class="ph-price-wrap">
         <div class="ph-price">{price}</div>
@@ -199,11 +209,14 @@ def _card_html(d: dict) -> str:
 </div>"""
 
 
-def listing_grid(rows: list[dict]) -> None:
-    """Render listings as a responsive card grid (the product view, not a dataframe)."""
+def listing_grid(rows: list[dict], metric: str = "score") -> None:
+    """Render listings as a responsive card grid (the product view, not a dataframe).
+
+    ``metric`` selects the big chip: "score" (investment quality, default) or
+    "negotiation_score" (seller motivation, used by the Deals page)."""
     if not rows:
         return
-    cards = "".join(_card_html(d) for d in rows)
+    cards = "".join(_card_html(d, metric=metric) for d in rows)
     # CRITICAL: collapse all whitespace BETWEEN tags to a single stream. Streamlit renders
     # this via a CommonMark parser, which treats a blank line inside a raw-HTML block as the
     # end of that block — so an empty optional section (no thesis / no completeness note)
