@@ -76,3 +76,18 @@ def test_collect_paginates_dedups_and_stops(monkeypatch):
 
     ids = [r["source_id"] for r in c.collect()]
     assert ids == ["A", "B", "C"]
+
+
+def test_adaptive_throttle_grows_on_block_and_decays_on_ok():
+    """The adaptive throttle widens the pause when XE pushes back and eases when clean."""
+    c = XeCollector(Strategy())
+    c._extra_delay = 0.0
+    c._register_block()
+    c._register_block()
+    assert c._extra_delay == 5.0  # 2 × 2.5 s penalty
+    c._register_ok()
+    assert c._extra_delay == 4.5  # decays by 0.5 s
+    # Never runs away past the cap.
+    for _ in range(50):
+        c._register_block()
+    assert c._extra_delay <= c._MAX_EXTRA_S

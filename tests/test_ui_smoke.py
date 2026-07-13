@@ -145,5 +145,7 @@ def test_app_renders_fair_value_views(tmp_path, monkeypatch):
     md = " ".join(m.value for m in at.markdown)
     assert "ph-grid" in md and "ph-card" in md
     # The table view is still available (inside the expander) with the model columns.
-    cols = list(at.dataframe[0].value.columns)
-    assert "Fair value" in cols and "Value gap" in cols
+    # (Search all dataframes — the coverage panel also renders one.)
+    assert any(
+        "Fair value" in df.value.columns and "Value gap" in df.value.columns for df in at.dataframe
+    )

@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from scout import analytics, comps, finance  # noqa: E402
+from scout import analytics, comps, epbd, finance, liquidity  # noqa: E402
 from scout.config import Strategy, load_strategy, save_strategy  # noqa: E402
 from scout.regions import REGIONS  # noqa: E402
 from scout.scoring import (
@@ -547,9 +547,54 @@ def _comparables(d: dict, listings: list[dict]) -> None:
 # ---- pages -----------------------------------------------------------------
 
 
+def _coverage_panel(listings: list[dict]) -> None:
+    """Honest per-region coverage: how many listings, how complete, how fresh. Trust comes
+    from showing exactly what we have and what's still shallow, not hiding the gaps."""
+    from collections import defaultdict
+
+    if not listings:
+        return
+    by_region: dict[str, list[dict]] = defaultdict(list)
+    for d in listings:
+        by_region[d.get("region") or "—"].append(d)
+    total = len(listings)
+    complete = sum(1 for d in listings if d.get("data_complete"))
+    with st.expander(
+        (
+            f"📦 Coverage — {total:,} listings, {complete / total * 100:.0f}% fully-detailed"
+            if total
+            else "📦 Coverage"
+        ),
+        expanded=False,
+    ):
+        rows = []
+        for region, ds in sorted(by_region.items(), key=lambda kv: -len(kv[1])):
+            n = len(ds)
+            comp = sum(1 for d in ds if d.get("data_complete"))
+            en = sum(1 for d in ds if (d.get("energy_class") or "").strip())
+            exact = sum(1 for d in ds if d.get("location_precision") == "exact")
+            newest = max((d["last_seen"] for d in ds if d.get("last_seen")), default=None)
+            rows.append(
+                {
+                    "Region": region,
+                    "Listings": n,
+                    "Fully detailed": f"{comp / n * 100:.0f}%" if n else "—",
+                    "Has energy": f"{en / n * 100:.0f}%" if n else "—",
+                    "Exact location": f"{exact / n * 100:.0f}%" if n else "—",
+                    "Last updated": newest.strftime("%Y-%m-%d %H:%M") if newest else "—",
+                }
+            )
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.caption(
+            "Depth is recovered continuously by the detail-enrichment pass; card-only "
+            "listings carry a *limited data* badge until then."
+        )
+
+
 def page_opportunities(listings: list[dict]) -> None:
     st.subheader("Opportunities")
     _valuation_banner()
+    _coverage_panel(_eligible(listings))
 
     if not listings:
         st.info(
@@ -688,44 +733,133 @@ def page_map(listings: list[dict]) -> None:
         return
     from scout.enrich import METRO_STATIONS
 
-    listing_df = pd.DataFrame({"lat": d["lat"], "lon": d["lng"], "score": d["score"]} for d in pts)
+    # Split exact vs approx (centroid) points: an approx point is one shared location for a
+    # whole municipality, so plotting it as a precise pin would imply an accuracy we don't
+    # have. Exact points render solid & small; approx render large, faint and hollow — read
+    # as an area blob, not an address.
+    exact = [d for d in pts if d.get("location_precision") == "exact"]
+    approx = [d for d in pts if d.get("location_precision") != "exact"]
+    exact_df = pd.DataFrame({"lat": d["lat"], "lon": d["lng"], "score": d["score"]} for d in exact)
+    approx_df = pd.DataFrame(
+        {"lat": d["lat"], "lon": d["lng"], "score": d["score"]} for d in approx
+    )
+    center = exact_df if not exact_df.empty else approx_df
     metro_df = pd.DataFrame(
         {"lat": lat, "lon": lng, "name": n} for n, (lat, lng) in METRO_STATIONS.items()
     )
     try:
         import pydeck as pdk
 
+        layers = []
+        if not approx_df.empty:
+            layers.append(
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=approx_df,
+                    get_position="[lon, lat]",
+                    get_fill_color="[150, 150, 160, 40]",  # faint = approximate area location
+                    get_radius=300,
+                )
+            )
+        if not exact_df.empty:
+            layers.append(
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=exact_df,
+                    get_position="[lon, lat]",
+                    get_fill_color="[255 - score*2.55, score*2.55, 80]",
+                    get_radius=60,
+                    pickable=True,
+                )
+            )
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=metro_df,
+                get_position="[lon, lat]",
+                get_fill_color="[30, 90, 255]",
+                get_radius=90,
+            )
+        )
         st.pydeck_chart(
             pdk.Deck(
                 map_style=None,
                 initial_view_state=pdk.ViewState(
-                    latitude=listing_df["lat"].mean(),
-                    longitude=listing_df["lon"].mean(),
-                    zoom=13,
+                    latitude=center["lat"].mean(), longitude=center["lon"].mean(), zoom=13
                 ),
-                layers=[
-                    pdk.Layer(
-                        "ScatterplotLayer",
-                        data=listing_df,
-                        get_position="[lon, lat]",
-                        get_fill_color="[255 - score*2.55, score*2.55, 80]",
-                        get_radius=60,
-                        pickable=True,
-                    ),
-                    pdk.Layer(
-                        "ScatterplotLayer",
-                        data=metro_df,
-                        get_position="[lon, lat]",
-                        get_fill_color="[30, 90, 255]",
-                        get_radius=90,
-                    ),
-                ],
+                layers=layers,
                 tooltip={"text": "Score: {score}"},
             )
         )
-        st.caption("Listings colored green (high score) → red (low). Blue = metro stations.")
+        st.caption(
+            f"Solid pins ({len(exact)}) = exact location, green (high score)→red. "
+            f"Faint blobs ({len(approx)}) = approximate (area centroid — not enriched yet). "
+            "Blue = metro stations."
+        )
     except Exception:
-        st.map(listing_df)
+        st.map(center)
+
+
+@st.cache_data(ttl=300)
+def get_area_liquidity() -> dict:
+    """Per-area liquidity (median days-on-market before delisting + absorption) over the
+    full tracked set — the exit signal. Plain dicts so Streamlit can cache it."""
+    allrows = queries.load_listings(include_excluded=True, only_active=False)
+    out = {}
+    for area, liq in liquidity.liquidity_by_area(allrows).items():
+        out[area] = {
+            "median_days": liq.median_days_on_market,
+            "cleared": liq.cleared,
+            "absorption": liq.absorption_rate,
+        }
+    return out
+
+
+def _risk_and_context(d: dict, listings: list[dict]) -> None:
+    """EPBD renovation liability, transparent price percentile, area liquidity, and a
+    leverage one-liner — the decision context portals don't give."""
+    st.markdown("#### 🧭 Risk & context")
+
+    # EPBD renovation-mandate liability + indicative capex (only for a known poor class).
+    flag = epbd.epbd_flag(d.get("energy_class"), d.get("area_m2"))
+    if flag.at_risk:
+        st.warning(f"⚠️ **EPBD liability** — {flag.note}")
+
+    cols = st.columns(2)
+    # Transparent, checkable value signal: cheaper per m² than X% of this municipality.
+    dist = analytics.area_ppm2_distributions(listings)
+    pct = analytics.ppm2_percentile_cheaper(
+        d.get("price_per_m2"), dist.get(d.get("search_area"), [])
+    )
+    if pct is not None:
+        cols[0].metric(
+            "Cheaper per m² than",
+            f"{pct * 100:.0f}% of {d.get('search_area') or 'area'}",
+            help="Share of active listings in this municipality with a higher €/m².",
+        )
+
+    # Area liquidity — how fast this submarket clears (from our own tracked lifecycle).
+    liq = get_area_liquidity().get(d.get("search_area"))
+    if liq and liq["median_days"] is not None:
+        cols[1].metric(
+            "Typical days on market",
+            f"~{liq['median_days']:.0f}",
+            help=(
+                f"Median dwell before delisting in {d.get('search_area')} "
+                f"({liq['cleared']} tracked; absorption {(liq['absorption'] or 0) * 100:.0f}%). "
+                "Delisting is a proxy for sold."
+            ),
+        )
+
+    # Leverage: cash-on-cash at standard assumptions (a buyer tweaks them per deal).
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if monthly:
+        line = finance.leverage_oneliner(
+            d["price"], monthly * 12, d.get("area_m2"), bool(d.get("is_private_seller"))
+        )
+        if line:
+            est = " _(rent est.)_" if d.get("rent_estimated") else ""
+            st.caption(f"🏦 {line}{est}")
 
 
 def page_detail(listings: list[dict]) -> None:
@@ -783,6 +917,9 @@ def page_detail(listings: list[dict]) -> None:
 
     # --- net return (after Greek costs) + financing ---
     _net_return_and_financing(d, lid)
+
+    # --- risk & context: EPBD liability, price percentile, area liquidity, leverage ---
+    _risk_and_context(d, listings)
 
     # --- score breakdown ---
     strategy = get_strategy()

@@ -275,8 +275,29 @@ class XeCollector(Collector):
             urls.append(f"{self.BASE}/property/results?{urlencode(params)}")
         return urls
 
+    # Adaptive throttle: extra seconds added to every inter-request pause. It GROWS each
+    # time XE pushes back (a blocked/empty page) and DECAYS on clean fetches, so the crawler
+    # self-tunes to XE's per-IP limit — fast while it's tolerated, backing off the moment it
+    # isn't — instead of relying on one hand-picked constant. Reset at the start of each run.
+    _BLOCK_PENALTY_S = 2.5
+    _DECAY_S = 0.5
+    _MAX_EXTRA_S = 15.0
+
+    def _register_block(self) -> None:
+        self._extra_delay = min(
+            getattr(self, "_extra_delay", 0.0) + self._BLOCK_PENALTY_S, self._MAX_EXTRA_S
+        )
+
+    def _register_ok(self) -> None:
+        self._extra_delay = max(0.0, getattr(self, "_extra_delay", 0.0) - self._DECAY_S)
+
+    def _paced_sleep(self, settings) -> None:
+        base = random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s)
+        time.sleep(base + getattr(self, "_extra_delay", 0.0))
+
     def _new_session(self) -> requests.Session:
         """A cookie-persisting session warmed up against XE's homepage."""
+        self._extra_delay = 0.0  # reset the adaptive throttle for a fresh run
         session = requests.Session()
         session.headers.update(BROWSER_HEADERS)
         session.verify = not get_settings().scrape_ignore_https_errors
@@ -345,7 +366,9 @@ class XeCollector(Collector):
                 logger.warning("xe: fetch failed (attempt %d/%d): %s", attempt, attempts, exc)
             if html and self._has_cards(html):
                 self._write_cache(url, html)
+                self._register_ok()  # clean fetch → let the adaptive throttle ease off
                 return html
+            self._register_block()  # XE pushed back → widen the pause for the rest of the run
             logger.warning(
                 "xe: empty/blocked page (attempt %d/%d) — backing off", attempt, attempts
             )
@@ -438,7 +461,7 @@ class XeCollector(Collector):
                         "area_m2": raw["area_m2"],
                         "neighborhood": raw.get("neighborhood"),
                     }
-            time.sleep(random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s))
+            self._paced_sleep(settings)
 
     def collect(self) -> Iterator[dict]:
         settings = get_settings()
@@ -479,18 +502,12 @@ class XeCollector(Collector):
                     ):
                         self._enrich_from_detail(session, raw)
                         enriched += 1
-                        time.sleep(
-                            random.uniform(
-                                settings.scrape_request_min_s, settings.scrape_request_max_s
-                            )
-                        )
+                        self._paced_sleep(settings)
                     yield raw
                 logger.info("xe: page %d -> %d new listings (%s)", page, new_on_page, base_url)
                 if new_on_page == 0:
                     break  # exhausted this area's results
-                time.sleep(
-                    random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s)
-                )
+                self._paced_sleep(settings)
 
     def parse_card(self, html: str, base_url: str) -> dict:
         tree = HTMLParser(html)

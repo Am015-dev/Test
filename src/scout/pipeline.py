@@ -18,6 +18,7 @@ from .collectors import default_collectors
 from .collectors.base import Collector
 from .config import Strategy, load_strategy
 from .db import (
+    get_engine,
     init_db,
     mark_unseen_as_gone,
     session_scope,
@@ -302,10 +303,17 @@ def _first_price(session, listing_id: int) -> int | None:
     )
 
 
-def rescore_all(strategy: Strategy | None = None) -> int:
-    """Re-score every active listing from the current DB (used by the UI Strategy editor)."""
+def rescore_all(strategy: Strategy | None = None, chunk: int = 2000) -> int:
+    """Re-score every active listing from the current DB (used by the UI Strategy editor).
+
+    Writes are committed in chunks (``expire_on_commit=False`` so row values survive each
+    commit) rather than as one giant transaction — at ~9k listings a single commit held a
+    long write lock and blocked the UI; chunking bounds both.
+    """
+    from sqlalchemy.orm import Session
+
     strategy = strategy or load_strategy()
-    with session_scope() as session:
+    with Session(get_engine(), expire_on_commit=False) as session:
         # Active rows only: gone listings must not skew the medians the UI scores
         # against (the pipeline computes stats over active/canonical listings).
         rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
@@ -317,7 +325,7 @@ def rescore_all(strategy: Strategy | None = None) -> int:
         market_stats = compute_market_stats(listings)
         histories = _all_price_histories(session, [r.id for r in rows])
         now = datetime.utcnow()
-        for row, lst in zip(rows, listings, strict=True):
+        for i, (row, lst) in enumerate(zip(rows, listings, strict=True), 1):
             hist = histories.get(row.id, [])
             first_price = hist[0][1] if hist else None
             # Recompute net yield from the stored rent so rows scraped before net-yield
@@ -347,6 +355,9 @@ def rescore_all(strategy: Strategy | None = None) -> int:
                 listed_date=row.listed_date,
             )
             row.negotiation_score = neg.score
+            if i % chunk == 0:
+                session.commit()  # bound the write-lock duration at scale
+        session.commit()
         return len(rows)
 
 

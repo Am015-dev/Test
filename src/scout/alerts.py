@@ -66,10 +66,35 @@ def _is_hot(d: dict, min_score: float, min_net_yield: float) -> bool:
     return ny is not None and ny >= min_net_yield
 
 
-def build_digest(settings: Settings | None = None) -> str:
-    """Plain-text digest: hot deals + top opportunities + last-24h new listings and cuts."""
+def build_digest(
+    settings: Settings | None = None,
+    *,
+    regions: list[str] | None = None,
+    min_price: int | None = None,
+    max_price: int | None = None,
+    min_net_yield: float | None = None,
+) -> str:
+    """Plain-text digest: hot deals + top opportunities + last-24h new listings and cuts.
+
+    Optional saved-search filters (``regions`` / price band / ``min_net_yield``) scope the
+    whole digest to one investor's mandate — the recurring "only what matches ME, before I'd
+    see it" value that a portal's undifferentiated feed can't provide."""
     settings = settings or get_settings()
     listings = [d for d in load_listings() if not d["excluded"]]
+
+    def _matches(d: dict) -> bool:
+        if regions and d.get("region") not in regions:
+            return False
+        if min_price is not None and d["price"] < min_price:
+            return False
+        if max_price is not None and d["price"] > max_price:
+            return False
+        if min_net_yield is not None and (d.get("net_yield") or 0) < min_net_yield:
+            return False
+        return True
+
+    if regions or min_price is not None or max_price is not None or min_net_yield is not None:
+        listings = [d for d in listings if _matches(d)]
     listings.sort(key=lambda d: d["score"], reverse=True)
     new = [d for d in listings if d["is_new"]]
     opportunities = [d for d in listings if d["is_opportunity"]]

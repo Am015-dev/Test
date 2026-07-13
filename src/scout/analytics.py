@@ -156,3 +156,29 @@ def market_price_index(history: list[dict]) -> list[dict]:
     ]
     results.sort(key=lambda r: r["month"])
     return results
+
+
+def area_ppm2_distributions(listings: list[dict]) -> dict[str, list[float]]:
+    """Sorted €/m² per municipality (``search_area``) — the distribution a listing's price
+    percentile is read against. Only listings with a usable €/m² contribute."""
+    from collections import defaultdict
+
+    buckets: dict[str, list[float]] = defaultdict(list)
+    for d in listings:
+        area = d.get("search_area")
+        ppm2 = _positive_or_none(d.get("price_per_m2"))
+        if area and ppm2:
+            buckets[area].append(ppm2)
+    return {a: sorted(v) for a, v in buckets.items()}
+
+
+def ppm2_percentile_cheaper(ppm2: float | None, sorted_ppm2: list[float]) -> float | None:
+    """Share of the area's listings this one is CHEAPER than, 0..1 (transparent, checkable).
+
+    A value of 0.78 means "cheaper per m² than 78% of listings in this municipality" — an
+    honest, portal-derivable value signal that works even for card-only listings with no
+    hedonic model. Needs a few comps to be meaningful."""
+    if not ppm2 or len(sorted_ppm2) < 5:
+        return None
+    dearer = sum(1 for v in sorted_ppm2 if v > ppm2)
+    return round(dearer / len(sorted_ppm2), 3)
