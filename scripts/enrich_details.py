@@ -72,8 +72,14 @@ def enrich(limit: int, rescore: bool = True) -> dict:
     with session_scope() as db:
         rows = _incomplete_xe_rows(db, limit)
         log.info("enriching %d incomplete XE listings", len(rows))
+        ttl = settings.scrape_cache_ttl_minutes
         for row in rows:
             processed += 1
+            # A page already cached on disk needs no network round-trip — so don't pay the
+            # polite sleep for it. This makes resumed runs fly through the pages a previous
+            # run already fetched, only spacing the genuinely new network fetches.
+            cached = collector._read_cache(row.url, ttl)
+            was_cached = cached is not None and collector._has_jsonld(cached)
             html = collector._fetch_detail(session_http, row.url)
             if not html:
                 continue
@@ -112,9 +118,12 @@ def enrich(limit: int, rescore: bool = True) -> dict:
                     row.listed_rent = rent
                 if parse_private_seller(desc):
                     row.is_private_seller = True
-            # Polite spacing between detail fetches (XE rate-limits per IP). Cached pages
-            # still pass through here; the small sleep keeps the crawl well under the limit.
-            time.sleep(random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s))
+            # Polite spacing ONLY after a real network fetch (XE rate-limits per IP);
+            # cached-page hits skip it so resumed runs finish fast.
+            if not was_cached:
+                time.sleep(
+                    random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s)
+                )
     summary = {"processed": processed, **filled}
     log.info("enrich summary: %s", summary)
 
