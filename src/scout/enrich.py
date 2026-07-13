@@ -95,14 +95,18 @@ _NEIGHBORHOOD_CENTROIDS: tuple[tuple[str, tuple[float, float]], ...] = (
 # estimate — the difference between "thousands of listings, all locatable" and "thousands
 # with no location". Coarse by design (a municipality centre, ~1-2 km), refined to the real
 # point whenever the detail page is later fetched.
+# These are municipality/town CENTRES (main square or town hall), deliberately NOT the
+# metro station — an area centroid placed on the station would make every card-only
+# listing there read "0 m to metro" (provably false) and pile every map dot onto the
+# station. Each point sits 0.4–1.5 km from its station, an honest area-level anchor.
 MUNICIPALITY_CENTROIDS: dict[str, tuple[float, float]] = {
     # Κέντρο Αθήνας
-    "Koukaki": (37.9655, 23.7255),
+    "Koukaki": (37.9635, 23.7278),
     "Pagkrati": (37.9685, 23.7530),
-    "Ampelokipoi": (37.9872, 23.7577),
+    "Ampelokipoi": (37.9880, 23.7640),
     "Exarcheia": (37.9862, 23.7330),
     "Kolonaki": (37.9795, 23.7440),
-    "Neos Kosmos": (37.9577, 23.7284),
+    "Neos Kosmos": (37.9555, 23.7250),
     "Metaxourgeio": (37.9865, 23.7205),
     "Gkyzi": (37.9930, 23.7420),
     "Kypseli": (37.9930, 23.7360),
@@ -113,29 +117,29 @@ MUNICIPALITY_CENTROIDS: dict[str, tuple[float, float]] = {
     # Βόρεια Προάστια
     "Cholargos": (38.0003, 23.7950),
     "Papagou": (37.9950, 23.7960),
-    "Agia Paraskevi": (38.0171, 23.8125),
-    "Chalandri": (38.0217, 23.8208),
+    "Agia Paraskevi": (38.0085, 23.8195),
+    "Chalandri": (38.0235, 23.7990),
     "Vrilissia": (38.0330, 23.8320),
     "Marousi": (38.0500, 23.8070),
     # Νότια Προάστια
     "Nea Smyrni": (37.9450, 23.7140),
-    "Agios Dimitrios": (37.9404, 23.7407),
-    "Dafni": (37.9496, 23.7372),
-    "Ilioupoli": (37.9297, 23.7445),
-    "Alimos": (37.9181, 23.7442),
-    "Argyroupoli": (37.9030, 23.7455),
-    "Elliniko": (37.8926, 23.7471),
+    "Agios Dimitrios": (37.9330, 23.7330),
+    "Dafni": (37.9475, 23.7345),
+    "Ilioupoli": (37.9300, 23.7540),
+    "Alimos": (37.9095, 23.7300),
+    "Argyroupoli": (37.9020, 23.7530),
+    "Elliniko": (37.8870, 23.7420),
     "Kallithea": (37.9560, 23.7010),
     "Moschato": (37.9540, 23.6810),
     "Glyfada": (37.8650, 23.7540),
     # Δυτικά Προάστια
-    "Aigaleo": (37.9914, 23.6818),
-    "Peristeri": (38.0129, 23.6958),
+    "Aigaleo": (37.9955, 23.6810),
+    "Peristeri": (38.0150, 23.6910),
     "Haidari": (38.0180, 23.6520),
     # Πειραιάς
-    "Piraeus": (37.9430, 23.6470),
-    "Nikaia": (37.9658, 23.6473),
-    "Korydallos": (37.9771, 23.6504),
+    "Piraeus": (37.9435, 23.6500),
+    "Nikaia": (37.9680, 23.6420),
+    "Korydallos": (37.9800, 23.6500),
     "Agios Ioannis Rentis": (37.9640, 23.6690),
     "Tavros": (37.9640, 23.6960),
 }
@@ -255,7 +259,10 @@ def nearest_metro(
     dist: float | None = None
     if use_osrm:
         dist = _osrm_walking_distance_m(lat, lng, best_coords[0], best_coords[1], settings)
-    if dist is None:
+    # A non-positive OSRM distance is a degenerate response (both points snapped to the
+    # same node, or a malformed route), NOT a flat literally at the station entrance —
+    # fall back to the straight-line estimate so we never surface an implausible "0 m".
+    if dist is None or dist <= 0:
         dist = best_hav * WALK_DETOUR_FACTOR
     return MetroResult(best_name, int(round(dist)))
 
