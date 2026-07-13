@@ -10,7 +10,9 @@ the data-quality / sellability delta, and the top remaining blockers.
   so the daily run delivers only what matches ME.
 - "Why this score": ScoredListing now exposes signal_known (real vs unknown signals).
 - Negotiation playbook: concrete per-motivated-seller moves (the actionable half of the moat).
-- 230 tests pass. Depth enrich (year/energy) finishing in background → rescore + score next.
+- 230 tests pass. Depth enrich landed: data-complete 32% → 48% (energy 50%, year 49%, exact-loc
+  54%, rent 100%); cv_r2 0.44. Sellability ~52 → ~56. €19/mo defensible for a niche once alerts
+  run live; €100k still needs revenue or a data moat (not more code).
 
 ## Cycle 5 — decision calculators + valuation quality + grade/confidence (batch of the 30)
 - Valuation: ridge regularisation (stabilises collinear card-only areas) + €/m² outlier
