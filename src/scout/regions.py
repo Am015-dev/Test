@@ -37,6 +37,14 @@ REGIONS: dict[str, list[str]] = {
         "Chalandri",
         "Vrilissia",
         "Marousi",
+        "Nea Ionia",
+        "Nea Filadelfeia",
+        "Irakleio",
+        "Metamorfosi",
+        "Pefki",
+        "Melissia",
+        "Psychiko",
+        "Filothei",
     ],
     "Νότια Προάστια": [
         "Nea Smyrni",
@@ -49,11 +57,18 @@ REGIONS: dict[str, list[str]] = {
         "Kallithea",
         "Moschato",
         "Glyfada",
+        "Palaio Faliro",
+        "Voula",
+        "Vouliagmeni",
     ],
     "Δυτικά Προάστια": [
         "Aigaleo",
         "Peristeri",
         "Haidari",
+        "Ilion",
+        "Petroupoli",
+        "Agioi Anargyroi",
+        "Kamatero",
     ],
     "Πειραιάς": [
         "Piraeus",
@@ -61,6 +76,9 @@ REGIONS: dict[str, list[str]] = {
         "Korydallos",
         "Agios Ioannis Rentis",
         "Tavros",
+        "Keratsini",
+        "Perama",
+        "Drapetsona",
     ],
 }
 

@@ -29,6 +29,14 @@ search:
     - Chalandri
     - Vrilissia
     - Marousi
+    - Nea Ionia
+    - Nea Filadelfeia
+    - Irakleio
+    - Metamorfosi
+    - Pefki
+    - Melissia
+    - Psychiko
+    - Filothei
     # Νότια Προάστια
     - Nea Smyrni
     - Agios Dimitrios
@@ -40,16 +48,26 @@ search:
     - Kallithea
     - Moschato
     - Glyfada
+    - Palaio Faliro
+    - Voula
+    - Vouliagmeni
     # Δυτικά Προάστια
     - Aigaleo
     - Peristeri
     - Haidari
+    - Ilion
+    - Petroupoli
+    - Agioi Anargyroi
+    - Kamatero
     # Πειραιάς
     - Piraeus
     - Nikaia
     - Korydallos
     - Agios Ioannis Rentis
     - Tavros
+    - Keratsini
+    - Perama
+    - Drapetsona
   neighborhoods: [Faneromeni, Ano Cholargos, Plateia Dimokratias, Lofos Tsakou]
   est_rent_eur_per_m2: 11.0   # baseline monthly rent estimate for gross-yield scoring
   # Wider band for all-Athens coverage: captures more inventory across regions (centre

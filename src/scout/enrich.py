@@ -121,6 +121,14 @@ MUNICIPALITY_CENTROIDS: dict[str, tuple[float, float]] = {
     "Chalandri": (38.0235, 23.7990),
     "Vrilissia": (38.0330, 23.8320),
     "Marousi": (38.0500, 23.8070),
+    "Nea Ionia": (38.0356, 23.7500),
+    "Nea Filadelfeia": (38.0345, 23.7390),
+    "Irakleio": (38.0470, 23.7660),
+    "Metamorfosi": (38.0640, 23.7620),
+    "Pefki": (38.0625, 23.7944),
+    "Melissia": (38.0525, 23.8375),
+    "Psychiko": (38.0100, 23.7750),
+    "Filothei": (38.0185, 23.7815),
     # Νότια Προάστια
     "Nea Smyrni": (37.9450, 23.7140),
     "Agios Dimitrios": (37.9330, 23.7330),
@@ -132,16 +140,26 @@ MUNICIPALITY_CENTROIDS: dict[str, tuple[float, float]] = {
     "Kallithea": (37.9560, 23.7010),
     "Moschato": (37.9540, 23.6810),
     "Glyfada": (37.8650, 23.7540),
+    "Palaio Faliro": (37.9280, 23.6990),
+    "Voula": (37.8480, 23.7700),
+    "Vouliagmeni": (37.8130, 23.7830),
     # Δυτικά Προάστια
     "Aigaleo": (37.9955, 23.6810),
     "Peristeri": (38.0150, 23.6910),
     "Haidari": (38.0180, 23.6520),
+    "Ilion": (38.0330, 23.7000),
+    "Petroupoli": (38.0420, 23.6870),
+    "Agioi Anargyroi": (38.0300, 23.7220),
+    "Kamatero": (38.0560, 23.7030),
     # Πειραιάς
     "Piraeus": (37.9435, 23.6500),
     "Nikaia": (37.9680, 23.6420),
     "Korydallos": (37.9800, 23.6500),
     "Agios Ioannis Rentis": (37.9640, 23.6690),
     "Tavros": (37.9640, 23.6960),
+    "Keratsini": (37.9640, 23.6200),
+    "Perama": (37.9680, 23.5720),
+    "Drapetsona": (37.9560, 23.6260),
 }
 
 
