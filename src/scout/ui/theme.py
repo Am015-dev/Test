@@ -381,6 +381,11 @@ footer {{ visibility: hidden; height: 0; }}
 .ph-incomplete {{ font-size: .72rem; line-height: 1.3; color: #92400E;
     background: #FEFCE8; border: 1px solid #FEF08A; border-radius: 8px;
     padding: 6px 9px; margin: 2px 0; }}
+/* Internal-consistency warning: stronger (rose) than the limited-data note — the numbers
+   themselves look wrong, not merely absent. */
+.ph-inconsistent {{ font-size: .72rem; line-height: 1.3; color: #9F1239;
+    background: #FFF1F2; border: 1px solid #FECDD3; border-radius: 8px;
+    padding: 6px 9px; margin: 2px 0; }}
 .ph-card-foot {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; }}
 .ph-badges {{ display: flex; flex-wrap: wrap; gap: 5px; }}
 .ph-badge {{ font-size: .66rem; font-weight: 600; color: var(--hg-accent);

@@ -169,6 +169,13 @@ def _card_html(d: dict, metric: str = "score") -> str:
         else ""
     )
 
+    # Internal-consistency notes: the listing's own numbers contradict each other (e.g. a
+    # €424/m² "flat" or A+ energy on a 1960 build). Warn to verify — never hide the listing.
+    cflags = d.get("consistency_flags") or []
+    consistency_html = (
+        f'<div class="ph-inconsistent">⚠ Check: {_esc("; ".join(cflags))}.</div>' if cflags else ""
+    )
+
     # Header strip. When we have a real listing photo we show it full-bleed (96px).
     # When we DON'T (most card-only listings), a big empty gradient block just makes
     # every card look unfinished — so we collapse to a thin archetype-coloured accent
@@ -201,6 +208,7 @@ def _card_html(d: dict, metric: str = "score") -> str:
     <div class="ph-signals">{"".join(signals)}</div>
     {thesis_html}
     {completeness_html}
+    {consistency_html}
     <div class="ph-card-foot">
       <div class="ph-badges">{badges}</div>
       <a class="ph-cta" href="{url}" target="_blank" rel="noopener">View listing ↗</a>

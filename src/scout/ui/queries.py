@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
+from ..consistency import consistency_flags as _consistency_flags
 from ..data_quality import listing_confidence
 from ..db import session_scope
 from ..deal import advise as _advise_deal
@@ -83,10 +84,21 @@ def _row_to_dict(row: ListingRow, first_price: int | None, num_cuts: int = 0) ->
         value_gap_pct=row.value_gap_pct,
         negotiation_score=row.negotiation_score or 0.0,
     )
+    _consistency = _consistency_flags(
+        {
+            "price_per_m2": row.price_per_m2,
+            "area_m2": row.area_m2,
+            "price": row.price,
+            "energy_class": row.energy_class,
+            "year_built": row.year_built,
+            "renovated_year": row.renovated_year,
+        }
+    )
     return {
         "archetype": investment_archetype(row.year_built, row.renovated_year, row.energy_class),
         "id": row.id,
         "source": row.source,
+        "consistency_flags": _consistency,
         "source_id": row.source_id,
         "url": row.url,
         "title": row.title,
