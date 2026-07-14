@@ -939,13 +939,16 @@ def page_opportunities(listings: list[dict]) -> None:
         )
         return d["metro_distance_m"] <= limit
 
-    # Rank by score, but break ties toward listings we fully KNOW — a complete listing is a
-    # more actionable pick than a same-score card-only one built on imputations.
-    rows = sorted(
-        [d for d in eligible if keep(d)],
-        key=lambda d: (d["score"], d.get("data_complete", False)),
-        reverse=True,
-    )
+    # Let the buyer rank by the signal they care about — not just the quality score. All
+    # three are real numbers already in the data.
+    sort_opts = {
+        "Best overall (score)": lambda d: (d["score"], d.get("data_complete", False)),
+        "Biggest discount (below model)": lambda d: (d.get("value_gap_pct") or -1),
+        "Most negotiable (days on market)": lambda d: (d.get("days_on_market") or 0),
+        "Highest net yield": lambda d: (d.get("net_yield") or -1),
+    }
+    sort_by = st.radio("Sort by", list(sort_opts), horizontal=True, label_visibility="collapsed")
+    rows = sorted([d for d in eligible if keep(d)], key=sort_opts[sort_by], reverse=True)
 
     st.markdown(f"**{len(rows)}** opportunities match your filters (of {len(eligible)} eligible)")
     if rows:
@@ -954,7 +957,10 @@ def page_opportunities(listings: list[dict]) -> None:
         grid_cap = 60
         components.listing_grid(rows[:grid_cap])
         if len(rows) > grid_cap:
-            st.caption(f"Showing the top {grid_cap} cards by score. Full list in the table below.")
+            st.caption(
+                f"Showing the top {grid_cap} cards ({sort_by.split(' (')[0].lower()}). "
+                "Full list in the table below."
+            )
         with st.expander("Table view (sort / export)"):
             _table(rows)
     else:
