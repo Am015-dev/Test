@@ -1,8 +1,13 @@
-"""Tests for the interest-rate × vacancy sensitivity grid."""
+"""Tests for the interest-rate × vacancy sensitivity grid and the
+one-axis rent / price what-if sweeps."""
 
 from __future__ import annotations
 
-from scout.sensitivity import sensitivity_grid
+from scout.sensitivity import (
+    price_sensitivity,
+    rent_sensitivity,
+    sensitivity_grid,
+)
 
 
 def test_grid_dimensions_and_axes_echoed():
@@ -64,3 +69,85 @@ def test_all_cash_has_no_mortgage_payment():
     assert len(set(cash_col)) == 1
     # And it is positive: 12k rent, 0% vacancy, 12% costs → (12000 - 1440)/12 = 880.
     assert cash_col[0] == 880.0
+
+
+# --- rent_sensitivity -------------------------------------------------------
+
+
+def test_rent_sensitivity_shape_and_axes_echoed():
+    r = rent_sensitivity(200_000, 12_000)
+    assert r["steps"] == [-0.10, -0.05, 0.0, 0.05, 0.10]
+    # One entry per step for every result list.
+    assert len(r["rents"]) == 5
+    assert len(r["net_yield"]) == 5
+    assert len(r["cashflow_monthly"]) == 5
+    # The 0.0 step reproduces the input rent exactly.
+    assert r["rents"][2] == 12_000.0
+
+
+def test_higher_rent_raises_net_yield_and_cashflow():
+    r = rent_sensitivity(200_000, 12_000)
+    # Steps run low → high, so both curves must be monotonically increasing.
+    assert r["net_yield"] == sorted(r["net_yield"])
+    assert r["cashflow_monthly"] == sorted(r["cashflow_monthly"])
+    assert r["net_yield"][0] < r["net_yield"][-1]
+    assert r["cashflow_monthly"][0] < r["cashflow_monthly"][-1]
+
+
+def test_rent_sensitivity_degenerate_inputs_empty_but_keyed():
+    for bad in (
+        rent_sensitivity(0, 12_000),
+        rent_sensitivity(-1, 12_000),
+        rent_sensitivity(200_000, 0),
+        rent_sensitivity(200_000, -5),
+    ):
+        # Steps still echoed so the caller's keys never KeyError.
+        assert bad["steps"] == [-0.10, -0.05, 0.0, 0.05, 0.10]
+        assert bad["rents"] == []
+        assert bad["net_yield"] == []
+        assert bad["cashflow_monthly"] == []
+
+
+# --- price_sensitivity ------------------------------------------------------
+
+
+def test_price_sensitivity_shape_and_axes_echoed():
+    p = price_sensitivity(200_000, 12_000)
+    assert p["steps"] == [-0.10, -0.05, 0.0, 0.05, 0.10]
+    assert len(p["prices"]) == 5
+    assert len(p["net_yield"]) == 5
+    assert len(p["cash_on_cash"]) == 5
+    # The 0.0 step reproduces the input price exactly.
+    assert p["prices"][2] == 200_000.0
+
+
+def test_higher_price_lowers_net_yield_and_cash_on_cash():
+    p = price_sensitivity(200_000, 12_000)
+    # Steps run low → high price, so both returns must be monotonically falling.
+    assert p["net_yield"] == sorted(p["net_yield"], reverse=True)
+    assert p["cash_on_cash"] == sorted(p["cash_on_cash"], reverse=True)
+    assert p["net_yield"][0] > p["net_yield"][-1]
+    assert p["cash_on_cash"][0] > p["cash_on_cash"][-1]
+
+
+def test_price_sensitivity_degenerate_inputs_empty_but_keyed():
+    for bad in (
+        price_sensitivity(0, 12_000),
+        price_sensitivity(-1, 12_000),
+        price_sensitivity(200_000, 0),
+        price_sensitivity(200_000, -5),
+    ):
+        assert bad["steps"] == [-0.10, -0.05, 0.0, 0.05, 0.10]
+        assert bad["prices"] == []
+        assert bad["net_yield"] == []
+        assert bad["cash_on_cash"] == []
+
+
+def test_price_sensitivity_degenerate_step_yields_none_cell():
+    # A -100% step drives the buy price to zero; that cell must be None, and
+    # every result list still has one entry per step (alignment preserved).
+    p = price_sensitivity(200_000, 12_000, steps=(-1.0, 0.0))
+    assert p["prices"][0] == 0.0
+    assert p["net_yield"][0] is None
+    assert p["cash_on_cash"][0] is None
+    assert len(p["net_yield"]) == len(p["steps"]) == 2

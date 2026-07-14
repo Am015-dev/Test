@@ -386,6 +386,10 @@ footer {{ visibility: hidden; height: 0; }}
 .ph-incomplete {{ font-size: .72rem; line-height: 1.3; color: #92400E;
     background: #FEFCE8; border: 1px solid #FEF08A; border-radius: 8px;
     padding: 6px 9px; margin: 2px 0; }}
+/* Strategy-fit tags: small teal chips summarising the investment angle. */
+.ph-strats {{ display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0; }}
+.ph-strat {{ font-size: .68rem; font-weight: 600; color: #0F766E; background: #CCFBF1;
+    border: 1px solid #99F6E4; border-radius: 999px; padding: 2px 9px; }}
 /* Internal-consistency warning: stronger (rose) than the limited-data note — the numbers
    themselves look wrong, not merely absent. */
 .ph-inconsistent {{ font-size: .72rem; line-height: 1.3; color: #9F1239;

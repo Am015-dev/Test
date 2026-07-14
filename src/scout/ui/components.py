@@ -143,6 +143,17 @@ def _card_html(d: dict, metric: str = "score") -> str:
     )
     url = _esc(d.get("url") or "#")
 
+    # Strategy-fit tags (Cashflow / Value-add / Underpriced / Motivated seller / Prime
+    # location) — the one-glance "what kind of play is this?" a buyer filters on.
+    strat = d.get("strategy_tags") or []
+    strat_html = (
+        '<div class="ph-strats">'
+        + "".join(f'<span class="ph-strat">{_esc(t)}</span>' for t in strat)
+        + "</div>"
+        if strat
+        else ""
+    )
+
     # Deal grade (A-D) + data-confidence chip — a glanceable verdict and how much to trust it.
     grade = d.get("deal_grade")
     conf = d.get("data_confidence")
@@ -206,6 +217,7 @@ def _card_html(d: dict, metric: str = "score") -> str:
     <div class="ph-hood">📍 {hood_full}</div>
     <div class="ph-specs">{"".join(specs)}</div>
     <div class="ph-signals">{"".join(signals)}</div>
+    {strat_html}
     {thesis_html}
     {completeness_html}
     {consistency_html}

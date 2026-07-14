@@ -29,10 +29,13 @@ from scout import (  # noqa: E402
     analytics,
     comps,
     comps_panel,
+    deal_scorecard,
     epbd,
     finance,
     investment,
     liquidity,
+    listing_report,
+    projection,
     score_explain,
     sensitivity,
 )
@@ -649,6 +652,52 @@ def _investor_metrics_block(d: dict) -> None:
     )
 
 
+def _scorecard_block(d: dict) -> None:
+    """Transparent Athens-calibrated deal scorecard — every check, its points, and why,
+    so the grade isn't a black box."""
+    sc = deal_scorecard.scorecard(d)
+    if not sc.get("checks"):
+        return
+    color = {"Strong": "🟢", "Fair": "🟡", "Pass": "🔴"}
+    st.markdown(f"#### 🧮 Deal scorecard — {color.get(sc['verdict'], '')} {sc['verdict']}")
+    st.caption(f"{sc['points']}/{sc['max_points']} points ({sc['pct']:.0f}%). Athens-calibrated.")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {"Check": c["label"], "Pts": f"{c['points']}/{c['max_points']}", "Note": c["note"]}
+                for c in sc["checks"]
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+def _projection_block(d: dict) -> None:
+    """5-year total-return projection — the four pillars (cashflow, appreciation, debt
+    paydown, equity). Appreciation is a labelled assumption, not a forecast."""
+    price = d.get("price")
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if not price or not monthly:
+        return
+    pr = projection.five_year_projection(
+        price, monthly * 12, d.get("area_m2"), is_private_seller=bool(d.get("is_private_seller"))
+    )
+    if not pr:
+        return
+    t = pr["total"]
+    st.markdown("#### 📈 5-year projection")
+    c = st.columns(4)
+    c[0].metric("Cumulative cashflow", fmt.euro(t["cumulative_cash_flow"]))
+    c[1].metric("Appreciation (2%/yr)", fmt.euro(t["property_appreciation"]))
+    c[2].metric("Debt paydown", fmt.euro(t["debt_paydown"]))
+    c[3].metric("Total return on cash", f"{t['total_return_pct'] * 100:.0f}%")
+    st.caption(
+        "The four pillars of return over a 5-yr hold (30% down, 25-yr @4.5%). Appreciation is "
+        "a MODEST 2%/yr assumption, not a forecast — the market may do more or less."
+    )
+
+
 def _sensitivity_block(d: dict) -> None:
     """How the return holds up if rates rise or the flat sits empty — the stress test an
     investor actually underwrites on."""
@@ -668,10 +717,40 @@ def _sensitivity_block(d: dict) -> None:
         columns=[f"{v * 100:.0f}% empty" for v in vac],
     )
     st.caption("Net yield (after vacancy, costs, mortgage interest) — 30% down, 25-yr term.")
-    st.dataframe(
-        ny.style.format("{:.1%}"),
-        use_container_width=True,
-    )
+    st.dataframe(ny.style.format("{:.1%}"), use_container_width=True)
+
+    annual = monthly * 12
+    with st.expander("More what-ifs — rent & purchase-price moves"):
+        rs = sensitivity.rent_sensitivity(price, annual)
+        if rs.get("net_yield"):
+            rdf = pd.DataFrame(
+                {
+                    "Rent change": [f"{s * 100:+.0f}%" for s in rs["steps"]],
+                    "Net yield": rs["net_yield"],
+                    "Cashflow/mo": rs["cashflow_monthly"],
+                }
+            )
+            st.markdown("**If rent moves**")
+            st.dataframe(
+                rdf.style.format({"Net yield": "{:.1%}", "Cashflow/mo": "€{:.0f}"}),
+                use_container_width=True,
+                hide_index=True,
+            )
+        ps = sensitivity.price_sensitivity(price, annual)
+        if ps.get("net_yield"):
+            pdf = pd.DataFrame(
+                {
+                    "Price change": [f"{s * 100:+.0f}%" for s in ps["steps"]],
+                    "Net yield": ps["net_yield"],
+                    "Cash-on-cash": ps["cash_on_cash"],
+                }
+            )
+            st.markdown("**If you negotiate the price**")
+            st.dataframe(
+                pdf.style.format({"Net yield": "{:.1%}", "Cash-on-cash": "{:.1%}"}),
+                use_container_width=True,
+                hide_index=True,
+            )
     if d.get("rent_estimated"):
         st.caption("_Rent is estimated (no local comp) — treat these as indicative._")
 
@@ -784,6 +863,17 @@ def page_opportunities(listings: list[dict]) -> None:
             st.caption(
                 f"≈ affordable up to **{fmt.euro(max_afford)}** (35% of income, ~4.5%, 25 yr)."
             )
+        present_strats = sorted({t for d in eligible for t in (d.get("strategy_tags") or [])})
+        strat_filter = (
+            st.multiselect(
+                "Strategy",
+                present_strats,
+                default=[],
+                help="Cashflow · Value-add · Underpriced · Motivated seller · Prime location",
+            )
+            if present_strats
+            else []
+        )
         areas = [d["area_m2"] for d in eligible]
         amin, amax = int(min(areas)), int(max(areas)) + 1
         area_range = (
@@ -813,6 +903,8 @@ def page_opportunities(listings: list[dict]) -> None:
         if not (price_range[0] <= d["price"] <= price_range[1]):
             return False
         if max_afford is not None and d["price"] > max_afford:
+            return False
+        if strat_filter and not (set(strat_filter) & set(d.get("strategy_tags") or [])):
             return False
         if not (area_range[0] <= d["area_m2"] <= area_range[1]):
             return False
@@ -1164,6 +1256,10 @@ def page_detail(listings: list[dict]) -> None:
     # --- recognized investor metrics (cap rate, GRM, DSCR, break-even occupancy) ---
     _investor_metrics_block(d)
 
+    # --- transparent deal scorecard + 5-year projection ---
+    _scorecard_block(d)
+    _projection_block(d)
+
     # --- risk & context: EPBD liability, price percentile, area liquidity, leverage ---
     _risk_and_context(d, listings)
 
@@ -1219,7 +1315,18 @@ def page_detail(listings: list[dict]) -> None:
     else:
         st.caption("No price history yet — runs each day and accumulates over time.")
 
-    st.link_button("Open on portal ↗", d["url"])
+    lb, db = st.columns(2)
+    with lb:
+        st.link_button("Open on portal ↗", d["url"], use_container_width=True)
+    with db:
+        st.download_button(
+            "⬇ One-page report (HTML)",
+            listing_report.build_report_html(d),
+            file_name=f"holargos-{lid}.html",
+            mime="text/html",
+            use_container_width=True,
+            help="A printable one-pager to hand a client — the agent deliverable.",
+        )
     watched = st.checkbox("On watchlist", value=d["is_watched"], key=f"watch-{lid}")
     if watched != d["is_watched"]:
         queries.set_watched(lid, watched)

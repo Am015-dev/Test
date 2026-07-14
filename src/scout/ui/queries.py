@@ -20,6 +20,7 @@ from ..investment import yield_on_offer as _yield_on_offer
 from ..models import HealthReportRow, ListingRow, PriceHistoryRow
 from ..regions import region_of
 from ..scoring import investment_archetype
+from ..strategy_fit import strategy_tags as _strategy_tags
 
 
 def _market_age_days(row: ListingRow) -> int | None:
@@ -94,7 +95,7 @@ def _row_to_dict(row: ListingRow, first_price: int | None, num_cuts: int = 0) ->
             "renovated_year": row.renovated_year,
         }
     )
-    return {
+    d = {
         "archetype": investment_archetype(row.year_built, row.renovated_year, row.energy_class),
         "id": row.id,
         "source": row.source,
@@ -160,6 +161,8 @@ def _row_to_dict(row: ListingRow, first_price: int | None, num_cuts: int = 0) ->
         "first_seen": row.first_seen,
         "last_seen": row.last_seen,
     }
+    d["strategy_tags"] = _strategy_tags(d)
+    return d
 
 
 def _first_prices(session, ids: list[int]) -> dict[int, int]:
