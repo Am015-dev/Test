@@ -135,23 +135,25 @@ def deal_grade(
     (net yield), value (gap vs model) and motivation. Deliberately conservative: an
     incomplete-data listing is capped at B, because we can't fully stand behind it."""
     points = 0
-    if score >= 55:
+    if score >= 60:
         points += 2
-    elif score >= 35:
+    elif score >= 40:
         points += 1
-    if (net_yield or 0) >= 0.04:
+    if (net_yield or 0) >= 0.045:
         points += 1
+    # value_gap_pct is now populated ONLY when it clears the model's own ±band (see
+    # valuation.apply_valuations), so any gap present here is beyond-noise, not puffery.
     if (value_gap_pct or 0) >= 0.10:
         points += 1
     if negotiation_score >= 45:
         points += 1
     reasons = []
-    if score >= 55:
+    if score >= 60:
         reasons.append("strong overall fit")
-    if (net_yield or 0) >= 0.04:
+    if (net_yield or 0) >= 0.045:
         reasons.append(f"{(net_yield or 0) * 100:.1f}% net yield")
     if (value_gap_pct or 0) >= 0.10:
-        reasons.append(f"{(value_gap_pct or 0) * 100:.0f}% under model value")
+        reasons.append(f"{(value_gap_pct or 0) * 100:.0f}% under model value (beyond ±band)")
     if negotiation_score >= 45:
         reasons.append("motivated seller")
 

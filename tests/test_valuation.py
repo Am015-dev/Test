@@ -37,6 +37,27 @@ def test_too_few_comps_returns_none():
     assert fit_valuation_model(_fair_market(10)) is None
 
 
+def test_significance_gate_drops_within_band_gaps():
+    """Anti-inflation: a gap smaller than the model's own ±band is noise, not a bargain, and
+    must be dropped to None; only a gap that clears the band survives to drive the badge."""
+    listings = []
+    for i in range(60):
+        area = 50.0 + (i % 40)
+        wobble = 1.0 + (((i * 37) % 21) - 10) / 100.0  # ±10% deterministic scatter → real band
+        listings.append(
+            make_listing(source_id=f"s{i}", area_m2=area, price=int(3000 * area * wobble), **_ATTRS)
+        )
+    bargain = make_listing(  # 45% below the fair line — beyond any reasonable band
+        source_id="bargain", area_m2=70.0, price=int(3000 * 70 * 0.55), **_ATTRS
+    )
+    near_fair = make_listing(  # 3% below fair — within the noise
+        source_id="nearfair", area_m2=70.0, price=int(3000 * 70 * 0.97), **_ATTRS
+    )
+    fit_and_apply_by_area(listings + [bargain, near_fair])
+    assert bargain.value_gap_pct is not None and bargain.value_gap_pct > 0.2
+    assert near_fair.value_gap_pct is None  # within band → not badged a bargain
+
+
 def test_apply_valuations_is_noop_when_model_is_none():
     lst = make_listing()
     apply_valuations([lst], None)
@@ -73,8 +94,9 @@ def test_fair_priced_listing_has_near_zero_gap():
     model = fit_valuation_model(listings)
     assert model is not None
     apply_valuations(listings, model)
-    # Every comp is exactly on the fair line, so gaps cluster tightly around zero.
-    assert all(abs(lst.value_gap_pct) < 0.05 for lst in listings)
+    # Every comp is exactly on the fair line, so no listing is a real bargain: the gap is
+    # either within the model's ±band (dropped to None by the significance gate) or tiny.
+    assert all(lst.value_gap_pct is None or abs(lst.value_gap_pct) < 0.05 for lst in listings)
     assert model.r2 > 0.95  # a clean size→price relationship fits almost perfectly
 
 
@@ -129,10 +151,11 @@ def test_fit_by_area_fits_each_submarket_separately():
         )
     models = fit_and_apply_by_area(listings)
     assert set(models) == {"Cheap", "Pricey"}
-    # Both models are confident, so value_gap_pct is populated; each learned its own price
-    # level, so a listing priced on-line shows ~0 gap.
+    # Both models are confident and each learned its own price level, so a listing priced
+    # on-line is NOT a bargain: its gap is within the ±band (None) or small — never a false
+    # large discount from pooling the two markets together.
     assert all(m.is_confident for m in models.values())
-    assert all(abs(x.value_gap_pct) < 0.1 for x in listings)
+    assert all(x.value_gap_pct is None or abs(x.value_gap_pct) < 0.1 for x in listings)
     # Each model is priced near its own market, not the pooled ~3500 €/m² average.
     cheap_fair = models["Cheap"].predict_price(
         make_listing(area_m2=70.0, price=1, search_area="Cheap", floor=2.0, year_built=2000)

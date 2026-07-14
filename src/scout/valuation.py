@@ -149,7 +149,17 @@ def apply_valuations(listings: list[Listing], model: ValuationModel | None) -> N
         has_real_attrs = bool((lst.energy_class or "").strip()) and bool(
             lst.year_built or lst.renovated_year
         )
-        lst.value_gap_pct = model.value_gap(lst) if (confident and has_real_attrs) else None
+        gap = model.value_gap(lst) if (confident and has_real_attrs) else None
+        # SIGNIFICANCE GATE (anti-inflation): a gap smaller than the model's OWN noise is not
+        # evidence of a bargain — it's within the error bars. Only keep the gap (which drives
+        # the "undervalued" badge, the undervaluation score, and the deal grade) when the price
+        # clears the model's ±1σ band, i.e. |gap| ≥ 1 − e^(−residual_std). Otherwise the gap is
+        # noise and we drop it to None (scoring falls back to the naive €/m² signal), so a flat
+        # priced 11% below a model with a ±42% band is NOT badged as undervalued.
+        if gap is not None:
+            band = 1.0 - math.exp(-model.residual_std) if model.residual_std else 0.0
+            gap = gap if abs(gap) >= band else None
+        lst.value_gap_pct = gap
 
 
 def fit_and_apply_by_area(listings: list[Listing]) -> dict[str, ValuationModel]:
