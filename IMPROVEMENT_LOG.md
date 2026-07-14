@@ -3,6 +3,44 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 11 — improvement pass (50 identified, decision tools shipped) + sellability score
+Ran the redefined improvement-loop: identified 50 improvements (IMPROVEMENTS.md pass 2),
+built a task list, implemented a batch via 5 parallel subagents + integration, verified by
+tests + screenshots, then scored the price.
+
+**Shipped (all gated, screenshot-verified, 289 tests green):**
+- 4 new pure decision modules on the listing-detail page: `acquisition.py` (total cash-in
+  = price + Greek transfer tax/notary/registry/legal/agent), `sensitivity.py` (rate×vacancy
+  net-yield grid), `comps_panel.py` (softer comps so the section is never empty),
+  `score_explain.py` (plain-language 🟢/🔴/⚪ "why this score"). 39 new unit tests.
+- Affordability filter (income → max mortgage-supported price); freshness doctor (warns when
+  data ≥3 days old); Debug data-quality audit panel; mobile-responsive card grid.
+- Detail parser (xe.py) now extracts heating/parking/storage/condition/off-plan year —
+  parsing only; persistence deferred (needs a schema change, flagged not done).
+- Data: enriched 200 top-scored incomplete listings → coords +182, energy +11, year +11.
+  Honest delta: complete 48.7%→48.8%, year_or_reno 49.6%→49.7% — barely moved, because the
+  batch was small and those rows lacked coords, not year. Moving the top_gap needs a
+  sustained production enrichment run (1,500+/day over days) = ops/time, NOT a code fix.
+
+**Sellability score: ~40/100** (up from ~25 when the UI was broken, ~52 self-claimed before
+the visual-QA truth pass). Tier: **prosumer-adjacent, currently hobby**. Realistic price:
+- €19/mo: *plausible for a niche (a buyer's-agent doing lead-gen off the CSV export) ONCE the
+  daily pipeline + alerts demonstrably run live and coverage broadens* — not for a general
+  buyer today.
+- €100k one-off: **no** — needs revenue/users or a data moat, not more code.
+
+Why the price is capped (most damaging first):
+1. **Valuation is relative to ASKING prices, not sold prices** (Greek sold data isn't public)
+   with out-of-sample R²=0.45 / ±42% bands — wider than the ~10–20% edge it claims to find.
+   The tool is now honest about this, but honesty doesn't make the signal reliable.
+2. **Single portal (XE) + 49% depth** — partial market slice, half the listings card-only.
+3. **Not proven live** — data is 2 days old; the daily-refresh premise is unverified in prod.
+4. **Low defensibility** — a competent dev rebuilds the scraper+scoring in ~2 weeks.
+The genuinely strong parts: motivated-seller signals (days-on-market, relistings) are REAL
+and live now, and the decision math (net yield after Greek tax, acquisition cost, sensitivity)
+is solid. What would 10× willingness-to-pay: sold-price data (or a defensible proxy),
+a proven always-on daily pipeline with alerts, and a second portal for full coverage.
+
 ## Cycle 10 — visual-QA, every remaining page
 Screenshotted Map, Today, Neighborhoods, Watchlist and fixed what the buyer sees:
 - **Map was a sea of red** (absolute scores are low: p50=14, max=70, so the absolute

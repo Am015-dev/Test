@@ -1,57 +1,62 @@
 ---
 name: improvement-loop
-description: The autonomous self-improvement engine for Holargos Property Scout. Use when asked to "improve the product", "find and implement improvements", "make it more sellable", or to run unattended improvement cycles. Runs observe → prioritise → implement → gate → review → score → log, one small batch per cycle, respecting all project guardrails. The goal is autonomy: keep raising the sellability score without hand-holding, and stop honestly when returns diminish.
+description: The autonomous self-improvement engine for Holargos Property Scout. Use when asked to "improve the product", "run the improvement skill", "find and implement improvements", or "make it more sellable". One invocation = one full pass that IDENTIFIES 50 concrete improvements, turns them into a planned task list, IMPLEMENTS them in gated batches, VERIFIES the result (tests + screenshots), then CRITIQUES the product and scores its market price. The goal is autonomy toward a sellable product (€19/mo or €100k), stopping honestly when what remains needs data or go-to-market, not code.
 ---
 
-# Improvement loop — observe, fix the highest-ROI gap, prove it, repeat
+# Improvement loop — 50 improvements, plan, implement, verify, critique, price
 
-The point is a *repeatable* cycle, not a one-off burst of 50 edits. Each cycle makes a
-small, verified, committed improvement and records the new score, so progress compounds and
-is auditable. Prefer three solid, tested changes over thirty unverified ones.
+One invocation runs the whole pass below. Volume is the point (find 50), but so is honesty:
+a shipped, tested improvement counts; a claimed one does not. Never fake data the product
+can't get, and never let the product claim precision it lacks to lift a score.
 
-## The cycle (one batch per invocation)
+## The pass (do all six phases, in order)
 
-1. **Observe.** Run the `data-quality-audit` skill. Note `complete_pct`, `top100_complete`,
-   and `top_gap`. Read `IMPROVEMENTS.md` for the open backlog.
-2. **Prioritise.** Pick 2–5 items maximising **impact ÷ effort**. Hard rules:
-   - Skip anything blocked by data we can't get (sold prices, owner phone numbers) — those
-     are go-to-market, not code. Say so; don't fake them.
-   - Prefer the item the audit's `top_gap` points to — fixing the measured weakness beats a
-     guess.
-   - A correctness bug found mid-cycle jumps the queue.
-3. **Plan.** State the batch and the expected measurable effect (e.g. "energy 33% → ~60%",
-   "kills imputed-rent double-count"). Keep it short.
-4. **Implement.** Make the changes. Keep functions pure and unit-testable where possible; put
-   new logic in a module + a test, not only in the UI.
-5. **Gate (blocking).** `python -m pytest -q` then `ruff check` and `black --check` over
-   `src/ tests/ scripts/`. Green before commit — no exceptions.
-6. **Review & score.** Run the `sellability-review` skill; record the new score, price band,
-   and the 3 biggest remaining blockers. If a change didn't move a rubric line, say why.
-7. **Log & commit.** Append a one-line entry to `IMPROVEMENTS.md` (mark items ✅/◐) and to a
-   running `IMPROVEMENT_LOG.md` (date, batch, score before→after). Commit with the required
-   trailers; push to the designated branch.
-8. **Decide.** If the score moved and backlog remains, loop again. If two consecutive cycles
-   fail to move the score, STOP and report honestly what's now blocking (usually data or
-   go-to-market), rather than churning.
+1. **Observe.** Run `data-quality-audit`; note `complete_pct`, `top100_complete`, `top_gap`.
+   Launch the app and screenshot every page (the `visual-qa` skill) — judge what the BUYER
+   sees, not what the tests say. Read `IMPROVEMENTS.md` for the standing backlog.
+
+2. **Identify 50.** Produce a concrete, numbered list of 50 improvements grounded in what you
+   just observed — real defects, missing decision value, trust gaps, data-depth levers, UX.
+   Each item: one line, a rough impact (★1–5 on sellability) and effort (S/M/L). Split the
+   50 across: data depth/coverage · valuation/scoring quality · decision tools · product/UX/
+   trust · infra/ops. Skip nothing for being small; mark items blocked by ungettable data
+   (sold prices, owner phones) as **go-to-market, not code** and don't fake them.
+
+3. **Plan (task list).** Write the 50 into `IMPROVEMENTS.md` and create a tracked task list
+   (TaskCreate) ordered by impact ÷ effort. A correctness bug jumps the queue. Say which
+   items this pass will actually implement vs. which are blocked/deferred, and why.
+
+4. **Implement.** Work the list top-down. Keep new logic pure and unit-tested in a module +
+   test, not only in the UI. Fan independent items out to subagents where it helps. Update
+   each task's status as you go (in_progress → completed). Batch-commit with the required
+   trailers as coherent groups land — don't wait for all 50.
+
+5. **Verify (blocking).** For every batch: `python -m pytest -q`, then `ruff check` and
+   `black --check` over `src/ tests/ scripts/` — green before commit. For anything the buyer
+   sees, re-launch the app and screenshot: **a UI fix isn't done until the new screenshot
+   proves it.** Re-run `data-quality-audit` to measure data-depth items against their target
+   (e.g. "year 49% → 62%"). Push to the designated branch.
+
+6. **Critique & price.** Run `sellability-review` on the improved product with FRESH numbers
+   (quote the new audit + real outputs). Output its 0–100 Sellability Score, the realistic
+   price band/tier, the 3–6 reasons for that price, and what would 10× it. Append the
+   before→after score to `IMPROVEMENT_LOG.md` and mark done items ✅/◐ in `IMPROVEMENTS.md`.
+
+## Decide (end of pass)
+
+If the score moved and code-addressable items remain, the next invocation runs another full
+pass (find 50 more). If two consecutive passes don't move the score, STOP and report honestly
+what now blocks it — usually sold-price data, a second portal, or weeks of accumulated
+time-series (the moat), none of which more code can shortcut today.
 
 ## Guardrails (never violate)
 
-- **Free solutions only** — no paid APIs/services (no APIFY etc.).
-- **Branch** `claude/holargos-property-scout-8yffib`; never push elsewhere. Do **not** open a
-  PR unless explicitly asked.
+- **Free solutions only** — no paid APIs/services.
+- **Branch** `claude/holargos-property-scout-8yffib`; never push elsewhere. No PR unless asked.
 - **Commit trailers** required: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` and
   the `Claude-Session:` line. Never put the model identifier in commits/PRs/code/comments.
-- **DB single-writer**: never rescore or write to the prod DB while a scrape/enrich holds a
-  write session. Scraping cadence for XE detail pages ≥ 4 s (measured safe; faster → 403s).
-- **Stop-and-flag** before: DB schema changes, `strategy.yaml` scoring changes, adding a new
-  portal, or deleting data — implement only when the current task authorises it, and note it
-  in the commit body.
-- **Honesty over score**: never make the product claim precision it lacks to lift the number.
-  A change that removes a false claim is a win even if the raw score dips.
-
-## What "done for now" looks like
-
-A committed, gated batch; an updated backlog + log; a fresh sellability score with the top
-remaining blockers named. Then either loop or stop with an honest "the rest needs X" — where
-X is usually sold-price data, a second portal, or weeks of accumulated time-series (the moat),
-none of which more code can shortcut today.
+- **DB single-writer**: never rescore or write the prod DB while a scrape/enrich holds a write
+  session. XE detail-page cadence ≥ 4 s (faster → 403s).
+- **Stop-and-flag** before: DB schema changes, `strategy.yaml` scoring changes, adding a
+  portal, or deleting data — note it in the commit body.
+- **Honesty over score**: removing a false claim is a win even if the raw score dips.
