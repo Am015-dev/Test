@@ -3,6 +3,16 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 10 — visual-QA, every remaining page
+Screenshotted Map, Today, Neighborhoods, Watchlist and fixed what the buyer sees:
+- **Map was a sea of red** (absolute scores are low: p50=14, max=70, so the absolute
+  red→green scale painted everything red). Now colours pins by percentile rank within the
+  view → a real heatmap of relatively-better listings; legend says so.
+- **Non-dwellings scored as investments** — air rights ("αέρας"), land, shops, parking have
+  no comparable €/m². Hard-excluded by title; keeps houses/maisonettes/buildings.
+- **Today was blank on a quiet day** → falls back to current top-ranked picks.
+- Neighborhoods table + Watchlist empty state reviewed: clean, kept as-is. 245 tests green.
+
 ## Cycle 9 — visual-QA truth pass (look at the rendered product, then fix)
 Adopted the visual-qa discipline: launch the app, screenshot every page, fix what the
 BUYER sees, re-screenshot to prove it. Root-caused and fixed, each verified by screenshot:
