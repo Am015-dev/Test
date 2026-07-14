@@ -1215,106 +1215,107 @@ def page_detail(listings: list[dict]) -> None:
     cols[3].metric("Days on market", dom if dom is not None else "—")
     cols[4].metric("Score", f"{d['score']:.0f} / 100")
 
-    st.write(" ".join(fmt.badges(d)) or "_no badges_")
     if d["excluded"]:
         st.error(f"Excluded by hard filter: {d['exclusion_reason']}")
 
-    # --- investment math ---
-    st.markdown("#### 💰 Investment case")
-    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
-    if monthly:
-        annual = monthly * 12
-        gy = d.get("gross_yield")
-        math_cols = st.columns(4)
-        math_cols[0].metric("Est. monthly rent", fmt.euro(monthly))
-        math_cols[1].metric("Annual income", fmt.euro(annual))
-        math_cols[2].metric("Purchase price", fmt.euro(d["price"]))
-        math_cols[3].metric("Gross yield", fmt.pct(gy))
-        if fp and d["price"] < fp:
-            drop_pct = (fp - d["price"]) / fp * 100
-            st.info(
-                f"📉 Price dropped **{drop_pct:.0f}%** from {fmt.euro(fp)} to {fmt.euro(d['price'])} "
-                f"(saved {fmt.euro(fp - d['price'])})"
-            )
-    else:
-        st.caption("_No rent data scraped — yield estimate uses the strategy fallback €/m²/month._")
+    # Verdict up front — the answer before any deep dive.
+    sc = deal_scorecard.scorecard(d)
+    vic = {"Strong": "🟢", "Fair": "🟡", "Pass": "🔴"}
+    vc = st.columns(4)
+    vc[0].metric("Deal grade", d.get("deal_grade") or "—")
+    vc[1].metric("Scorecard", f"{vic.get(sc['verdict'], '')} {sc['verdict']}")
+    vc[2].metric("Net yield", fmt.pct(d["net_yield"]) if d.get("net_yield") is not None else "—")
+    gap = d.get("value_gap_pct")
+    vc[3].metric(
+        "Vs model value",
+        f"{gap * 100:+.0f}%" if gap is not None else "—",
+        help="Only shown when the price clears the model's ±band (else it's noise).",
+    )
+    if d.get("strategy_tags"):
+        st.write(" ".join(f"`{t}`" for t in d["strategy_tags"]))
+    if d.get("deal_thesis"):
+        st.info(f"💡 {d['deal_thesis']}")
 
-    bullets = _investment_bullets(d)
-    if bullets:
-        for b in bullets:
+    tabs = st.tabs(
+        ["💰 Returns", "🧾 Costs & risk", "🎛️ Sensitivity", "🧮 Score & comps", "🏗️ Details"]
+    )
+
+    with tabs[0]:
+        monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+        if monthly:
+            math_cols = st.columns(4)
+            math_cols[0].metric("Est. monthly rent", fmt.euro(monthly))
+            math_cols[1].metric("Annual income", fmt.euro(monthly * 12))
+            math_cols[2].metric("Purchase price", fmt.euro(d["price"]))
+            math_cols[3].metric("Gross yield", fmt.pct(d.get("gross_yield")))
+            if fp and d["price"] < fp:
+                drop_pct = (fp - d["price"]) / fp * 100
+                st.info(
+                    f"📉 Price dropped **{drop_pct:.0f}%** from {fmt.euro(fp)} to "
+                    f"{fmt.euro(d['price'])} (saved {fmt.euro(fp - d['price'])})"
+                )
+        else:
+            st.caption("_No rent scraped — yield uses the strategy fallback €/m²/month._")
+        for b in _investment_bullets(d):
             st.markdown(f"• {b}")
+        _fair_value_block(d)
+        _net_return_and_financing(d, lid)
+        _investor_metrics_block(d)
+        _projection_block(d)
 
-    # --- fair value vs asking (with honest uncertainty) ---
-    _fair_value_block(d)
+    with tabs[1]:
+        _acquisition_block(d)
+        _risk_and_context(d, listings)
+        _scenarios_block(d)
 
-    # --- net return (after Greek costs) + financing ---
-    _net_return_and_financing(d, lid)
+    with tabs[2]:
+        _sensitivity_block(d)
 
-    # --- total cash to acquire (price + Greek purchase costs) ---
-    _acquisition_block(d)
+    with tabs[3]:
+        _scorecard_block(d)
+        st.markdown("#### 📊 Score breakdown")
+        _score_breakdown(d, get_strategy())
+        st.markdown("#### 🔁 Comparable active listings nearby")
+        _comparables(d, listings)
 
-    # --- recognized investor metrics (cap rate, GRM, DSCR, break-even occupancy) ---
-    _investor_metrics_block(d)
-
-    # --- transparent deal scorecard + 5-year projection ---
-    _scorecard_block(d)
-    _projection_block(d)
-
-    # --- risk & context: EPBD liability, price percentile, area liquidity, leverage ---
-    _risk_and_context(d, listings)
-
-    # --- downside & scenarios: the numbers an investor underwrites on ---
-    _scenarios_block(d)
-
-    # --- rate × vacancy sensitivity: does the return survive stress? ---
-    _sensitivity_block(d)
-
-    # --- score breakdown ---
-    strategy = get_strategy()
-    st.markdown("#### 📊 Score breakdown")
-    _score_breakdown(d, strategy)
-
-    # --- comparable listings ---
-    st.markdown("#### 🔁 Comparable active listings nearby")
-    _comparables(d, listings)
-
-    # --- property specs ---
-    st.markdown("#### 🏗️ Property specs")
-    spec_cols = st.columns(3)
-    spec_cols[0].markdown(
-        f"**Area:** {d['area_m2']:.0f} m²  \n"
-        f"**Bedrooms:** {d['bedrooms'] or '—'}  \n"
-        f"**Floor:** {_floor_label(d['floor'])}  \n"
-        f"**Built:** {d.get('year_built') or '—'}"
-        + (f" (renov. {d['renovated_year']})" if d.get("renovated_year") else "")
-    )
-    spec_cols[1].markdown(
-        f"**Neighborhood:** {d['neighborhood'] or '—'}  \n"
-        f"**Address:** {d['address'] or '—'}  \n"
-        f"**Nearest metro:** {d.get('nearest_metro') or '—'}  \n"
-        f"**Metro distance:** {_metro_label(d)}"
-    )
-    spec_cols[2].markdown(
-        f"**Energy class:** {d.get('energy_class') or '—'}  \n"
-        f"**Heating:** {d.get('heating') or '—'}  \n"
-        f"**Private seller:** {'✅ yes' if d['is_private_seller'] else '✗ no'}  \n"
-        f"**Currently rented:** {'✅ yes' if d['is_currently_rented'] else '✗ no'}"
-    )
-
-    # --- price history ---
-    st.markdown("#### 📈 Price history")
-    history = get_history(lid)
-    if len(history) >= 2:
-        hist_df = pd.DataFrame(history, columns=["observed_at", "price"]).set_index("observed_at")
-        st.line_chart(hist_df)
-    elif len(history) == 1:
-        st.caption(
-            f"First recorded price: {fmt.euro(history[0][1])} on {history[0][0]:%Y-%m-%d}. "
-            "Price history builds up over multiple pipeline runs."
+    with tabs[4]:
+        st.markdown("#### 🏗️ Property specs")
+        spec_cols = st.columns(3)
+        spec_cols[0].markdown(
+            f"**Area:** {d['area_m2']:.0f} m²  \n"
+            f"**Bedrooms:** {d['bedrooms'] or '—'}  \n"
+            f"**Floor:** {_floor_label(d['floor'])}  \n"
+            f"**Built:** {d.get('year_built') or '—'}"
+            + (f" (renov. {d['renovated_year']})" if d.get("renovated_year") else "")
         )
-    else:
-        st.caption("No price history yet — runs each day and accumulates over time.")
+        spec_cols[1].markdown(
+            f"**Neighborhood:** {d['neighborhood'] or '—'}  \n"
+            f"**Address:** {d['address'] or '—'}  \n"
+            f"**Nearest metro:** {d.get('nearest_metro') or '—'}  \n"
+            f"**Metro distance:** {_metro_label(d)}"
+        )
+        spec_cols[2].markdown(
+            f"**Energy class:** {d.get('energy_class') or '—'}  \n"
+            f"**Heating:** {d.get('heating') or '—'}  \n"
+            f"**Private seller:** {'✅ yes' if d['is_private_seller'] else '✗ no'}  \n"
+            f"**Currently rented:** {'✅ yes' if d['is_currently_rented'] else '✗ no'}"
+        )
+        st.markdown("#### 📈 Price history")
+        history = get_history(lid)
+        if len(history) >= 2:
+            hist_df = pd.DataFrame(history, columns=["observed_at", "price"]).set_index(
+                "observed_at"
+            )
+            st.line_chart(hist_df)
+        elif len(history) == 1:
+            st.caption(
+                f"First recorded price: {fmt.euro(history[0][1])} on {history[0][0]:%Y-%m-%d}. "
+                "Price history builds up over multiple pipeline runs."
+            )
+        else:
+            st.caption("No price history yet — accumulates over daily runs.")
 
+    st.divider()
     lb, db = st.columns(2)
     with lb:
         st.link_button("Open on portal ↗", d["url"], use_container_width=True)
