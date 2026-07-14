@@ -140,7 +140,7 @@ def test_app_renders_fair_value_views(tmp_path, monkeypatch):
     assert not at.exception
     # The confidence banner is a success or warning box (fitted path), not the info stub.
     banner_text = " ".join(b.value for b in [*at.success, *at.warning])
-    assert "Relative-value model" in banner_text
+    assert "Fair-value model" in banner_text
     # The product listing-card grid renders (custom HTML, not a bare dataframe).
     md = " ".join(m.value for m in at.markdown)
     assert "ph-grid" in md and "ph-card" in md

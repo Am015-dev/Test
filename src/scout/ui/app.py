@@ -114,16 +114,15 @@ def _valuation_banner() -> dict:
         "aren't public), so read them as *priced-vs-comparable-listings*, not vs. what "
         "flats actually sell for."
     )
-    if o["is_confident"]:
-        st.success(
-            f"**Relative-value model:** {scope}, out-of-sample R²={r2:.2f}. Each estimate is "
-            f"shown with its area's ± range (typ. {band}). {basis}"
-        )
-    else:
-        st.warning(
-            f"**Relative-value model:** {scope}, out-of-sample R²={r2:.2f} — some submarkets "
-            f"don't predict held-out listings reliably, so their figures are *indicative* "
-            f"(typ. range {band}). Rank to shortlist, then verify each listing. {basis}"
+    # One-line headline, with the full honesty caveats tucked in an expander so the top of
+    # the page isn't a five-line wall of yellow text on every visit.
+    conf = "reliable" if o["is_confident"] else "indicative — shortlist, then verify"
+    headline = f"📐 Fair-value model: R²={r2:.2f}, typical range {band} — {conf}."
+    (st.success if o["is_confident"] else st.warning)(headline)
+    with st.expander("How to read the fair-value figures"):
+        st.markdown(
+            f"{scope}. {basis} A wide ± range means the model can't price that submarket "
+            "precisely — use the ranking to shortlist and verify each listing on the portal."
         )
     return v
 
