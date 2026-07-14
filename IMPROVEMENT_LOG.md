@@ -3,6 +3,21 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 12 — anti-inflation: honest grades/badges (user: "all the scores are inflated")
+The user was right. The valuation model's out-of-sample band is ±42%, but value gaps were
+tiny (p50=11%, p90=32% — nearly all WITHIN the noise) and still drove a green "+11% vs model
+value" badge, the undervaluation score, and 26 grade-A "deals". Puffery.
+- Significance gate: value_gap_pct is now kept only when the price clears the model's own ±1σ
+  band; within-noise gaps drop to None. deal_grade thresholds raised (score 60/40, yield 4.5%).
+- Effect after rescore: "undervalued" claims **3,069 → 1,053**, grade **A 26 → 6**, **B 260 → 87**.
+  Cards now show a "vs model value" badge ONLY on genuinely beyond-noise gaps (e.g. +30%); the
+  rest show just net yield / days-on-market / metro. 290 tests green.
+- **Revised sellability: ~33/100** (down from the ~40 I gave last pass — that number was itself
+  a bit generous). The honest read: the "find undervalued flats" claim is the WEAK part (asking-
+  based, mostly noise); the tool's real, defensible value is the **motivated-seller signals**
+  (days-on-market, relistings — real and live) plus the **decision math** (net yield after Greek
+  tax, total acquisition cost, sensitivity). Price it on those, not on an "AI valuation".
+
 ## Cycle 11 — improvement pass (50 identified, decision tools shipped) + sellability score
 Ran the redefined improvement-loop: identified 50 improvements (IMPROVEMENTS.md pass 2),
 built a task list, implemented a batch via 5 parallel subagents + integration, verified by
