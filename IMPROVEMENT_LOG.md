@@ -3,6 +3,17 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 16 — full-page coherence sweep (screenshot every page, fix noise)
+Screenshotted and critically reviewed EVERY page; fixed the clutter/consistency issues found,
+added zero features:
+- KPI header: dropped outlier "cheapest €/m²" (always a 330 m² fixer-upper) → median net yield.
+- Fair-value banner: 5-line yellow wall → one-line headline + "how to read" expander.
+- Neighborhoods "Median yield" → "Median gross yield" (it's gross; app emphasises net).
+- Strategy: metro-distance input was mislabelled a "Hard filter" — it's a signal now; relabelled
+  as the "near metro" threshold with a help note.
+- Verified all 5 detail-page tabs render (Returns/Costs&risk/Sensitivity/Score&comps/Details),
+  0 exceptions. Deals / Saved searches / Strategy confirmed clean, left as-is. 336 tests green.
+
 ## Cycle 15 — RESTRAINT: consolidate, stop piling on (user: "very bad result")
 Honest lesson: the last few cycles kept ADDING blocks and the detail page became a
 15-section single-scroll wall — my feature-adding made the product WORSE to use.
