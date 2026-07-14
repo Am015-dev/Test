@@ -71,6 +71,78 @@ def test_parse_detail_jsonld_extracts_investment_fields():
     assert len(d.get("description", "")) > 50
 
 
+def _jsonld_html(description: str, main_entity: dict | None = None) -> str:
+    """Wrap a description (and optional mainEntity) in a RealEstateListing JSON-LD
+    <script> the way an XE detail page embeds it."""
+    import json
+
+    node = {
+        "@type": "RealEstateListing",
+        "description": description,
+        "mainEntity": main_entity or {},
+    }
+    return (
+        '<script type="application/ld+json">' + json.dumps(node, ensure_ascii=False) + "</script>"
+    )
+
+
+def test_parse_detail_jsonld_extracts_prose_extras():
+    """Heating/parking/storage/condition/delivery_year mined from the description prose."""
+    from scout.collectors.xe import parse_detail_jsonld
+
+    desc = (
+        "Προς Πώληση Διαμέρισμα, Παπάγος, 55 τ.μ., 1ος Όροφος, 1 Υ/Δ, 1 Μπάνιο/α, "
+        "Kουφώματα: Αλουμινίου, 1 parking, Έτος κατασκευής: 2025, "
+        "Κατάσταση: υπό κατασκευή, Ενεργειακό Πιστοποιητικό: Α++, "
+        "Χαρακτηριστικά: Ασανσέρ, Πόρτα Ασφαλείας, Αποθήκη, ... "
+        "ΤΟ ΑΚΙΝΗΤΟ ΘΑ ΠΑΡΑΔΩΘΕΙ ΤΟ 2026, Ατομική - Φυσικό Αέριο Θέρμανση, Τιμή: 300.000€."
+    )
+    d = parse_detail_jsonld(_jsonld_html(desc))
+    assert d["heating"] == "Ατομική - Φυσικό Αέριο"  # prose fallback (no amenity heating)
+    assert d["parking"] == 1  # count captured, not just a bool
+    assert d["storage"] is True
+    assert d["condition"] == "under_construction"
+    assert d["delivery_year"] == 2026
+    # Existing keys are untouched.
+    assert d["description"] == desc
+
+
+def test_parse_detail_jsonld_prose_heating_never_overrides_amenity():
+    """The structured amenity heating wins; the prose fallback only fills a gap."""
+    from scout.collectors.xe import parse_detail_jsonld
+
+    d = parse_detail_jsonld(
+        _jsonld_html(
+            "Ωραίο διαμέρισμα, Ατομική - Φυσικό Αέριο Θέρμανση.",
+            main_entity={"amenityFeature": [{"name": "Θέρμανση: Πλήρως αυτόνομη"}]},
+        )
+    )
+    assert d["heating"] == "Πλήρως αυτόνομη"
+
+
+def test_parse_detail_jsonld_extras_absent_when_not_stated():
+    """A plain description yields none of the new keys (they are strictly optional)."""
+    from scout.collectors.xe import parse_detail_jsonld
+
+    d = parse_detail_jsonld(_jsonld_html("Πωλείται φωτεινό διαμέρισμα στο κέντρο."))
+    for key in ("heating", "parking", "storage", "condition", "delivery_year"):
+        assert key not in d
+    assert d.get("description")  # description itself is still captured
+
+
+def test_parse_detail_jsonld_condition_variants():
+    """Each condition keyword maps to its label; needs_renovation wins over renovated."""
+    from scout.collectors.xe import parse_detail_jsonld
+
+    def cond(text: str):
+        return parse_detail_jsonld(_jsonld_html(text)).get("condition")
+
+    assert cond("Νεόδμητο διαμέρισμα, παραδοτέο άμεσα.") == "newbuild"
+    assert cond("Πλήρως Ανακαινισμένο το 2020.") == "renovated"
+    assert cond("Ακίνητο που χρήζει ανακαίνισης.") == "needs_renovation"
+    assert cond("Απλό διαμέρισμα χωρίς ιδιαιτερότητες.") is None
+
+
 def test_parse_detail_jsonld_fails_soft_on_garbage():
     from scout.collectors.xe import parse_detail_jsonld
 

@@ -40,6 +40,7 @@ from selectolax.parser import HTMLParser
 from ..config import Strategy, get_settings
 from .base import RAW_HTML_DIR, USER_AGENT, Collector
 from .parse_helpers import (
+    _strip_accents,
     parse_float,
     parse_floor,
     parse_int,
@@ -85,6 +86,44 @@ _LD_JSON_RE = re.compile(
 
 # Renovation year stated in prose — "ανακαινισμένο/ανακαίνιση (το) 2019" and Latin variants.
 _RENO_YEAR_RE = re.compile(r"(?:ανακαιν\w*|renovat\w*)[^0-9]{0,20}(19\d{2}|20\d{2})", re.IGNORECASE)
+
+# --- Extra prose fields pulled from the JSON-LD description -----------------------
+# These live in the free-text "description" (and sometimes the amenity list); XE has no
+# structured field for most of them. All are best-effort — absent → the key is omitted.
+
+# Heating stated inline as "<type> Θέρμανση" ("Ατομική - Φυσικό Αέριο Θέρμανση"). Used
+# only as a fallback when the amenityFeature list carries no "Θέρμανση: …" entry. Bounded
+# to a single clause ([^,.:]) so it can't swallow the rest of the sentence.
+_HEATING_PROSE_RE = re.compile(r"([^,.:]+?)\s+Θέρμανση")
+
+# Parking: an optional leading count then any of the accepted spellings. Matched against
+# an accent-stripped, lower-cased copy of the text, so literals here are unaccented.
+_PARKING_RE = re.compile(r"(?:(\d+)\s*)?(?:parking|θεσ\w*\s+σταθμευσης|γκαραζ)")
+# Storage room ("αποθηκη"). Accent-stripped literal.
+_STORAGE_RE = re.compile(r"αποθηκη")
+# Off-plan delivery year: "…ΘΑ ΠΑΡΑΔΩΘΕΙ ΤΟ 2026…" (distinct from Έτος κατασκευής).
+_DELIVERY_YEAR_RE = re.compile(r"παραδ[ωο]θ\w*\s+το\s+(20\d{2})")
+
+# Property condition. Order matters: "χρηζει ανακαινισης" also contains "ανακαιν", so the
+# needs-renovation test must precede the renovated test. Each pattern runs against
+# accent-stripped, lower-cased text.
+_CONDITION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("under_construction", re.compile(r"υπο κατασκευη")),
+    ("newbuild", re.compile(r"νεοδμητ|νεοκτιστ")),
+    ("needs_renovation", re.compile(r"χρηζει ανακαιν|χρηζουν ανακαιν")),
+    ("renovated", re.compile(r"ανακαινισμ")),
+)
+
+
+def _condition_from_text(text: str | None) -> str | None:
+    """Classify a listing's condition from free text, or None if nothing matches."""
+    if not text:
+        return None
+    norm = _strip_accents(text).lower()
+    for label, pattern in _CONDITION_PATTERNS:
+        if pattern.search(norm):
+            return label
+    return None
 
 
 def _feature_value(name: str) -> tuple[str, str] | None:
@@ -146,8 +185,12 @@ def parse_detail_jsonld(html: str) -> dict:
     """Extract the rich investment fields from a listing detail page's JSON-LD.
 
     Returns any of ``year_built, bedrooms, area_m2, energy_class, heating,
-    description`` that are present. Fails soft (returns ``{}`` on missing/garbled
-    data) so a bad detail page never breaks the run — the card fields still stand.
+    renovated_year, description`` that are present, plus best-effort extras parsed
+    from the description prose: ``parking`` (int count or ``True``), ``storage``
+    (bool), ``condition`` (newbuild/under_construction/renovated/needs_renovation),
+    ``delivery_year`` (off-plan handover year), and a prose fallback for ``heating``.
+    Fails soft (returns ``{}`` on missing/garbled data) so a bad detail page never
+    breaks the run — the card fields still stand.
     """
     out: dict = {}
     for block in _LD_JSON_RE.findall(html):
@@ -183,6 +226,10 @@ def parse_detail_jsonld(html: str) -> dict:
                     out["heating"] = value
                 elif "Έτος κατασκευής" in key and "year_built" not in out:
                     out["year_built"] = parse_int(value)
+                elif "Κατάσταση" in key and "condition" not in out:
+                    cond = _condition_from_text(value)
+                    if cond:
+                        out["condition"] = cond
             desc = node.get("description")
             if desc:
                 out["description"] = desc
@@ -194,7 +241,45 @@ def parse_detail_jsonld(html: str) -> dict:
                     year = parse_int(reno.group(1))
                     if year and 1950 <= year <= datetime.utcnow().year:
                         out["renovated_year"] = year
+                _extract_prose_fields(desc, out)
     return out
+
+
+def _extract_prose_fields(desc: str, out: dict) -> None:
+    """Fill parking/storage/condition/delivery_year (and a heating fallback) from the
+    free-text description ``desc`` into ``out``. Each is optional and only set when
+    found, so absent facts simply leave the key out. Never raises."""
+    # Heating: the structured amenity list is authoritative; only mine the prose when it
+    # didn't provide one, so we never overwrite a clean "Θέρμανση: …" value.
+    if "heating" not in out:
+        m_heat = _HEATING_PROSE_RE.search(desc)
+        if m_heat:
+            heat = m_heat.group(1).strip()
+            if heat:
+                out["heating"] = heat
+
+    # Booleans/condition are accent-insensitive, so match on a normalized copy.
+    norm = _strip_accents(desc).lower()
+
+    m_park = _PARKING_RE.search(norm)
+    if m_park:
+        count = parse_int(m_park.group(1)) if m_park.group(1) else None
+        out["parking"] = count if count else True
+
+    if _STORAGE_RE.search(norm):
+        out["storage"] = True
+
+    if "condition" not in out:
+        cond = _condition_from_text(desc)
+        if cond:
+            out["condition"] = cond
+
+    m_del = _DELIVERY_YEAR_RE.search(norm)
+    if m_del:
+        year = parse_int(m_del.group(1))
+        # Regex already fixes the century (20xx); just cap an absurd far-future value.
+        if year and year <= datetime.utcnow().year + 15:
+            out["delivery_year"] = year
 
 
 class XeCollector(Collector):

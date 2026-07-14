@@ -24,7 +24,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from scout import analytics, comps, epbd, finance, investment, liquidity  # noqa: E402
+from scout import (  # noqa: E402
+    acquisition,
+    analytics,
+    comps,
+    comps_panel,
+    epbd,
+    finance,
+    investment,
+    liquidity,
+    score_explain,
+    sensitivity,
+)
 from scout.config import Strategy, load_strategy, save_strategy  # noqa: E402
 from scout.regions import REGIONS  # noqa: E402
 from scout.scoring import (
@@ -304,6 +315,13 @@ def _investment_bullets(d: dict) -> list[str]:
 
 def _score_breakdown(d: dict, strategy: Strategy) -> None:
     """Render a table showing each signal's contribution to the score."""
+    # Plain-language "why this score" first — what lifted it, what lowered it, what's
+    # unknown (and therefore not scored) — before the detailed weight table.
+    rows = score_explain.explain_score(d)
+    if rows:
+        icon = {"positive": "🟢", "negative": "🔴", "unknown": "⚪"}
+        for r in rows:
+            st.markdown(f"{icon.get(r['effect'], '•')} **{r['label']}** — {r['detail']}")
     w = strategy.weights
     ref = strategy.scoring_reference
     total_w = w.total() or 1.0
@@ -512,18 +530,22 @@ def _net_return_and_financing(d: dict, lid: int) -> None:
 def _comparables(d: dict, listings: list[dict]) -> None:
     """Similar active listings in the same neighborhood, with a €/m² delta vs this one."""
     rows = comps.find_comparables(d, listings)
+    # Fall back to the softer, tested comps panel so the section is never empty just because
+    # nothing sat inside the strict tolerance bands.
+    if not rows:
+        rows = comps_panel.comparable_listings(d, listings, n=6)
     if not rows:
         st.caption("No comparable active listings in this neighborhood yet.")
         return
     records = [
         {
-            "Price": c["price"],
-            "€/m²": c["price_per_m2"],
-            "Area": c["area_m2"],
-            "Floor": c["floor"],
+            "Price": c.get("price"),
+            "€/m²": c.get("price_per_m2"),
+            "Area": c.get("area_m2"),
+            "Floor": c.get("floor"),
             "vs this €/m²": c.get("ppm2_delta_pct"),
-            "Score": round(c["score"], 0),
-            "Link": c["url"],
+            "Score": round(c["score"], 0) if c.get("score") is not None else None,
+            "Link": c.get("url"),
         }
         for c in rows
     ]
@@ -544,6 +566,59 @@ def _comparables(d: dict, listings: list[dict]) -> None:
         },
     )
     st.caption("Same neighborhood, within ±25% area and ±30% price, ranked by €/m² closeness.")
+
+
+def _acquisition_block(d: dict) -> None:
+    """Total cash to actually buy — sticker price is not the real cost. Greek purchase
+    carries transfer tax, notary, land registry, legal and (unless private) agent fees."""
+    price = d.get("price")
+    if not price:
+        return
+    private = bool(d.get("is_private_seller"))
+    ac = acquisition.acquisition_costs(price, agent_fee_pct=0.0 if private else 0.0248)
+    st.markdown("#### 🧾 Total acquisition cost")
+    c = st.columns(4)
+    c[0].metric("Sticker price", fmt.euro(ac["price"]))
+    c[1].metric(
+        "Fees & taxes",
+        fmt.euro(ac["total_fees"]),
+        help="Transfer tax, notary, registry, legal, agent",
+    )
+    c[2].metric("Total cash-in", fmt.euro(ac["total_cash"]))
+    c[3].metric("Fees % of price", f"{ac['fees_pct_of_price'] * 100:.1f}%")
+    st.caption(
+        f"Transfer tax {fmt.euro(ac['transfer_tax'])} · notary {fmt.euro(ac['notary'])} · "
+        f"registry {fmt.euro(ac['land_registry'])} · legal {fmt.euro(ac['legal'])} · "
+        f"agent {fmt.euro(ac['agent'])}"
+        + ("  _(private seller — no agent fee)_" if private else "")
+    )
+
+
+def _sensitivity_block(d: dict) -> None:
+    """How the return holds up if rates rise or the flat sits empty — the stress test an
+    investor actually underwrites on."""
+    price = d.get("price")
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if not price or not monthly:
+        return
+    grid = sensitivity.sensitivity_grid(price, monthly * 12)
+    if not grid.get("net_yield"):
+        return
+    st.markdown("#### 🎛️ Rate × vacancy sensitivity")
+    rates = grid["rates"]
+    vac = grid["vacancies"]
+    ny = pd.DataFrame(
+        grid["net_yield"],
+        index=[f"{r * 100:.0f}% rate" for r in rates],
+        columns=[f"{v * 100:.0f}% empty" for v in vac],
+    )
+    st.caption("Net yield (after vacancy, costs, mortgage interest) — 30% down, 25-yr term.")
+    st.dataframe(
+        ny.style.format("{:.1%}"),
+        use_container_width=True,
+    )
+    if d.get("rent_estimated"):
+        st.caption("_Rent is estimated (no local comp) — treat these as indicative._")
 
 
 # ---- pages -----------------------------------------------------------------
@@ -1014,11 +1089,17 @@ def page_detail(listings: list[dict]) -> None:
     # --- net return (after Greek costs) + financing ---
     _net_return_and_financing(d, lid)
 
+    # --- total cash to acquire (price + Greek purchase costs) ---
+    _acquisition_block(d)
+
     # --- risk & context: EPBD liability, price percentile, area liquidity, leverage ---
     _risk_and_context(d, listings)
 
     # --- downside & scenarios: the numbers an investor underwrites on ---
     _scenarios_block(d)
+
+    # --- rate × vacancy sensitivity: does the return survive stress? ---
+    _sensitivity_block(d)
 
     # --- score breakdown ---
     strategy = get_strategy()

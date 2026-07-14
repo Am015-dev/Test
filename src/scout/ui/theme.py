@@ -301,6 +301,11 @@ footer {{ visibility: hidden; height: 0; }}
     gap: 18px;
     margin: 8px 0 4px;
 }}
+/* On phones a 340px min column overflows the viewport and forces a horizontal scroll;
+   drop to a single full-width column so cards stay readable and never clip. */
+@media (max-width: 640px) {{
+    .ph-grid {{ grid-template-columns: 1fr; gap: 12px; }}
+}}
 .ph-card {{
     background: var(--hg-surface);
     border: 1px solid var(--hg-line);
