@@ -237,14 +237,17 @@ def _kpi_header(listings: list[dict]) -> None:
     drops = [d for d in listings if d["price_dropped"]]
     ppm = [d["price_per_m2"] for d in eligible if d["price_per_m2"]]
     median_ppm = statistics.median(ppm) if ppm else None
-    cheapest_ppm = min(ppm) if ppm else None
+    # Median NET yield is a far more useful (and outlier-robust) headline than the single
+    # cheapest €/m² listing, which was always some 300 m² fixer-upper dragging the number.
+    nys = [d["net_yield"] for d in eligible if d.get("net_yield") is not None]
+    median_ny = statistics.median(nys) if nys else None
 
     c = st.columns(5)
     c[0].metric("Opportunities", len(eligible))
     c[1].metric("New (24 h)", len(new))
     c[2].metric("Price drops", len(drops))
     c[3].metric("Median €/m²", fmt.euro_per_m2(median_ppm))
-    c[4].metric("Cheapest €/m²", fmt.euro_per_m2(cheapest_ppm))
+    c[4].metric("Median net yield", fmt.pct(median_ny) if median_ny is not None else "—")
 
 
 # ---- investment-thesis helpers --------------------------------------------
