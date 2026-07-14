@@ -1349,18 +1349,32 @@ def page_detail(listings: list[dict]) -> None:
 
 
 def page_watchlist(listings: list[dict]) -> None:
-    st.subheader("Watchlist")
+    st.subheader("⭐ Watchlist")
     watched = [d for d in listings if d["is_watched"]]
     if not watched:
         st.info("Pin listings from the **Listing detail** page to watch them here.")
         return
+
+    # Portfolio summary across the shortlist — the "if I bought all of these" snapshot.
+    prices = [d["price"] for d in watched if d.get("price")]
+    nys = [d["net_yield"] for d in watched if d.get("net_yield") is not None]
+    doms = [d["days_on_market"] for d in watched if d.get("days_on_market") is not None]
+    c = st.columns(4)
+    c[0].metric("Watched", len(watched))
+    c[1].metric("Total asking", fmt.euro(sum(prices)) if prices else "—")
+    c[2].metric("Median net yield", fmt.pct(statistics.median(nys)) if nys else "—")
+    c[3].metric("Median days on market", f"{int(statistics.median(doms))}d" if doms else "—")
+
     for d in watched:
         if d["price_dropped"]:
             st.success(
                 f"📉 {d['title']} dropped to {fmt.euro(d['price'])} "
                 f"(from {fmt.euro(d['first_price'])})"
             )
-    _table(sorted(watched, key=lambda d: d["score"], reverse=True))
+
+    components.listing_grid(sorted(watched, key=lambda d: d["score"], reverse=True))
+    with st.expander("Table view (sort / export)"):
+        _table(sorted(watched, key=lambda d: d["score"], reverse=True))
 
 
 def page_strategy() -> None:
