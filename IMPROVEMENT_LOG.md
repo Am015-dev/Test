@@ -3,6 +3,16 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 17 — leverage the data we already hold (stop citing "needs live pipeline")
+The always-zero "New (24 h)/Price drops" cards had me pointing at a missing live pipeline as
+a blocker. Wrong: the DB already holds rich signals. Surfaced them:
+- KPI header: "Sitting >180 days" (618) and "Below model value" (845) — real, populated now.
+- Neighborhoods table: per-area "Sitting >180d" + "Below model" columns → a where-to-hunt map.
+- Opportunities: sort by Best score / Biggest discount / Most negotiable (DOM) / Highest net
+  yield — rank by the real deal signal, not just the quality score.
+All three from data on hand (XE posting dates → days-on-market; significance-gated value gaps).
+336 tests green; screenshot-verified.
+
 ## Cycle 16 — full-page coherence sweep (screenshot every page, fix noise)
 Screenshotted and critically reviewed EVERY page; fixed the clutter/consistency issues found,
 added zero features:
