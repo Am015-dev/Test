@@ -1619,16 +1619,27 @@ def page_deals(listings: list[dict]) -> None:
 
     # Agent lead export (the Pro product — a per-territory motivated-seller list).
     buf = io.StringIO()
+    from scout import metrics as _m
+
     w = csv.writer(buf)
     w.writerow(
         [
             "negotiation_score",
+            "deal_grade",
             "price_eur",
+            "suggested_offer_eur",
             "area_m2",
+            "eur_per_m2",
             "neighborhood",
+            "region",
             "days_on_market",
             "price_cut_pct",
+            "below_model_pct",
+            "net_yield_pct",
+            "cap_rate_pct",
+            "energy_class",
             "private_seller",
+            "strategy_tags",
             "url",
         ]
     )
@@ -1636,15 +1647,28 @@ def page_deals(listings: list[dict]) -> None:
         dom = fmt.days_on_market(d.get("first_seen"), d.get("last_seen"))
         fp, cp = d.get("first_price"), d.get("price", 0)
         cut = (fp - cp) / fp if (fp and cp < fp) else 0.0
+        monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+        cap = _m.cap_rate(d["price"], monthly * 12, d.get("area_m2")) if monthly else None
+        gap = d.get("value_gap_pct")
+        ny = d.get("net_yield")
         w.writerow(
             [
                 round(d.get("negotiation_score") or 0, 1),
+                d.get("deal_grade") or "",
                 d["price"],
+                d.get("suggested_offer") or "",
                 f"{d['area_m2']:.0f}",
+                f"{d['price_per_m2']:.0f}" if d.get("price_per_m2") else "",
                 d.get("neighborhood") or "",
+                d.get("region") or "",
                 dom if dom is not None else "",
                 f"{cut * 100:.0f}%",
+                f"{gap * 100:.0f}%" if gap is not None else "",
+                f"{ny * 100:.1f}%" if ny is not None else "",
+                f"{cap * 100:.1f}%" if cap is not None else "",
+                d.get("energy_class") or "",
                 "yes" if d.get("is_private_seller") else "no",
+                " | ".join(d.get("strategy_tags") or []),
                 d["url"],
             ]
         )
