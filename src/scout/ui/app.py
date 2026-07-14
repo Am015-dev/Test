@@ -1532,11 +1532,17 @@ def page_neighborhoods(listings: list[dict]) -> None:
                 f"{s['median_yield_pct']:.1f}%" if s["median_yield_pct"] is not None else "—"
             ),
             "Opportunities": s["opportunities"],
+            "Sitting >180d": s["long_sitting"],
+            "Below model": s["below_model"],
             "Rented": s["rented"],
         }
         for s in stats
     ]
     st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
+    st.caption(
+        "**Sitting >180d** = motivated-seller supply · **Below model** = flats priced under "
+        "fair value (beyond the model's ±band) — where to hunt for deals in each area."
+    )
 
     st.markdown("#### 📈 Market price index (monthly median)")
     idx = analytics.market_price_index(get_all_price_history())

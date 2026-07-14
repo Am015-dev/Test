@@ -99,6 +99,10 @@ def neighborhood_stats(listings: list[dict]) -> list[dict]:
 
         opportunities = sum(1 for listing in group if listing.get("is_opportunity") is True)
         rented = sum(1 for listing in group if listing.get("is_currently_rented") is True)
+        # Real deal-supply signals from data we already hold: flats sitting >180 days
+        # (motivated sellers) and flats the model prices below fair value beyond its band.
+        long_sitting = sum(1 for listing in group if (listing.get("days_on_market") or 0) > 180)
+        below_model = sum(1 for listing in group if (listing.get("value_gap_pct") or 0) > 0)
 
         results.append(
             {
@@ -108,6 +112,8 @@ def neighborhood_stats(listings: list[dict]) -> list[dict]:
                 "median_ppm2": _median(ppm2_values),
                 "median_yield_pct": _median(yield_values),
                 "opportunities": opportunities,
+                "long_sitting": long_sitting,
+                "below_model": below_model,
                 "rented": rented,
             }
         )
