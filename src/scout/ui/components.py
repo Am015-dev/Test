@@ -132,14 +132,14 @@ def _card_html(d: dict, metric: str = "score") -> str:
         lbl = "to metro (area)" if approx else "to metro"
         signals.append(f'<div class="ph-sig"><b>{pfx}{metro} m</b><span>{lbl}</span></div>')
 
+    # Keep only temporal/status badges (NEW, PRICE ↓, RELISTED, RENTED, PRIVATE). Archetype
+    # has its own pill, and OPPORTUNITY / NEGOTIABLE now duplicate the Underpriced / Motivated
+    # strategy tags above — drop them so the card isn't double-signalling the same thing.
+    _drop = ("NEW BUILD", "RENOVATED", "MODERN", "DATED", "LIABILITY", "OPPORTUNITY", "NEGOTIABLE")
     badges = "".join(
         f'<span class="ph-badge">{_esc(b)}</span>'
         for b in fmt.badges(d)
-        if "NEW BUILD" not in b
-        and "RENOVATED" not in b
-        and "MODERN" not in b
-        and "DATED" not in b
-        and "LIABILITY" not in b  # archetype shown as its own pill
+        if not any(x in b for x in _drop)
     )
     url = _esc(d.get("url") or "#")
 
