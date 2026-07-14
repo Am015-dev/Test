@@ -3,6 +3,17 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 15 — RESTRAINT: consolidate, stop piling on (user: "very bad result")
+Honest lesson: the last few cycles kept ADDING blocks and the detail page became a
+15-section single-scroll wall — my feature-adding made the product WORSE to use.
+Corrected course toward coherence, not more features:
+- Detail page → verdict-first header (grade · scorecard · net yield · vs-model gap ·
+  strategy tags · offer thesis) + 5 tabs (Returns · Costs & risk · Sensitivity · Score &
+  comps · Details). Same info, a fraction of the scroll, reads as a tool not a data dump.
+- Card → dropped OPPORTUNITY/NEGOTIABLE badges that duplicate the Underpriced/Motivated
+  strategy tags. Less noise per card.
+No new features this cycle — deliberately. 336 tests green; screenshot-verified.
+
 ## Cycle 14 — implemented the REST of the GitHub-project ideas (5 features)
 Second batch from the deal-analyzer study, all shipped (5 pure modules, 40 tests, 336 green,
 every one screenshot-verified rendering):
