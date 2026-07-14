@@ -968,24 +968,42 @@ def page_opportunities(listings: list[dict]) -> None:
 
 
 def page_today(listings: list[dict]) -> None:
-    st.subheader("Today")
-    st.caption("New in the last 24 h that pass the hard filters, ranked by score.")
-    today = sorted(
-        [d for d in _eligible(listings) if d["is_new"]], key=lambda d: d["score"], reverse=True
-    )
-    cap = 60
-    if not today:
-        # Never leave the page blank: when nothing is new (a fresh install, a quiet day, or
-        # between pipeline runs) fall back to the current top-ranked opportunities so the
-        # visitor always has something actionable.
-        st.info("Nothing new in the last 24 h — showing the current top-ranked picks instead.")
-        top = sorted(_eligible(listings), key=lambda d: d["score"], reverse=True)[:cap]
-        components.listing_grid(top)
-        return
-    st.markdown(f"**{len(today)}** new in the last 24 h.")
-    components.listing_grid(today[:cap])
-    if len(today) > cap:
-        st.caption(f"Showing the top {cap} by score.")
+    st.subheader("🗞️ Daily brief")
+    elig = _eligible(listings)
+    cap = 30
+
+    new = sorted([d for d in elig if d["is_new"]], key=lambda d: d["score"], reverse=True)
+    if new:
+        st.markdown(f"**{len(new)}** new in the last 24 h.")
+        components.listing_grid(new[:cap])
+        st.divider()
+
+    # Always-useful daily brief from the real signals: the best value, the most negotiable,
+    # and the highest yield right now — so the landing view is actionable even between runs.
+    briefs = [
+        (
+            "💰 Biggest discounts (below fair value)",
+            lambda d: d.get("value_gap_pct") or -1,
+            lambda d: (d.get("value_gap_pct") or 0) > 0,
+        ),
+        (
+            "⏳ Most negotiable (longest on market)",
+            lambda d: d.get("days_on_market") or 0,
+            lambda d: (d.get("days_on_market") or 0) > 90,
+        ),
+        (
+            "📈 Highest net yield",
+            lambda d: d.get("net_yield") or -1,
+            lambda d: d.get("net_yield") is not None,
+        ),
+    ]
+    for title, keyfn, pred in briefs:
+        picks = sorted([d for d in elig if pred(d)], key=keyfn, reverse=True)[:4]
+        if picks:
+            st.markdown(f"#### {title}")
+            components.listing_grid(picks)
+    if not new and not any(any(pred(d) for d in elig) for _, _, pred in briefs):
+        st.info("No listings yet — run the pipeline from the sidebar.")
 
 
 def _rank_color(t: float) -> list[int]:
