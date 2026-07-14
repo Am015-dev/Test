@@ -734,6 +734,19 @@ def page_today(listings: list[dict]) -> None:
         st.caption(f"Showing the top {cap} by score.")
 
 
+def _rank_color(t: float) -> list[int]:
+    """Red → amber → green for a rank fraction t∈[0,1]. Colours by RELATIVE rank, not the
+    absolute score: the market's absolute scores are low (data is thin), so an absolute
+    red→green scale paints almost everything red and hides where the best options are.
+    Rank-colouring makes the map a useful heatmap of relatively-better listings."""
+    t = max(0.0, min(1.0, t))
+    if t < 0.5:
+        u = t / 0.5
+        return [220, int(70 + 120 * u), 60]  # (220,70,60) red → (220,190,60) amber
+    u = (t - 0.5) / 0.5
+    return [int(220 - 170 * u), int(190 - 10 * u), int(60 + 20 * u)]  # amber → (50,180,80) green
+
+
 def page_map(listings: list[dict]) -> None:
     st.subheader("Map")
     pts = [d for d in _eligible(listings) if d["lat"] and d["lng"]]
@@ -752,6 +765,11 @@ def page_map(listings: list[dict]) -> None:
     exact = [d for d in pts if d.get("location_precision") == "exact"]
     approx = [d for d in pts if d.get("location_precision") != "exact"]
     exact_df = pd.DataFrame({"lat": d["lat"], "lon": d["lng"], "score": d["score"]} for d in exact)
+    if not exact_df.empty:
+        # Colour by rank within the plotted set (greener = better than most in view), so the
+        # map surfaces the relatively-best options instead of a sea of red on low absolutes.
+        ranks = exact_df["score"].fillna(0).rank(pct=True, method="average")
+        exact_df["fill"] = [_rank_color(t) for t in ranks]
     approx_df = pd.DataFrame(
         {"lat": d["lat"], "lon": d["lng"], "score": d["score"]} for d in approx
     )
@@ -779,7 +797,7 @@ def page_map(listings: list[dict]) -> None:
                     "ScatterplotLayer",
                     data=exact_df,
                     get_position="[lon, lat]",
-                    get_fill_color="[255 - score*2.55, score*2.55, 80]",
+                    get_fill_color="fill",
                     get_radius=60,
                     pickable=True,
                 )
@@ -804,7 +822,8 @@ def page_map(listings: list[dict]) -> None:
             )
         )
         st.caption(
-            f"Solid pins ({len(exact)}) = exact location, green (high score)→red. "
+            f"Solid pins ({len(exact)}) = exact location, coloured by **relative rank** "
+            "(greener = scores better than most listings in view). "
             f"Faint blobs ({len(approx)}) = approximate (area centroid — not enriched yet). "
             "Blue = metro stations."
         )
