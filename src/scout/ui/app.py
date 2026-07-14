@@ -1361,7 +1361,11 @@ def page_strategy() -> None:
         st.markdown("**Hard filters**")
         min_floor = st.number_input("Min floor", value=strategy.hard_filters.min_floor, step=1)
         max_metro = st.number_input(
-            "Max metro distance (m)", value=strategy.hard_filters.max_metro_distance_m, step=50
+            "Metro distance for the 'near metro' filter (m)",
+            value=strategy.hard_filters.max_metro_distance_m,
+            step=50,
+            help="Not a hard cutoff — metro proximity is a scoring signal. This only sets the "
+            "threshold for the optional 'Near metro only' toggle on Opportunities.",
         )
         st.markdown("**Weights**")
         w = strategy.weights
@@ -1519,7 +1523,7 @@ def page_neighborhoods(listings: list[dict]) -> None:
             "Listings": s["count"],
             "Median price": fmt.euro(s["median_price"]),
             "Median €/m²": fmt.euro_per_m2(s["median_ppm2"]),
-            "Median yield": (
+            "Median gross yield": (
                 f"{s['median_yield_pct']:.1f}%" if s["median_yield_pct"] is not None else "—"
             ),
             "Opportunities": s["opportunities"],
