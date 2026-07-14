@@ -3,6 +3,19 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 13 — ideas from similar GitHub projects (adapted honestly to Athens)
+Studied open-source deal analyzers (berkcankapusuzoglu/Rental-Property-Deal-Analyzer,
+crankstorn/real-estate-analysis, DealCheck-style tools). Took the metrics investors expect
+BY NAME and adapted thresholds to the Greek market instead of copying US rules:
+- metrics.py: cap rate, GRM, DSCR, break-even occupancy on the same Greek cost model, each
+  with an Athens-calibrated good/ok/weak verdict. Surfaced as a colour-coded detail block.
+  Explicitly rejected the US "1% / 50% rules" (at ~5% Athens yields they fail on everything).
+- Compare page (backlog #25): shortlist 2–4 flats side-by-side on the deciding numbers.
+- Honest payoff: DSCR/break-even expose downside a "31% under fair value" flat hides (rent
+  may not cover the mortgage — DSCR 0.91). 296 tests green; both screenshot-verified.
+Not adopted (US-specific or blocked): 1%/50%/70% rules, IRS depreciation tax benefit,
+Freddie-Mac rate auto-fill; PDF export deferred (backlog #27).
+
 ## Cycle 12 — anti-inflation: honest grades/badges (user: "all the scores are inflated")
 The user was right. The valuation model's out-of-sample band is ±42%, but value gaps were
 tiny (p50=11%, p90=32% — nearly all WITHIN the noise) and still drove a green "+11% vs model
