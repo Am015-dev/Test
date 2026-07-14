@@ -232,19 +232,24 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
 
 def _kpi_header(listings: list[dict]) -> None:
     eligible = _eligible(listings)
-    new = [d for d in eligible if d["is_new"]]
-    drops = [d for d in listings if d["price_dropped"]]
     ppm = [d["price_per_m2"] for d in eligible if d["price_per_m2"]]
     median_ppm = statistics.median(ppm) if ppm else None
-    # Median NET yield is a far more useful (and outlier-robust) headline than the single
-    # cheapest €/m² listing, which was always some 300 m² fixer-upper dragging the number.
     nys = [d["net_yield"] for d in eligible if d.get("net_yield") is not None]
     median_ny = statistics.median(nys) if nys else None
+    # Signals that are REAL and populated from the data we already hold (not temporal ones
+    # like "new today" that need a live daily diff): flats sitting >180 days (motivated
+    # sellers) and flats the model prices below fair value beyond its own noise band.
+    long_sitting = sum(1 for d in eligible if (d.get("days_on_market") or 0) > 180)
+    below_model = sum(1 for d in eligible if (d.get("value_gap_pct") or 0) > 0)
 
     c = st.columns(5)
     c[0].metric("Opportunities", len(eligible))
-    c[1].metric("New (24 h)", len(new))
-    c[2].metric("Price drops", len(drops))
+    c[1].metric(
+        "Sitting >180 days", long_sitting, help="On market over 6 months — likely negotiable"
+    )
+    c[2].metric(
+        "Below model value", below_model, help="Priced under fair value beyond the model's ±band"
+    )
     c[3].metric("Median €/m²", fmt.euro_per_m2(median_ppm))
     c[4].metric("Median net yield", fmt.pct(median_ny) if median_ny is not None else "—")
 
