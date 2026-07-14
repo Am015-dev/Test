@@ -724,11 +724,16 @@ def page_today(listings: list[dict]) -> None:
     today = sorted(
         [d for d in _eligible(listings) if d["is_new"]], key=lambda d: d["score"], reverse=True
     )
+    cap = 60
     if not today:
-        st.info("Nothing new in the last 24 h. See **Opportunities** for the full list.")
+        # Never leave the page blank: when nothing is new (a fresh install, a quiet day, or
+        # between pipeline runs) fall back to the current top-ranked opportunities so the
+        # visitor always has something actionable.
+        st.info("Nothing new in the last 24 h — showing the current top-ranked picks instead.")
+        top = sorted(_eligible(listings), key=lambda d: d["score"], reverse=True)[:cap]
+        components.listing_grid(top)
         return
     st.markdown(f"**{len(today)}** new in the last 24 h.")
-    cap = 60
     components.listing_grid(today[:cap])
     if len(today) > cap:
         st.caption(f"Showing the top {cap} by score.")

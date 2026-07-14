@@ -120,6 +120,37 @@ def _excluded(listing: Listing, reason: str) -> ScoredListing:
     return ScoredListing(listing=listing, score=0.0, excluded=True, exclusion_reason=reason)
 
 
+# Non-dwelling listing types for which €/m² and rental yield are undefined — they have no
+# livable/rentable floor area (air rights, bare land) or aren't residential (shops, offices,
+# storage, parking). These pollute the €/m² stats and the valuation comps, so they're hard-
+# excluded. Houses, maisonettes and whole apartment buildings ARE dwellings and are kept.
+_NON_DWELLING_TOKENS = (
+    "αέρας",  # air rights — the right to build extra floors, not a property
+    "οικόπεδο",  # building plot / land
+    "αγροτεμάχ",  # rural land parcel
+    "κατάστημα",  # shop
+    "γραφεί",  # office
+    "επαγγελματ",  # commercial/professional space
+    "αποθήκ",  # storage
+    "στάθμευσ",  # parking space
+    "γκαράζ",  # garage
+    "βιοτεχν",  # workshop/industrial
+    "ξενοδοχ",  # hotel
+)
+
+
+def _non_dwelling_reason(listing: Listing) -> str | None:
+    """A reason string if the listing's title marks it as a non-residential/no-floor-area
+    type (so €/m² and yield are meaningless), else None."""
+    title = (listing.title or "").lower()
+    if not title:
+        return None
+    for tok in _NON_DWELLING_TOKENS:
+        if tok in title:
+            return "not a dwelling (no comparable €/m²)"
+    return None
+
+
 def _yield_signal(listing: Listing, strategy: Strategy) -> float:
     """Reward realistic rental return. Prefers NET yield (after Greek acquisition/holding
     costs and vacancy — what the investor actually keeps) scored against its own,
@@ -301,6 +332,11 @@ def score(
 ) -> ScoredListing:
     """Score a single listing. ``first_price`` enables the price-drop signal."""
     # 1. Hard filters.
+    # Non-dwelling types (air rights, land, shops, parking…) have no comparable €/m² or
+    # rentable value — exclude before anything else so they never reach stats/comps.
+    nd = _non_dwelling_reason(listing)
+    if nd is not None:
+        return _excluded(listing, nd)
     # Only exclude when the floor is KNOWN to be too low. An unknown floor (the portal
     # didn't report one) must not be treated as a basement and silently dropped — same
     # reasoning as the unknown-metro-distance case below; otherwise a portal that never

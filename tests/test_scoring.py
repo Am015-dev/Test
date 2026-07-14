@@ -20,6 +20,18 @@ def _stats(median_ppm2: float = 2800.0) -> MarketStats:
     )
 
 
+def test_non_dwelling_types_are_excluded(strategy):
+    for title in ("Αέρας κατοικίας 220 τ.μ.", "Οικόπεδο 300 τ.μ.", "Κατάστημα 60 τ.μ."):
+        result = score(make_listing(title=title), _stats(), strategy)
+        assert result.excluded, f"{title!r} should be excluded"
+        assert "dwelling" in result.exclusion_reason
+
+
+def test_apartment_is_not_excluded_as_non_dwelling(strategy):
+    result = score(make_listing(title="Διαμέρισμα 75 τ.μ."), _stats(), strategy)
+    assert not result.excluded
+
+
 def test_ground_floor_is_excluded(strategy):
     lst = make_listing(floor=0.0)
     result = score(lst, _stats(), strategy)
