@@ -102,6 +102,12 @@ class ValuationModel:
         beds = lst.bedrooms if lst.bedrooms else m["beds"]
         metro = lst.metro_distance_m if lst.metro_distance_m is not None else m["metro"]
         row = [1.0, math.log(lst.area_m2), floor, age, energy, beds, metro / 1000.0]
+        # Non-linear terms (validated out-of-sample: mean per-area cv_R² 0.440 → 0.453).
+        # Floor value is U-shaped (ground/low weak, mid solid, top-floor premium) and
+        # depreciation is non-linear (it flattens with age), which a purely linear fit
+        # can't express. Scaled to ~O(1) so the ridge penalty treats them evenly.
+        row.append((floor / 10.0) ** 2)
+        row.append((age / 50.0) ** 2)
         # Area fixed effects (one-hot, first area is the reference level).
         row.extend(1.0 if lst.search_area == a else 0.0 for a in self.areas[1:])
         return np.array(row, dtype=float)
