@@ -3,6 +3,19 @@
 Running record of autonomous improvement cycles (newest first). Each entry: what shipped,
 the data-quality / sellability delta, and the top remaining blockers.
 
+## Cycle 14 — implemented the REST of the GitHub-project ideas (5 features)
+Second batch from the deal-analyzer study, all shipped (5 pure modules, 40 tests, 336 green,
+every one screenshot-verified rendering):
+- deal_scorecard.py — transparent 14-point Athens-calibrated scorecard on the detail page
+  (Strong/Fair/Pass), every check with points + honest note; unknowns score 0.
+- projection.py — 5-year total-return (four pillars) block.
+- strategy_fit.py — card pills + sidebar filter (Cashflow/Value-add/Underpriced/Motivated/Prime).
+- sensitivity.py — rent-change and price-change what-if tables added.
+- listing_report.py — printable HTML one-pager download (the agent deliverable, backlog #27).
+Kept honest: still no US 1%/50%/70% rules, no IRS depreciation. The scorecard is a good
+anti-inflation counterweight — it openly shows a "31% under model" flat scoring only 7/14
+(Fair) because its DSCR/break-even are weak.
+
 ## Cycle 13 — ideas from similar GitHub projects (adapted honestly to Athens)
 Studied open-source deal analyzers (berkcankapusuzoglu/Rental-Property-Deal-Analyzer,
 crankstorn/real-estate-analysis, DealCheck-style tools). Took the metrics investors expect
