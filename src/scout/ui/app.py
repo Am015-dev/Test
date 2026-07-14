@@ -614,6 +614,41 @@ def _acquisition_block(d: dict) -> None:
     )
 
 
+def _investor_metrics_block(d: dict) -> None:
+    """The recognized metrics an investor scans for by name — cap rate, GRM, DSCR,
+    break-even occupancy — on the same Greek cost model as the net yield above."""
+    price = d.get("price")
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if not price or not monthly:
+        return
+    from scout import metrics as _m
+
+    mm = _m.investor_metrics(
+        price, monthly * 12, d.get("area_m2"), is_private_seller=bool(d.get("is_private_seller"))
+    )
+    v = mm["verdicts"]
+    emoji = {"good": "🟢", "ok": "🟡", "weak": "🔴", None: "⚪"}
+
+    def cell(label, val, key, fmt_s):
+        shown = fmt_s.format(val) if val is not None else "—"
+        return f"{emoji[v[key]]} **{label}:** {shown}"
+
+    st.markdown("#### 📐 Investor metrics")
+    c = st.columns(4)
+    c[0].markdown(cell("Cap rate", mm["cap_rate"], "cap_rate", "{:.1%}"))
+    c[1].markdown(cell("GRM", mm["grm"], "grm", "{:.0f}×"))
+    c[2].markdown(cell("DSCR", mm["dscr"], "dscr", "{:.2f}"))
+    c[3].markdown(
+        cell("Break-even occ.", mm["break_even_occupancy"], "break_even_occupancy", "{:.0%}")
+    )
+    est = " Rent is estimated." if d.get("rent_estimated") else ""
+    st.caption(
+        "Athens-calibrated (cap rate ≥4.5%, GRM ≤22, DSCR ≥1.2, break-even ≤80% = good). We "
+        "deliberately don't use US rules like the '1% rule' — at ~5% Athens yields they'd fail "
+        "on every flat and tell you nothing." + est
+    )
+
+
 def _sensitivity_block(d: dict) -> None:
     """How the return holds up if rates rise or the flat sits empty — the stress test an
     investor actually underwrites on."""
@@ -1126,6 +1161,9 @@ def page_detail(listings: list[dict]) -> None:
     # --- total cash to acquire (price + Greek purchase costs) ---
     _acquisition_block(d)
 
+    # --- recognized investor metrics (cap rate, GRM, DSCR, break-even occupancy) ---
+    _investor_metrics_block(d)
+
     # --- risk & context: EPBD liability, price percentile, area liquidity, leverage ---
     _risk_and_context(d, listings)
 
@@ -1525,6 +1563,60 @@ def page_saved_searches(listings: list[dict]) -> None:
                 st.rerun()
 
 
+def page_compare(listings: list[dict]) -> None:
+    """Shortlist several flats and rank them side-by-side on the numbers that decide it —
+    the "which of these do I chase?" view (inspired by deal-analyzer compare tools)."""
+    from scout import metrics as _m
+
+    st.subheader("⚖️ Compare")
+    st.caption("Pick 2–4 listings to line up their metrics side by side.")
+    elig = _eligible(listings)
+    if not elig:
+        st.info("No listings to compare yet.")
+        return
+    opts = {
+        f"[{d['score']:.0f}] {d.get('neighborhood') or d['source_id']} · {fmt.euro(d['price'])}": d[
+            "id"
+        ]
+        for d in elig
+    }
+    picks = st.multiselect("Listings", list(opts.keys()), max_selections=4)
+    chosen = [next(x for x in elig if x["id"] == opts[p]) for p in picks]
+    if len(chosen) < 2:
+        st.info("Select at least two listings.")
+        return
+
+    def _metrics(d: dict) -> dict:
+        monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+        annual = monthly * 12 if monthly else None
+        im = _m.investor_metrics(
+            d["price"], annual, d.get("area_m2"), is_private_seller=bool(d.get("is_private_seller"))
+        )
+        return {
+            "Score": f"{d['score']:.0f}",
+            "Grade": d.get("deal_grade") or "—",
+            "Price": fmt.euro(d["price"]),
+            "€/m²": fmt.euro_per_m2(d.get("price_per_m2")),
+            "Area": f"{d['area_m2']:.0f} m²" if d.get("area_m2") else "—",
+            "Net yield": fmt.pct(d.get("net_yield")) if d.get("net_yield") is not None else "—",
+            "Cap rate": f"{im['cap_rate']:.1%}" if im["cap_rate"] is not None else "—",
+            "GRM": f"{im['grm']:.0f}×" if im["grm"] is not None else "—",
+            "DSCR": f"{im['dscr']:.2f}" if im["dscr"] is not None else "—",
+            "Days on market": (
+                d.get("days_on_market") if d.get("days_on_market") is not None else "—"
+            ),
+            "To metro": _metro_label(d),
+            "Energy": d.get("energy_class") or "—",
+        }
+
+    table = {}
+    for d in chosen:
+        label = f"{d.get('neighborhood') or d['source_id']}"
+        table[label] = _metrics(d)
+    st.dataframe(pd.DataFrame(table), use_container_width=True)
+    st.caption("Higher score/net yield/cap rate & lower GRM/days-on-market is better.")
+
+
 PAGES = {
     "Opportunities": page_opportunities,
     "Deals": page_deals,
@@ -1533,6 +1625,7 @@ PAGES = {
     "Map": page_map,
     "Neighborhoods": page_neighborhoods,
     "Listing detail": page_detail,
+    "Compare": page_compare,
     "Watchlist": page_watchlist,
 }
 
