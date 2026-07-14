@@ -148,6 +148,26 @@ def _floor_label(value: float | None) -> str:
     return "—" if value is None else f"{value:.0f}"
 
 
+def _max_affordable_price(
+    monthly_income: float,
+    *,
+    dsr: float = 0.35,
+    rate: float = 0.045,
+    term_years: int = 25,
+    deposit_pct: float = 0.30,
+) -> int | None:
+    """Max purchase price supported by a monthly net income: cap the mortgage payment at a
+    debt-service ratio of income, invert the amortization to a loan, then gross up for the
+    deposit. A rough affordability gate for filtering, not mortgage advice."""
+    if monthly_income <= 0:
+        return None
+    max_payment = monthly_income * dsr
+    r = rate / 12
+    n = term_years * 12
+    loan = max_payment * n if r <= 0 else max_payment * (1 - (1 + r) ** -n) / r
+    return int(loan / max(1 - deposit_pct, 1e-9))
+
+
 def _table(rows: list[dict], show_reason: bool = False) -> None:
     """Render listings as a sortable, readable table (sorted by score, desc)."""
     records = []
@@ -717,6 +737,18 @@ def page_opportunities(listings: list[dict]) -> None:
             if pmin < pmax
             else (pmin, pmax)
         )
+        income = st.number_input(
+            "Monthly net income (€) — 0 = off",
+            min_value=0,
+            value=0,
+            step=100,
+            help="Filters to homes a 25-yr mortgage at ~30% down supports on this income.",
+        )
+        max_afford = _max_affordable_price(income)
+        if max_afford:
+            st.caption(
+                f"≈ affordable up to **{fmt.euro(max_afford)}** (35% of income, ~4.5%, 25 yr)."
+            )
         areas = [d["area_m2"] for d in eligible]
         amin, amax = int(min(areas)), int(max(areas)) + 1
         area_range = (
@@ -744,6 +776,8 @@ def page_opportunities(listings: list[dict]) -> None:
         if chosen_regions and d.get("region") not in chosen_regions:
             return False
         if not (price_range[0] <= d["price"] <= price_range[1]):
+            return False
+        if max_afford is not None and d["price"] > max_afford:
             return False
         if not (area_range[0] <= d["area_m2"] <= area_range[1]):
             return False
@@ -1252,6 +1286,24 @@ def page_debug() -> None:
     if first_seens:
         st.write(f"**Earliest record seen:** {min(first_seens):%Y-%m-%d %H:%M:%S} UTC")
 
+    # Data-quality audit panel — the same numbers the improvement loop optimises, so the
+    # depth of the dataset is visible, not hidden.
+    st.markdown("**Data-quality audit**")
+    try:
+        from scout.data_quality import audit as _audit
+
+        a = _audit()
+        ac = st.columns(4)
+        ac[0].metric("Fully detailed", f"{a.get('complete_pct', 0) * 100:.0f}%")
+        ac[1].metric("Top-100 complete", f"{a.get('top100_complete', 0)}%")
+        ac[2].metric("Biggest gap", str(a.get("top_gap", "—")))
+        ac[3].metric("Eligible", a.get("total", len(active)))
+        fields = a.get("fields") or {}
+        if fields:
+            st.caption(" · ".join(f"{k}: {v * 100:.0f}%" for k, v in fields.items()))
+    except Exception as exc:  # never break the debug page on an audit hiccup
+        st.caption(f"_audit unavailable: {exc}_")
+
     st.markdown("**Records by source**")
     src: dict[str, int] = {}
     for d in rows:
@@ -1508,6 +1560,16 @@ def main() -> None:
             f"🕒 Data last updated **{last_up:%Y-%m-%d %H:%M} UTC** · "
             f"{len(listings)} active listings · source: {src_label}"
         )
+        # Freshness doctor: the whole product's premise is a daily-refreshed feed. If the
+        # pipeline hasn't run in days the "opportunities" are stale — say so loudly rather
+        # than let a buyer act on old prices.
+        stale_days = (datetime.utcnow() - last_up).days
+        if stale_days >= 3:
+            st.warning(
+                f"⚠️ Data is **{stale_days} days old** — the daily pipeline may not be running. "
+                "Prices, new listings and price-drops won't be current until it runs again "
+                "(**Refresh now**, or check the scheduled job)."
+            )
         if len(sources) <= 1:
             st.caption(
                 "ℹ️ Coverage is currently a single portal (XE.gr) — a slice of the market, "
