@@ -130,25 +130,47 @@ def recommend(d: dict) -> Recommendation:
             risks=hard_pass + risks,
         )
 
+    # DSCR/cap here are computed off the SAME (often imputed) rent as the yield, so on an
+    # estimated-rent listing they're not an independent signal — only count them when the
+    # rent is a real comp. Otherwise a card-only flat stacks two correlated "strong" marks
+    # off one guessed number and lands a false BUY.
     strong = sum(
         [
             bool(gap and gap >= 0.10),
             bool(ny is not None and ny >= 0.045 and not rent_est),
             bool(dom >= 180),
-            bool(dscr is not None and dscr >= 1.2),
+            bool(dscr is not None and dscr >= 1.2 and not rent_est),
         ]
     )
-    if strong >= 2 and not (rent_est and gap is None):
+
+    # A BUY is a claim we can stand behind. Two gates cap an otherwise-strong listing at
+    # WATCH ("shortlist and verify") rather than BUY — telling the buyer to look before they
+    # leap is the honest call, and it stops the verdict from being BUY on everything:
+    #   • self-inconsistent numbers (a €545/m² "apartment" that's really land/commercial), or
+    #   • too little verified data to underwrite (card-only listing missing the essentials).
+    inconsistent = bool(d.get("consistency_flags"))
+    thin_data = len(d.get("data_missing") or []) >= 2
+    buy_ok = not inconsistent and not thin_data
+
+    if strong >= 2 and not (rent_est and gap is None) and buy_ok:
         verdict = "BUY"
-    elif rationale:
+    elif strong >= 2 or rationale:
         verdict = "WATCH"
     else:
         verdict = "PASS"
         rationale = rationale or ["no standout signal — fairly priced, ordinary return"]
 
+    # Did the listing clear the signal bar but get held at WATCH only for want of trust?
+    # Say so plainly in the headline so the discipline is visible, not silent.
+    capped = verdict == "WATCH" and strong >= 2 and not (rent_est and gap is None)
+
     # ---- headline: the concrete action -------------------------------------------
     if verdict == "PASS":
         headline = "Pass — nothing here beats a fairly-priced flat"
+    elif capped and inconsistent:
+        headline = f"Verify first — strong on paper, but {d['consistency_flags'][0]}"
+    elif capped and thin_data:
+        headline = f"Verify first — strong on paper, but missing {', '.join(d['data_missing'])}"
     else:
         act = "Buy" if verdict == "BUY" else "Shortlist"
         if offer and disc and disc >= 0.01:

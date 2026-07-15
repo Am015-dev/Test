@@ -384,7 +384,10 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
         # which the UI can't decompose here (it lacks the market medians). Show "—"
         # rather than a misleading 0 that wouldn't reconcile with the total score.
         under_value = "via €/m² fallback"
-        under_score = "—"
+        # Keep the column numeric (None → blank cell). A "—" string here made the whole
+        # "Score" column object-dtype, which Streamlit/pyarrow can't serialise under the
+        # NumberColumn config — the breakdown table then fell back to unformatted text.
+        under_score = None
 
     rows = [
         {
