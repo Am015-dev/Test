@@ -95,6 +95,11 @@ def get_valuation_summary() -> dict:
     return queries.load_valuation_summary()
 
 
+@st.cache_data(ttl=60)
+def get_recent_price_drops(hours: int = 24) -> list[dict]:
+    return queries.load_recent_price_drops(hours)
+
+
 def _valuation_banner() -> dict:
     """Show — honestly — how much to trust the fair-value numbers, and return the summary
     so callers can render ± bands. Never implies more precision than the fit supports."""
@@ -976,8 +981,39 @@ def page_today(listings: list[dict]) -> None:
     cap = 30
 
     new = sorted([d for d in elig if d["is_new"]], key=lambda d: d["score"], reverse=True)
-    if new:
-        st.markdown(f"**{len(new)}** new in the last 24 h.")
+    new_buys = [d for d in new if d.get("rec_verdict") == "BUY"]
+    try:
+        drops = get_recent_price_drops(24)
+    except Exception:
+        drops = []
+
+    # Counts strip — the "what changed since yesterday" a subscriber opens the tool for.
+    c = st.columns(3)
+    c[0].metric("🟢 New BUYs (24 h)", len(new_buys))
+    c[1].metric("💸 Price drops (24 h)", len(drops))
+    c[2].metric("🆕 New listings (24 h)", len(new))
+    st.divider()
+
+    # Lead with the actual decisions: BUY-verdict listings that appeared today. This is the
+    # feed a paying user wants — not "here's everything new", but "here's what to act on".
+    if new_buys:
+        st.markdown("#### 🟢 New BUY signals today")
+        components.listing_grid(new_buys[:cap])
+        st.divider()
+
+    # Price cuts today — the classic motivated-seller trigger, straight from price history.
+    if drops:
+        st.markdown("#### 💸 Price drops in the last 24 h")
+        for d in drops:
+            d["deal_thesis"] = (
+                f"↓ €{d['old_price']:,.0f} → €{d['new_price']:,.0f} "
+                f"({d['drop_pct'] * 100:.0f}% cut today)"
+            )
+        components.listing_grid(sorted(drops, key=lambda d: d["drop_pct"], reverse=True)[:cap])
+        st.divider()
+
+    if new and not new_buys:
+        st.markdown(f"#### 🆕 {len(new)} new in the last 24 h (none cleared the BUY bar)")
         components.listing_grid(new[:cap])
         st.divider()
 
@@ -1005,7 +1041,7 @@ def page_today(listings: list[dict]) -> None:
         if picks:
             st.markdown(f"#### {title}")
             components.listing_grid(picks)
-    if not new and not any(any(pred(d) for d in elig) for _, _, pred in briefs):
+    if not new and not drops and not any(any(pred(d) for d in elig) for _, _, pred in briefs):
         st.info("No listings yet — run the pipeline from the sidebar.")
 
 
