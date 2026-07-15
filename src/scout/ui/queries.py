@@ -333,6 +333,7 @@ def load_recent_price_drops(hours: int = 24) -> list[dict]:
         rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
         ids = [r.id for r in rows]
         firsts = _first_prices(session, ids)
+        medians = _area_median_ppm2(rows)
         history = session.scalars(
             select(PriceHistoryRow)
             .where(PriceHistoryRow.listing_id.in_(ids or [-1]))
@@ -349,7 +350,7 @@ def load_recent_price_drops(hours: int = 24) -> list[dict]:
                 continue
             latest, prev = hist[-1], hist[-2]
             if latest.observed_at >= cutoff and latest.price < prev.price:
-                d = _row_to_dict(r, firsts.get(r.id))
+                d = _row_to_dict(r, firsts.get(r.id), area_median_ppm2=medians.get(r.search_area))
                 d["old_price"] = prev.price
                 d["new_price"] = latest.price
                 d["drop_pct"] = (prev.price - latest.price) / prev.price if prev.price else 0.0
