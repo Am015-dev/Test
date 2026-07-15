@@ -14,7 +14,14 @@ from __future__ import annotations
 # generous band, the listing is probably a whole building, a plot, or a data error.
 _PPM2_LOW = 700.0
 _PPM2_HIGH = 12_000.0
+# Relative variant: even above the absolute floor, pricing below HALF the area's own median
+# usually means the "flat" is a whole building / plot / data quirk. Only fires when the
+# caller supplies the median (area_median_ppm2), so the check stays pure.
+_PPM2_REL_LOW = 0.5
 _MIN_AREA_M2 = 18.0
+# Greek apartments above ~250 m² are almost always a whole building or a maisonette listed
+# as a flat — exactly the rows whose €/m² and yield mislead the ranking.
+_MAX_AREA_M2 = 250.0
 _MIN_PRICE = 25_000
 _GOOD_ENERGY = {"A+", "Α+", "A", "Α", "B+", "Β+"}
 _OLD_BUILD_YEAR = 1995
@@ -25,15 +32,23 @@ def consistency_flags(d: dict) -> list[str]:
     flags: list[str] = []
 
     ppm2 = d.get("price_per_m2")
+    median = d.get("area_median_ppm2")
     if ppm2 is not None:
         if ppm2 < _PPM2_LOW:
             flags.append("unusually low €/m² — may be a whole building, plot, or data error")
+        elif median and ppm2 < _PPM2_REL_LOW * median:
+            flags.append(
+                f"€/m² is under half the area's median (€{median:,.0f}/m²) — "
+                "may be a whole building, plot, or data error"
+            )
         elif ppm2 > _PPM2_HIGH:
             flags.append("unusually high €/m² — verify the area is correct")
 
     area = d.get("area_m2")
     if area is not None and area < _MIN_AREA_M2:
         flags.append("very small floor area — verify it's a full residence")
+    if area is not None and area > _MAX_AREA_M2:
+        flags.append("very large for a flat — may be a whole building or maisonette")
 
     price = d.get("price")
     if price is not None and price < _MIN_PRICE:

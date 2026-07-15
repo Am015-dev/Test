@@ -52,7 +52,12 @@ def _data_completeness(row: ListingRow) -> list[str]:
     return missing
 
 
-def _row_to_dict(row: ListingRow, first_price: int | None, num_cuts: int = 0) -> dict:
+def _row_to_dict(
+    row: ListingRow,
+    first_price: int | None,
+    num_cuts: int = 0,
+    area_median_ppm2: float | None = None,
+) -> dict:
     price_dropped = bool(first_price and row.price < first_price)
     days_on_market = _market_age_days(row)
     # A confident fair value is exactly the case where value_gap_pct survived the
@@ -94,6 +99,7 @@ def _row_to_dict(row: ListingRow, first_price: int | None, num_cuts: int = 0) ->
             "energy_class": row.energy_class,
             "year_built": row.year_built,
             "renovated_year": row.renovated_year,
+            "area_median_ppm2": area_median_ppm2,
         }
     )
     d = {
@@ -265,6 +271,18 @@ def _collapse_relistings(rows: list[dict]) -> list[dict]:
     return out
 
 
+def _area_median_ppm2(rows) -> dict[str, float]:
+    """Median €/m² per search_area — feeds the relative consistency check (a listing under
+    half its own area's median is probably a whole building / plot / data error)."""
+    import statistics
+
+    by_area: dict[str, list[float]] = {}
+    for r in rows:
+        if r.price_per_m2 and r.search_area:
+            by_area.setdefault(r.search_area, []).append(r.price_per_m2)
+    return {a: statistics.median(v) for a, v in by_area.items() if len(v) >= 5}
+
+
 def load_listings(
     include_excluded: bool = True,
     only_active: bool = True,
@@ -285,10 +303,16 @@ def load_listings(
         ids = [r.id for r in rows]
         firsts = _first_prices(session, ids)
         cuts = _cut_counts(session, ids)
+        medians = _area_median_ppm2(rows)
         cutoff = datetime.utcnow() - timedelta(hours=24)
         out = []
         for r in rows:
-            d = _row_to_dict(r, firsts.get(r.id), num_cuts=cuts.get(r.id, 0))
+            d = _row_to_dict(
+                r,
+                firsts.get(r.id),
+                num_cuts=cuts.get(r.id, 0),
+                area_median_ppm2=medians.get(r.search_area),
+            )
             d["is_new"] = r.first_seen is not None and r.first_seen >= cutoff
             out.append(d)
         if collapse_relistings:
