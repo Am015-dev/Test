@@ -1643,6 +1643,46 @@ def page_neighborhoods(listings: list[dict]) -> None:
         for s in stats
     ]
     st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
+
+    # Rental market by area — REAL asked rents (scraped rental listings), joined with the
+    # sale market to show where yield is structurally high vs low. This is the aggregation
+    # a free portal never gives: the rent gradient (e.g. Vouliagmeni ~€22/m² vs Kamatero
+    # ~€8/m²) next to what flats cost to buy there.
+    try:
+        import statistics as _stats
+
+        from scout.rent_comps import OVERALL_KEY, load_rent_comps
+
+        comps = load_rent_comps()
+        sale_by_area: dict[str, list[float]] = {}
+        for d in _eligible(listings):
+            if d.get("price_per_m2") and d.get("search_area"):
+                sale_by_area.setdefault(d["search_area"], []).append(d["price_per_m2"])
+        rent_rows = []
+        for area, per_hood in sorted(comps.items()):
+            rent = per_hood.get(OVERALL_KEY)
+            sales = sale_by_area.get(area) or []
+            if not rent or len(sales) < 5:
+                continue
+            sale_med = _stats.median(sales)
+            rent_rows.append(
+                {
+                    "Area": area,
+                    "Median rent (€/m²/mo)": round(rent, 1),
+                    "Median sale (€/m²)": int(sale_med),
+                    "Implied gross yield": f"{rent * 12 / sale_med * 100:.1f}%",
+                }
+            )
+        if rent_rows:
+            st.markdown("#### 🏠 Rental market by area — real asked rents")
+            rent_rows.sort(key=lambda r: -float(r["Implied gross yield"].rstrip("%")))
+            st.dataframe(pd.DataFrame(rent_rows), use_container_width=True, hide_index=True)
+            st.caption(
+                "Median asked rent from scraped rental listings ÷ median sale €/m² = the "
+                "area's structural gross yield — where rental demand outruns prices."
+            )
+    except Exception:  # rent table must never break the page
+        pass
     st.caption(
         "**Sitting >180d** = motivated-seller supply · **Below model** = flats priced under "
         "fair value (beyond the model's ±band) — where to hunt for deals in each area."
