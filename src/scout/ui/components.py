@@ -182,17 +182,23 @@ def _card_html(d: dict, metric: str = "score") -> str:
 
     # Honest data-completeness note: say plainly what we DON'T know for this listing rather
     # than dressing gaps up as confident numbers (the single biggest trust fix from review).
+    # Skip it when the recommendation headline is a "Verify first — … missing …" cap: that
+    # headline already carries the exact same list, and saying it twice reads as clutter.
+    rec_says_missing = bool(rec_h) and "missing" in rec_h
     missing = d.get("data_missing") or []
     completeness_html = (
         f'<div class="ph-incomplete">⚠ Limited data — missing: {_esc(", ".join(missing))}. '
         f"Verify on the listing.</div>"
-        if missing
+        if missing and not rec_says_missing
         else ""
     )
 
     # Internal-consistency notes: the listing's own numbers contradict each other (e.g. a
     # €424/m² "flat" or A+ energy on a 1960 build). Warn to verify — never hide the listing.
+    # Same de-dup: a consistency-capped headline already quotes the first flag verbatim.
     cflags = d.get("consistency_flags") or []
+    if rec_h and cflags and cflags[0] in rec_h:
+        cflags = cflags[1:]
     consistency_html = (
         f'<div class="ph-inconsistent">⚠ Check: {_esc("; ".join(cflags))}.</div>' if cflags else ""
     )
