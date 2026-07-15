@@ -1005,10 +1005,11 @@ def page_today(listings: list[dict]) -> None:
     if drops:
         st.markdown("#### 💸 Price drops in the last 24 h")
         for d in drops:
-            d["deal_thesis"] = (
-                f"↓ €{d['old_price']:,.0f} → €{d['new_price']:,.0f} "
-                f"({d['drop_pct'] * 100:.0f}% cut today)"
-            )
+            # Surface the cut as a lead strategy pill (the recommendation line owns the
+            # thesis slot, so a deal_thesis here would never render). €old→€new is the
+            # actionable bit — a fresh cut is the classic motivated-seller trigger.
+            pill = f"💸 −{d['drop_pct'] * 100:.0f}% today (€{d['new_price']:,.0f})"
+            d["strategy_tags"] = [pill, *(d.get("strategy_tags") or [])]
         components.listing_grid(sorted(drops, key=lambda d: d["drop_pct"], reverse=True)[:cap])
         st.divider()
 
