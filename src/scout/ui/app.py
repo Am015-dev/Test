@@ -948,15 +948,29 @@ def page_opportunities(listings: list[dict]) -> None:
         return d["metro_distance_m"] <= limit
 
     # Let the buyer rank by the signal they care about — not just the quality score. All
-    # three are real numbers already in the data.
+    # of these are real numbers already in the data. Every sort puts BUY verdicts ahead of
+    # WATCH ahead of PASS first: a verified BUY at score 70 beats an unverifiable WATCH at
+    # 75 — the verdict already encodes how much of that score we can stand behind.
+    _verdict_rank = {"BUY": 2, "WATCH": 1, "PASS": 0}
     sort_opts = {
         "Best overall (score)": lambda d: (d["score"], d.get("data_complete", False)),
         "Biggest discount (below model)": lambda d: (d.get("value_gap_pct") or -1),
         "Most negotiable (days on market)": lambda d: (d.get("days_on_market") or 0),
         "Highest net yield": lambda d: (d.get("net_yield") or -1),
     }
-    sort_by = st.radio("Sort by", list(sort_opts), horizontal=True, label_visibility="collapsed")
-    rows = sorted([d for d in eligible if keep(d)], key=sort_opts[sort_by], reverse=True)
+    scol, fcol = st.columns([4, 1])
+    with scol:
+        sort_by = st.radio(
+            "Sort by", list(sort_opts), horizontal=True, label_visibility="collapsed"
+        )
+    with fcol:
+        buys_only = st.checkbox("🟢 BUYs only", value=False, help="Verified BUY verdicts only")
+    inner = sort_opts[sort_by]
+    rows = sorted(
+        [d for d in eligible if keep(d) and (not buys_only or d.get("rec_verdict") == "BUY")],
+        key=lambda d: (_verdict_rank.get(d.get("rec_verdict"), 0), inner(d)),
+        reverse=True,
+    )
 
     st.markdown(f"**{len(rows)}** opportunities match your filters (of {len(eligible)} eligible)")
     if rows:
