@@ -10,10 +10,15 @@ throttle. Resumable — re-running refreshes each area's comps.
 
 Usage:
     SCRAPE_REQUEST_MIN_S=4 SCRAPE_REQUEST_MAX_S=7 python scripts/scrape_rent_comps.py
+    # only areas with no comps yet (top-up after expanding coverage):
+    python scripts/scrape_rent_comps.py --only-missing
+    # or an explicit subset:
+    python scripts/scrape_rent_comps.py "Nea Ionia" "Vouliagmeni"
 """
 
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 import time
@@ -27,10 +32,34 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("rent_comps")
 
 
+def _areas_without_comps(areas: list[str]) -> list[str]:
+    """The configured areas that have no rent_comp rows yet — the top-up worklist."""
+    from sqlalchemy import text
+
+    from scout.db import session_scope
+
+    with session_scope() as s:
+        have = {r[0] for r in s.execute(text("select distinct area from rent_comp")).all()}
+    return [a for a in areas if a not in have]
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("areas", nargs="*", help="explicit area subset (default: all configured)")
+    parser.add_argument(
+        "--only-missing",
+        action="store_true",
+        help="only areas with no rent_comp rows yet",
+    )
+    args = parser.parse_args()
+
     init_db()
     strategy = load_strategy()
     areas = strategy.search.all_areas()
+    if args.areas:
+        areas = [a for a in areas if a in set(args.areas)]
+    elif args.only_missing:
+        areas = _areas_without_comps(areas)
     log.info("scraping rental comps for %d areas", len(areas))
     grand = 0
     for i, area in enumerate(areas, 1):
