@@ -132,21 +132,30 @@ class ValuationModel:
         energy = energy_class_score(lst.energy_class) if lst.energy_class else m["energy"]
         return np.array([math.log(lst.area_m2), floor, age / 50.0, energy], dtype=float)
 
+    def _ensure_comp_arrays(self) -> None:
+        """Lazily materialise the comps into numpy arrays for vectorised KNN (a Python-loop
+        distance per predict is O(n²) and made a 22k rescore take ~50s; this makes it ~1s)."""
+        if getattr(self, "_comp_mat", None) is not None or not self.comps:
+            return
+        # object dtype so the id array holds ints or strings unchanged for == comparison
+        self._comp_ids = np.array([sid for sid, _, _ in self.comps], dtype=object)
+        self._comp_mat = np.array([cv for _, cv, _ in self.comps], dtype=float)
+        self._comp_ppm2 = np.array([p for _, _, p in self.comps], dtype=float)
+
     def _knn_ppm2(self, lst: Listing) -> float | None:
         """Median €/m² of the k most similar comps (excluding the listing itself)."""
         if not self.comps or not lst.area_m2:
             return None
+        self._ensure_comp_arrays()
         v = self._knn_vec(lst, self.medians, self.ref_year)
-        dists = [
-            (float(np.linalg.norm(cv - v)), ppm2)
-            for sid, cv, ppm2 in self.comps
-            if sid != lst.source_id
-        ]
-        if not dists:
+        dists = np.linalg.norm(self._comp_mat - v, axis=1)  # vectorised over all comps
+        if lst.source_id is not None:
+            dists = np.where(self._comp_ids == lst.source_id, np.inf, dists)
+        k = min(_KNN_K, int(np.isfinite(dists).sum()))
+        if k <= 0:
             return None
-        dists.sort(key=lambda t: t[0])
-        top = [p for _, p in dists[:_KNN_K]]
-        return float(statistics.median(top)) if top else None
+        idx = np.argpartition(dists, k - 1)[:k]
+        return float(np.median(self._comp_ppm2[idx]))
 
     def predict_price(self, lst: Listing) -> float | None:
         row = self._features(lst)
