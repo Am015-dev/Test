@@ -386,6 +386,17 @@ footer {{ visibility: hidden; height: 0; }}
 .ph-incomplete {{ font-size: .72rem; line-height: 1.3; color: #92400E;
     background: #FEFCE8; border: 1px solid #FEF08A; border-radius: 8px;
     padding: 6px 9px; margin: 2px 0; }}
+/* The recommendation line — BUY/WATCH/PASS verdict + concrete action. */
+.ph-rec {{ font-size: .8rem; line-height: 1.35; border-radius: 10px; padding: 8px 11px;
+    margin: 2px 0; display: flex; gap: 8px; align-items: baseline; }}
+.ph-rec-badge {{ font-size: .66rem; font-weight: 800; letter-spacing: .04em;
+    padding: 2px 7px; border-radius: 999px; flex: 0 0 auto; color: #fff; }}
+.ph-rec-BUY {{ background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; }}
+.ph-rec-BUY .ph-rec-badge {{ background: #059669; }}
+.ph-rec-WATCH {{ background: #FEFCE8; color: #854D0E; border: 1px solid #FDE68A; }}
+.ph-rec-WATCH .ph-rec-badge {{ background: #CA8A04; }}
+.ph-rec-PASS {{ background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; }}
+.ph-rec-PASS .ph-rec-badge {{ background: #DC2626; }}
 /* Strategy-fit tags: small teal chips summarising the investment angle. */
 .ph-strats {{ display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0; }}
 .ph-strat {{ font-size: .68rem; font-weight: 600; color: #0F766E; background: #CCFBF1;

@@ -166,9 +166,19 @@ def _card_html(d: dict, metric: str = "score") -> str:
         else ""
     )
 
-    # Deal thesis: the actionable recommended-offer line — the decision worth paying for.
-    thesis = d.get("deal_thesis")
-    thesis_html = f'<div class="ph-thesis">💡 {_esc(thesis)}</div>' if thesis else ""
+    # The recommendation — the BUY/WATCH/PASS verdict + concrete action. This is the
+    # decision a subscriber pays for; it replaces the old bare "offer" thesis.
+    rec_v = d.get("rec_verdict")
+    rec_h = d.get("rec_headline") or d.get("deal_thesis")
+    if rec_v and rec_h:
+        thesis_html = (
+            f'<div class="ph-rec ph-rec-{_esc(rec_v)}">'
+            f'<span class="ph-rec-badge">{_esc(rec_v)}</span> {_esc(rec_h)}</div>'
+        )
+    elif d.get("deal_thesis"):
+        thesis_html = f'<div class="ph-thesis">💡 {_esc(d["deal_thesis"])}</div>'
+    else:
+        thesis_html = ""
 
     # Honest data-completeness note: say plainly what we DON'T know for this listing rather
     # than dressing gaps up as confident numbers (the single biggest trust fix from review).

@@ -1264,7 +1264,19 @@ def page_detail(listings: list[dict]) -> None:
     )
     if d.get("strategy_tags"):
         st.write(" ".join(f"`{t}`" for t in d["strategy_tags"]))
-    if d.get("deal_thesis"):
+    # The recommendation — the decision, up front: verdict + concrete action + why + risks.
+    from scout.recommendation import verdict_emoji
+
+    rv, rh = d.get("rec_verdict"), d.get("rec_headline")
+    if rv and rh:
+        box = {"BUY": st.success, "WATCH": st.info, "PASS": st.error}.get(rv, st.info)
+        box(f"{verdict_emoji(rv)} **{rv} — {rh}**")
+        rc = st.columns(2)
+        if d.get("rec_rationale"):
+            rc[0].markdown("**Why:**\n" + "\n".join(f"- {x}" for x in d["rec_rationale"]))
+        if d.get("rec_risks"):
+            rc[1].markdown("**Watch out:**\n" + "\n".join(f"- {x}" for x in d["rec_risks"]))
+    elif d.get("deal_thesis"):
         st.info(f"💡 {d['deal_thesis']}")
 
     tabs = st.tabs(

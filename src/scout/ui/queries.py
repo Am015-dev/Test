@@ -18,6 +18,7 @@ from ..deal import advise as _advise_deal
 from ..investment import deal_grade as _deal_grade
 from ..investment import yield_on_offer as _yield_on_offer
 from ..models import HealthReportRow, ListingRow, PriceHistoryRow
+from ..recommendation import recommend as _recommend
 from ..regions import region_of
 from ..scoring import investment_archetype
 from ..strategy_fit import strategy_tags as _strategy_tags
@@ -162,6 +163,12 @@ def _row_to_dict(row: ListingRow, first_price: int | None, num_cuts: int = 0) ->
         "last_seen": row.last_seen,
     }
     d["strategy_tags"] = _strategy_tags(d)
+    rec = _recommend(d)
+    d["rec_verdict"] = rec.verdict
+    d["rec_headline"] = rec.headline
+    d["rec_play"] = rec.play
+    d["rec_rationale"] = rec.rationale
+    d["rec_risks"] = rec.risks
     return d
 
 
