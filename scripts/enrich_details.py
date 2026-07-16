@@ -97,6 +97,17 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
             cached = collector._read_cache(row.url, ttl)
             was_cached = cached is not None and collector._has_jsonld(cached)
             html = collector._fetch_detail(session_http, row.url)
+            # Polite spacing after EVERY live network attempt — successful or not. Sleeping
+            # only on success let a redirect/failure streak fire back-to-back (10 requests
+            # in one second in the 2026-07-16 log), which instantly re-triggered XE's block.
+            if not was_cached:
+                fetched += 1
+                if max_fetches is not None and fetched >= max_fetches:
+                    log.info("max_fetches=%d reached — stopping this run", max_fetches)
+                    break
+                time.sleep(
+                    random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s)
+                )
             if html is None:
                 # Transient failure (block page / network) — leave the row in the queue
                 # for a later run; stamping here would permanently skip LIVE ads whenever
@@ -160,16 +171,6 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
                     row.listed_rent = rent
                 if parse_private_seller(desc):
                     row.is_private_seller = True
-            # Polite spacing ONLY after a real network fetch (XE rate-limits per IP);
-            # cached-page hits skip it so resumed runs finish fast.
-            if not was_cached:
-                fetched += 1
-                if max_fetches is not None and fetched >= max_fetches:
-                    log.info("max_fetches=%d reached — stopping this run", max_fetches)
-                    break
-                time.sleep(
-                    random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s)
-                )
     summary = {"processed": processed, "fetched": fetched, **filled}
     log.info("enrich summary: %s", summary)
 
