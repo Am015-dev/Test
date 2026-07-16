@@ -91,10 +91,14 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
             cached = collector._read_cache(row.url, ttl)
             was_cached = cached is not None and collector._has_jsonld(cached)
             html = collector._fetch_detail(session_http, row.url)
+            if html is None:
+                # Transient failure (block page / network) — leave the row in the queue
+                # for a later run; stamping here would permanently skip LIVE ads whenever
+                # XE temporarily blocks the IP.
+                continue
             if not html:
-                # A dead/redirecting/unparseable page is CHECKED, not pending — stamp it so
-                # the queue doesn't retry the same gone ad every run. The daily pipeline
-                # refreshes live listings anyway, so nothing real is lost.
+                # "" = the ad is definitively GONE (XE redirects removed listings) — stamp
+                # it out of the queue; the daily pipeline refreshes live inventory anyway.
                 row.detail_checked_at = datetime.utcnow()
                 continue
             try:

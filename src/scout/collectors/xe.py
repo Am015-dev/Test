@@ -467,7 +467,11 @@ class XeCollector(Collector):
         return "RealEstateListing" in html
 
     def _fetch_detail(self, session: requests.Session, url: str) -> str | None:
-        """Fetch a listing detail page (cached; one retry). Returns HTML or None."""
+        """Fetch a listing detail page (cached; one retry).
+
+        Returns the HTML; ``""`` when the ad is definitively GONE (XE redirects removed
+        listings); ``None`` on transient failure (block page / network) — the caller can
+        retry those later, but must not treat a gone ad as retryable."""
         settings = get_settings()
         cached = self._read_cache(url, settings.scrape_cache_ttl_minutes)
         if cached is not None and self._has_jsonld(cached):
@@ -483,7 +487,7 @@ class XeCollector(Collector):
                 resp = session.get(url, timeout=30, allow_redirects=False)
                 if 300 <= resp.status_code < 400:
                     logger.info("xe: detail page gone (redirect %d) for %s", resp.status_code, url)
-                    return None
+                    return ""
                 resp.raise_for_status()
                 html = resp.text
             except requests.RequestException as exc:
