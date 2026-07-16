@@ -80,14 +80,30 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
     processed = 0
     fetched = 0
     # Circuit-breaker: XE redirects removed ads AND (when it has bot-flagged the IP) live
-    # ads — verified: during a block window even a cookie-warmed session gets 302 on ads
-    # that served JSON-LD hours earlier. A long unbroken run of "gone" therefore means WE
-    # are blocked, not that dozens of ads all died at once: revert those stamps and stop.
+    # ads. A redirect streak is ambiguous — the never-enriched tail of the queue is where
+    # stale listings cluster, so 10+ genuinely-dead ads in a row is common there. The
+    # discriminator is a CANARY: a known-live ad (served JSON-LD recently). On a streak,
+    # fetch the canary — 200 means the client is fine and the streak is real dead ads
+    # (keep the stamps, continue); a redirect on the canary means WE are blocked (revert
+    # the streak's stamps and stop).
     _GONE_STREAK_LIMIT = 10
     gone_streak: list = []
     with session_scope() as db:
         rows = _incomplete_xe_rows(db, limit)
         log.info("enriching %d incomplete XE listings", len(rows))
+        canaries = list(
+            db.scalars(
+                select(ListingRow.url)
+                .where(
+                    ListingRow.source == "xe",
+                    ListingRow.status == "active",
+                    ListingRow.energy_class.is_not(None),
+                    ListingRow.listed_date.is_not(None),
+                )
+                .order_by(ListingRow.first_seen.desc())
+                .limit(2)
+            ).all()
+        )
         ttl = settings.scrape_cache_ttl_minutes
         for row in rows:
             processed += 1
@@ -119,12 +135,30 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
                 row.detail_checked_at = datetime.utcnow()
                 gone_streak.append(row)
                 if len(gone_streak) >= _GONE_STREAK_LIMIT:
+                    # Ambiguous streak — ask the canary whether the client is healthy.
+                    canary_ok = False
+                    for cu in canaries:
+                        time.sleep(
+                            random.uniform(
+                                settings.scrape_request_min_s, settings.scrape_request_max_s
+                            )
+                        )
+                        if collector._fetch_detail(session_http, cu):
+                            canary_ok = True
+                            break
+                    if canary_ok:
+                        log.info(
+                            "%d consecutive redirects but the canary serves fine — a real "
+                            "dead-ad cluster; stamps kept, continuing.",
+                            len(gone_streak),
+                        )
+                        gone_streak.clear()
+                        continue
                     for r in gone_streak:
                         r.detail_checked_at = None
                     log.warning(
-                        "%d consecutive redirects — looks like an IP block window, not %d "
-                        "dead ads. Reverted those stamps and stopping this run.",
-                        len(gone_streak),
+                        "%d consecutive redirects AND the canary redirects too — IP block "
+                        "window. Reverted those stamps and stopping this run.",
                         len(gone_streak),
                     )
                     break
