@@ -25,6 +25,7 @@ import argparse
 import logging
 import random
 import time
+from datetime import datetime
 
 from sqlalchemy import or_, select
 
@@ -44,10 +45,15 @@ log = logging.getLogger("enrich_details")
 
 
 def _incomplete_xe_rows(session, limit: int) -> list[ListingRow]:
-    """Active XE rows still missing depth fields, best (highest score) first."""
+    """Active XE rows still missing depth fields, best (highest score) first.
+
+    Rows whose detail page was ALREADY fetched+parsed (detail_checked_at set) are
+    excluded: some pages genuinely never state energy/year, so re-selecting them every
+    run just churns the queue on unfillable rows while never-fetched ones wait."""
     stmt = (
         select(ListingRow)
         .where(ListingRow.source == "xe", ListingRow.status == "active")
+        .where(ListingRow.detail_checked_at.is_(None))
         .where(
             or_(
                 ListingRow.energy_class.is_(None),
@@ -61,7 +67,10 @@ def _incomplete_xe_rows(session, limit: int) -> list[ListingRow]:
     return list(session.scalars(stmt).all())
 
 
-def enrich(limit: int, rescore: bool = True) -> dict:
+def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> dict:
+    """``max_fetches`` bounds LIVE network fetches only — cached pages replay free and
+    unlimited. This keeps a run's wall-clock inside a predictable window regardless of
+    how much cache-stamping backlog it clears first."""
     init_db()
     settings = get_settings()
     collector = XeCollector(load_strategy())
@@ -69,6 +78,7 @@ def enrich(limit: int, rescore: bool = True) -> dict:
 
     filled = {"energy_class": 0, "year_built": 0, "listed_date": 0, "coords": 0}
     processed = 0
+    fetched = 0
     with session_scope() as db:
         rows = _incomplete_xe_rows(db, limit)
         log.info("enriching %d incomplete XE listings", len(rows))
@@ -88,6 +98,9 @@ def enrich(limit: int, rescore: bool = True) -> dict:
             except Exception as exc:
                 log.warning("parse error for %s: %s", row.url, exc)
                 detail = {}
+            # Stamp the check regardless of what filled: a parsed page that lacks
+            # energy/year is DONE, not pending — it must leave the enrichment queue.
+            row.detail_checked_at = datetime.utcnow()
             if row.energy_class is None and detail.get("energy_class"):
                 row.energy_class = detail["energy_class"]
                 filled["energy_class"] += 1
@@ -124,10 +137,14 @@ def enrich(limit: int, rescore: bool = True) -> dict:
             # Polite spacing ONLY after a real network fetch (XE rate-limits per IP);
             # cached-page hits skip it so resumed runs finish fast.
             if not was_cached:
+                fetched += 1
+                if max_fetches is not None and fetched >= max_fetches:
+                    log.info("max_fetches=%d reached — stopping this run", max_fetches)
+                    break
                 time.sleep(
                     random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s)
                 )
-    summary = {"processed": processed, **filled}
+    summary = {"processed": processed, "fetched": fetched, **filled}
     log.info("enrich summary: %s", summary)
 
     if rescore and processed:
@@ -140,9 +157,15 @@ def enrich(limit: int, rescore: bool = True) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=300, help="max listings to enrich this run")
+    parser.add_argument(
+        "--max-fetches",
+        type=int,
+        default=None,
+        help="stop after this many LIVE fetches (cached replays are free and unbounded)",
+    )
     parser.add_argument("--no-rescore", action="store_true")
     args = parser.parse_args()
-    summary = enrich(limit=args.limit, rescore=not args.no_rescore)
+    summary = enrich(limit=args.limit, rescore=not args.no_rescore, max_fetches=args.max_fetches)
     print(f"Detail enrichment complete: {summary}")
 
 

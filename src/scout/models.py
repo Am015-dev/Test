@@ -156,6 +156,11 @@ class ListingRow(Base):
 
     # Portal posting date — the listing's real market age (see Listing.listed_date).
     listed_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # When the DETAIL page was last fetched+parsed for this row. Some pages genuinely
+    # lack energy/year, so "still missing a field" is NOT "never checked" — without this
+    # stamp the depth-enrichment queue re-selects the same unfillable rows forever and
+    # never reaches the never-fetched ones.
+    detail_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     metro_distance_m: Mapped[int | None] = mapped_column(Integer, nullable=True)
     nearest_metro: Mapped[str | None] = mapped_column(String(64), nullable=True)

@@ -98,6 +98,7 @@ def init_db() -> None:
             "listed_date": "TIMESTAMP",
             "net_yield": "DOUBLE PRECISION",
             "location_precision": "VARCHAR(16)",
+            "detail_checked_at": "TIMESTAMP",
             # DEFAULT 1 so legacy rows (all scored on baseline/imputed rent) read as
             # estimated — a NULL would break the Pydantic bool field in _row_to_listing.
             "rent_estimated": "BOOLEAN DEFAULT 1",
