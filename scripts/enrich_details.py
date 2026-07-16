@@ -79,6 +79,12 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
     filled = {"energy_class": 0, "year_built": 0, "listed_date": 0, "coords": 0}
     processed = 0
     fetched = 0
+    # Circuit-breaker: XE redirects removed ads AND (when it has bot-flagged the IP) live
+    # ads — verified: during a block window even a cookie-warmed session gets 302 on ads
+    # that served JSON-LD hours earlier. A long unbroken run of "gone" therefore means WE
+    # are blocked, not that dozens of ads all died at once: revert those stamps and stop.
+    _GONE_STREAK_LIMIT = 10
+    gone_streak: list = []
     with session_scope() as db:
         rows = _incomplete_xe_rows(db, limit)
         log.info("enriching %d incomplete XE listings", len(rows))
@@ -97,10 +103,22 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
                 # XE temporarily blocks the IP.
                 continue
             if not html:
-                # "" = the ad is definitively GONE (XE redirects removed listings) — stamp
-                # it out of the queue; the daily pipeline refreshes live inventory anyway.
+                # "" = the ad redirected — gone, IF we're not in a block window. Stamp it
+                # out of the queue, but track the streak so a block window can be undone.
                 row.detail_checked_at = datetime.utcnow()
+                gone_streak.append(row)
+                if len(gone_streak) >= _GONE_STREAK_LIMIT:
+                    for r in gone_streak:
+                        r.detail_checked_at = None
+                    log.warning(
+                        "%d consecutive redirects — looks like an IP block window, not %d "
+                        "dead ads. Reverted those stamps and stopping this run.",
+                        len(gone_streak),
+                        len(gone_streak),
+                    )
+                    break
                 continue
+            gone_streak.clear()
             try:
                 detail = parse_detail_jsonld(html)
             except Exception as exc:
