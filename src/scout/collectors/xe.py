@@ -475,7 +475,15 @@ class XeCollector(Collector):
         for attempt in range(1, 3):
             html = ""
             try:
-                resp = session.get(url, timeout=30)
+                # allow_redirects=False: a redirected detail URL means the listing is GONE
+                # (XE 30x-es dead ads to a search page). Following it is never useful and
+                # the redirect target can trickle bytes slower than the read-timeout window,
+                # hanging the whole enrichment pipeline on one dead ad (observed via py-spy:
+                # blocked in ssl read inside resolve_redirects for 30+ minutes).
+                resp = session.get(url, timeout=30, allow_redirects=False)
+                if 300 <= resp.status_code < 400:
+                    logger.info("xe: detail page gone (redirect %d) for %s", resp.status_code, url)
+                    return None
                 resp.raise_for_status()
                 html = resp.text
             except requests.RequestException as exc:

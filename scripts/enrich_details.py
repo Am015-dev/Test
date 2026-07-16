@@ -92,6 +92,10 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
             was_cached = cached is not None and collector._has_jsonld(cached)
             html = collector._fetch_detail(session_http, row.url)
             if not html:
+                # A dead/redirecting/unparseable page is CHECKED, not pending — stamp it so
+                # the queue doesn't retry the same gone ad every run. The daily pipeline
+                # refreshes live listings anyway, so nothing real is lost.
+                row.detail_checked_at = datetime.utcnow()
                 continue
             try:
                 detail = parse_detail_jsonld(html)
