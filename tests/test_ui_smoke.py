@@ -80,3 +80,72 @@ def test_app_never_blank_when_all_excluded(_db):
     df = at.dataframe[0].value
     assert df.shape[0] == 2
     assert "Filtered out" in list(df.columns)
+
+
+def _seed_valued_db(tmp_path) -> None:
+    """Seed enough comps that the hedonic model actually fits, then apply + persist
+    valuations — so the confidence banner and Fair value columns render for real."""
+    import scout.db as dbmod
+
+    dbmod._engine = None
+    dbmod._SessionFactory = None
+    from scout.config import load_strategy
+    from scout.db import init_db, session_scope, upsert_listing_with_history
+    from scout.valuation import fit_and_apply_by_area
+
+    init_db()
+    strategy = load_strategy()
+    listings = []
+    for i in range(30):
+        area = 55.0 + (i % 30)
+        listings.append(
+            make_listing(
+                source_id=f"v-{i}",
+                price=int(3000 * area) + (i % 5 - 2) * 8000,  # mostly on-line, a few off
+                area_m2=area,
+                floor=float(1 + i % 5),
+                year_built=1990 + i % 30,
+                energy_class="C",
+                bedrooms=2,
+                metro_distance_m=300 + (i % 6) * 50,
+                neighborhood="Ano Cholargos",
+                search_area="Cholargos",
+            )
+        )
+    models = fit_and_apply_by_area(listings)
+    assert models  # sanity: the fixture must actually fit a model
+    stats = compute_market_stats(listings)
+    with session_scope() as session:
+        for lst in listings:
+            row = upsert_listing_with_history(session, lst)
+            scored = score(lst, stats, strategy)
+            row.score = scored.score
+            row.excluded = scored.excluded
+            row.predicted_price = lst.predicted_price
+            row.value_gap_pct = lst.value_gap_pct
+
+
+def test_app_renders_fair_value_views(tmp_path, monkeypatch):
+    """The fitted-model paths — confidence banner + Fair value / Value gap columns —
+    render without crashing. This is the demo's headline surface."""
+    import streamlit as st
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "ui.db"))
+    get_settings.cache_clear()
+    st.cache_data.clear()
+    _seed_valued_db(tmp_path)
+
+    at = AppTest.from_file(APP, default_timeout=30).run()
+    assert not at.exception
+    # The confidence banner is a success or warning box (fitted path), not the info stub.
+    banner_text = " ".join(b.value for b in [*at.success, *at.warning])
+    assert "Fair-value model" in banner_text
+    # The product listing-card grid renders (custom HTML, not a bare dataframe).
+    md = " ".join(m.value for m in at.markdown)
+    assert "ph-grid" in md and "ph-card" in md
+    # The table view is still available (inside the expander) with the model columns.
+    # (Search all dataframes — the coverage panel also renders one.)
+    assert any(
+        "Fair value" in df.value.columns and "Value gap" in df.value.columns for df in at.dataframe
+    )

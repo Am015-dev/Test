@@ -40,6 +40,7 @@ from selectolax.parser import HTMLParser
 from ..config import Strategy, get_settings
 from .base import RAW_HTML_DIR, USER_AGENT, Collector
 from .parse_helpers import (
+    _strip_accents,
     parse_float,
     parse_floor,
     parse_int,
@@ -83,6 +84,48 @@ _LD_JSON_RE = re.compile(
 )
 
 
+# Renovation year stated in prose — "ανακαινισμένο/ανακαίνιση (το) 2019" and Latin variants.
+_RENO_YEAR_RE = re.compile(r"(?:ανακαιν\w*|renovat\w*)[^0-9]{0,20}(19\d{2}|20\d{2})", re.IGNORECASE)
+
+# --- Extra prose fields pulled from the JSON-LD description -----------------------
+# These live in the free-text "description" (and sometimes the amenity list); XE has no
+# structured field for most of them. All are best-effort — absent → the key is omitted.
+
+# Heating stated inline as "<type> Θέρμανση" ("Ατομική - Φυσικό Αέριο Θέρμανση"). Used
+# only as a fallback when the amenityFeature list carries no "Θέρμανση: …" entry. Bounded
+# to a single clause ([^,.:]) so it can't swallow the rest of the sentence.
+_HEATING_PROSE_RE = re.compile(r"([^,.:]+?)\s+Θέρμανση")
+
+# Parking: an optional leading count then any of the accepted spellings. Matched against
+# an accent-stripped, lower-cased copy of the text, so literals here are unaccented.
+_PARKING_RE = re.compile(r"(?:(\d+)\s*)?(?:parking|θεσ\w*\s+σταθμευσης|γκαραζ)")
+# Storage room ("αποθηκη"). Accent-stripped literal.
+_STORAGE_RE = re.compile(r"αποθηκη")
+# Off-plan delivery year: "…ΘΑ ΠΑΡΑΔΩΘΕΙ ΤΟ 2026…" (distinct from Έτος κατασκευής).
+_DELIVERY_YEAR_RE = re.compile(r"παραδ[ωο]θ\w*\s+το\s+(20\d{2})")
+
+# Property condition. Order matters: "χρηζει ανακαινισης" also contains "ανακαιν", so the
+# needs-renovation test must precede the renovated test. Each pattern runs against
+# accent-stripped, lower-cased text.
+_CONDITION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("under_construction", re.compile(r"υπο κατασκευη")),
+    ("newbuild", re.compile(r"νεοδμητ|νεοκτιστ")),
+    ("needs_renovation", re.compile(r"χρηζει ανακαιν|χρηζουν ανακαιν")),
+    ("renovated", re.compile(r"ανακαινισμ")),
+)
+
+
+def _condition_from_text(text: str | None) -> str | None:
+    """Classify a listing's condition from free text, or None if nothing matches."""
+    if not text:
+        return None
+    norm = _strip_accents(text).lower()
+    for label, pattern in _CONDITION_PATTERNS:
+        if pattern.search(norm):
+            return label
+    return None
+
+
 def _feature_value(name: str) -> tuple[str, str] | None:
     """Split a JSON-LD feature string 'Έτος κατασκευής: 1984' into (key, value)."""
     if ":" not in name:
@@ -94,9 +137,35 @@ def _feature_value(name: str) -> tuple[str, str] | None:
 # The detail page embeds the listing's location as a small privacy bounding box under
 # ``property_location.coordinates`` (HTML-escaped JSON). The box CENTRE is the listing's
 # real position — precise enough for an accurate walking distance to the nearest metro.
+_OG_IMAGE_RE = re.compile(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']')
 _COORDS_RE = re.compile(r"property_location\.coordinates\"\s*:\s*(\{.*?\}\s*\})")
 _LAT_RE = re.compile(r"\"lat\"\s*:\s*(-?\d+\.\d+)")
 _LON_RE = re.compile(r"\"lon\"\s*:\s*(-?\d+\.\d+)")
+
+# The listing's own posting date — present on ~100% of XE detail pages as the schema.org
+# ``datePosted`` field (ISO-8601, usually with a trailing Z). This is the REAL market age,
+# so days-on-market / negotiation work from the first sight instead of only after the daily
+# tracker has watched the listing for weeks. This is the answer to "why scrape daily".
+_DATE_POSTED_RE = re.compile(r'"datePosted"\s*:\s*"([^"]+)"')
+
+
+def parse_listed_date(html: str) -> datetime | None:
+    """Return the listing's posting date from the detail page's ``datePosted``, or None.
+
+    Accepts the common ISO-8601 forms XE emits (``2026-07-09T13:49:08Z`` and the
+    offset-less ``2026-07-09T13:49:08``). Fails soft: an absent or unparseable value
+    yields None so the listing simply falls back to first-seen for its market age.
+    """
+    m = _DATE_POSTED_RE.search(html)
+    if not m:
+        return None
+    raw = m.group(1).strip()
+    try:
+        # Normalize a trailing Z to a form fromisoformat accepts, then drop tz so the
+        # value is comparable with the pipeline's naive UTC ``now``.
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
 
 
 def parse_detail_coordinates(html: str) -> tuple[float | None, float | None]:
@@ -116,8 +185,12 @@ def parse_detail_jsonld(html: str) -> dict:
     """Extract the rich investment fields from a listing detail page's JSON-LD.
 
     Returns any of ``year_built, bedrooms, area_m2, energy_class, heating,
-    description`` that are present. Fails soft (returns ``{}`` on missing/garbled
-    data) so a bad detail page never breaks the run — the card fields still stand.
+    renovated_year, description`` that are present, plus best-effort extras parsed
+    from the description prose: ``parking`` (int count or ``True``), ``storage``
+    (bool), ``condition`` (newbuild/under_construction/renovated/needs_renovation),
+    ``delivery_year`` (off-plan handover year), and a prose fallback for ``heating``.
+    Fails soft (returns ``{}`` on missing/garbled data) so a bad detail page never
+    breaks the run — the card fields still stand.
     """
     out: dict = {}
     for block in _LD_JSON_RE.findall(html):
@@ -153,10 +226,60 @@ def parse_detail_jsonld(html: str) -> dict:
                     out["heating"] = value
                 elif "Έτος κατασκευής" in key and "year_built" not in out:
                     out["year_built"] = parse_int(value)
+                elif "Κατάσταση" in key and "condition" not in out:
+                    cond = _condition_from_text(value)
+                    if cond:
+                        out["condition"] = cond
             desc = node.get("description")
             if desc:
                 out["description"] = desc
+                # Renovation year is never a structured field, but listings routinely state
+                # it in prose ("ανακαινισμένο το 2019"). Capturing it makes the "Renovated"
+                # archetype and the newness signal reflect reality instead of build-year only.
+                reno = _RENO_YEAR_RE.search(desc)
+                if reno:
+                    year = parse_int(reno.group(1))
+                    if year and 1950 <= year <= datetime.utcnow().year:
+                        out["renovated_year"] = year
+                _extract_prose_fields(desc, out)
     return out
+
+
+def _extract_prose_fields(desc: str, out: dict) -> None:
+    """Fill parking/storage/condition/delivery_year (and a heating fallback) from the
+    free-text description ``desc`` into ``out``. Each is optional and only set when
+    found, so absent facts simply leave the key out. Never raises."""
+    # Heating: the structured amenity list is authoritative; only mine the prose when it
+    # didn't provide one, so we never overwrite a clean "Θέρμανση: …" value.
+    if "heating" not in out:
+        m_heat = _HEATING_PROSE_RE.search(desc)
+        if m_heat:
+            heat = m_heat.group(1).strip()
+            if heat:
+                out["heating"] = heat
+
+    # Booleans/condition are accent-insensitive, so match on a normalized copy.
+    norm = _strip_accents(desc).lower()
+
+    m_park = _PARKING_RE.search(norm)
+    if m_park:
+        count = parse_int(m_park.group(1)) if m_park.group(1) else None
+        out["parking"] = count if count else True
+
+    if _STORAGE_RE.search(norm):
+        out["storage"] = True
+
+    if "condition" not in out:
+        cond = _condition_from_text(desc)
+        if cond:
+            out["condition"] = cond
+
+    m_del = _DELIVERY_YEAR_RE.search(norm)
+    if m_del:
+        year = parse_int(m_del.group(1))
+        # Regex already fixes the century (20xx); just cap an absurd far-future value.
+        if year and year <= datetime.utcnow().year + 15:
+            out["delivery_year"] = year
 
 
 class XeCollector(Collector):
@@ -237,8 +360,29 @@ class XeCollector(Collector):
             urls.append(f"{self.BASE}/property/results?{urlencode(params)}")
         return urls
 
+    # Adaptive throttle: extra seconds added to every inter-request pause. It GROWS each
+    # time XE pushes back (a blocked/empty page) and DECAYS on clean fetches, so the crawler
+    # self-tunes to XE's per-IP limit — fast while it's tolerated, backing off the moment it
+    # isn't — instead of relying on one hand-picked constant. Reset at the start of each run.
+    _BLOCK_PENALTY_S = 2.5
+    _DECAY_S = 0.5
+    _MAX_EXTRA_S = 15.0
+
+    def _register_block(self) -> None:
+        self._extra_delay = min(
+            getattr(self, "_extra_delay", 0.0) + self._BLOCK_PENALTY_S, self._MAX_EXTRA_S
+        )
+
+    def _register_ok(self) -> None:
+        self._extra_delay = max(0.0, getattr(self, "_extra_delay", 0.0) - self._DECAY_S)
+
+    def _paced_sleep(self, settings) -> None:
+        base = random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s)
+        time.sleep(base + getattr(self, "_extra_delay", 0.0))
+
     def _new_session(self) -> requests.Session:
         """A cookie-persisting session warmed up against XE's homepage."""
+        self._extra_delay = 0.0  # reset the adaptive throttle for a fresh run
         session = requests.Session()
         session.headers.update(BROWSER_HEADERS)
         session.verify = not get_settings().scrape_ignore_https_errors
@@ -277,43 +421,45 @@ class XeCollector(Collector):
     def _has_cards(self, html: str) -> bool:
         return bool(HTMLParser(html).css_first(self.CARD_SELECTOR))
 
-    def _fetch_html(self, session: requests.Session, url: str) -> str | None:
+    def _fetch_html(
+        self, session: requests.Session, url: str, max_attempts: int | None = None
+    ) -> str | None:
         """Fetch a results page, retrying transient empty/blocked responses.
 
         XE rate-limits per IP: an over-frequent request returns a page with zero
         cards. We treat that as a transient block and retry with growing backoff;
         a successful page is cached so re-runs within the TTL don't re-hit XE.
+
+        ``max_attempts`` overrides the retry budget — pagination passes a small value so
+        a genuinely empty page *past the last result* (0 cards, not a block) ends the
+        walk quickly instead of burning the full backoff sequence on every area's tail.
         """
         settings = get_settings()
+        attempts = max_attempts or settings.scrape_max_retries
         cached = self._read_cache(url, settings.scrape_cache_ttl_minutes)
         if cached is not None and self._has_cards(cached):
             logger.info("xe: served %s from cache", url)
             return cached
 
-        for attempt in range(1, settings.scrape_max_retries + 1):
+        for attempt in range(1, attempts + 1):
             html = ""
             try:
                 resp = session.get(url, timeout=30)
                 resp.raise_for_status()
                 html = resp.text
             except requests.RequestException as exc:
-                logger.warning(
-                    "xe: fetch failed (attempt %d/%d): %s",
-                    attempt,
-                    settings.scrape_max_retries,
-                    exc,
-                )
+                logger.warning("xe: fetch failed (attempt %d/%d): %s", attempt, attempts, exc)
             if html and self._has_cards(html):
                 self._write_cache(url, html)
+                self._register_ok()  # clean fetch → let the adaptive throttle ease off
                 return html
+            self._register_block()  # XE pushed back → widen the pause for the rest of the run
             logger.warning(
-                "xe: empty/blocked page (attempt %d/%d) — backing off",
-                attempt,
-                settings.scrape_max_retries,
+                "xe: empty/blocked page (attempt %d/%d) — backing off", attempt, attempts
             )
-            if attempt < settings.scrape_max_retries:
+            if attempt < attempts:
                 time.sleep(settings.scrape_retry_backoff_s * attempt + random.uniform(0, 3))
-        logger.warning("xe: gave up on %s after %d attempts", url, settings.scrape_max_retries)
+        logger.warning("xe: gave up on %s after %d attempts", url, attempts)
         return None
 
     @staticmethod
@@ -321,7 +467,11 @@ class XeCollector(Collector):
         return "RealEstateListing" in html
 
     def _fetch_detail(self, session: requests.Session, url: str) -> str | None:
-        """Fetch a listing detail page (cached; one retry). Returns HTML or None."""
+        """Fetch a listing detail page (cached; one retry).
+
+        Returns the HTML; ``""`` when the ad is definitively GONE (XE redirects removed
+        listings); ``None`` on transient failure (block page / network) — the caller can
+        retry those later, but must not treat a gone ad as retryable."""
         settings = get_settings()
         cached = self._read_cache(url, settings.scrape_cache_ttl_minutes)
         if cached is not None and self._has_jsonld(cached):
@@ -329,14 +479,24 @@ class XeCollector(Collector):
         for attempt in range(1, 3):
             html = ""
             try:
-                resp = session.get(url, timeout=30)
+                # allow_redirects=False: a redirected detail URL means the listing is GONE
+                # (XE 30x-es dead ads to a search page). Following it is never useful and
+                # the redirect target can trickle bytes slower than the read-timeout window,
+                # hanging the whole enrichment pipeline on one dead ad (observed via py-spy:
+                # blocked in ssl read inside resolve_redirects for 30+ minutes).
+                resp = session.get(url, timeout=30, allow_redirects=False)
+                if 300 <= resp.status_code < 400:
+                    logger.info("xe: detail page gone (redirect %d) for %s", resp.status_code, url)
+                    return ""
                 resp.raise_for_status()
                 html = resp.text
             except requests.RequestException as exc:
                 logger.warning("xe: detail fetch failed (%d/2) for %s: %s", attempt, url, exc)
             if html and self._has_jsonld(html):
                 self._write_cache(url, html)
+                self._register_ok()  # clean detail fetch → ease the adaptive throttle
                 return html
+            self._register_block()  # a 403 here too → widen subsequent pauses
             if attempt < 2:
                 time.sleep(settings.scrape_retry_backoff_s)
         return None
@@ -350,12 +510,20 @@ class XeCollector(Collector):
         lat, lng = parse_detail_coordinates(html)
         if lat is not None and lng is not None:
             raw["lat"], raw["lng"] = lat, lng
+        if not raw.get("image_url"):
+            m_img = _OG_IMAGE_RE.search(html)
+            if m_img:
+                raw["image_url"] = unescape(m_img.group(1))
+        if not raw.get("listed_date"):
+            listed = parse_listed_date(html)
+            if listed is not None:
+                raw["listed_date"] = listed
         try:
             detail = parse_detail_jsonld(html)
         except Exception as exc:
             logger.warning("xe: detail parse error for %s: %s", raw.get("url"), exc)
             return
-        for key in ("year_built", "bedrooms", "energy_class", "heating"):
+        for key in ("year_built", "renovated_year", "bedrooms", "energy_class", "heating"):
             if detail.get(key) is not None:
                 raw[key] = detail[key]
         if detail.get("area_m2") and not raw.get("area_m2"):
@@ -392,35 +560,53 @@ class XeCollector(Collector):
                         "area_m2": raw["area_m2"],
                         "neighborhood": raw.get("neighborhood"),
                     }
-            time.sleep(random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s))
+            self._paced_sleep(settings)
 
     def collect(self) -> Iterator[dict]:
         settings = get_settings()
         session = self._new_session()
         cap = settings.scrape_detail_max_per_area
-        for url in self.search_urls(self.strategy):
-            html = self._fetch_html(session, url)
-            if not html:
-                continue
-            cards = HTMLParser(html).css(self.CARD_SELECTOR)
-            logger.info("xe: %d cards on %s", len(cards), url)
+        for base_url in self.search_urls(self.strategy):
             enriched = 0
-            for card in cards:
-                try:
-                    raw = self.parse_card(card.html, base_url=url)
-                except Exception as exc:  # fail soft per card
-                    logger.warning("xe: card parse error: %s", exc)
-                    continue
-                if not raw:
-                    continue
-                if settings.scrape_detail_pages and raw.get("url") and (cap == 0 or enriched < cap):
-                    self._enrich_from_detail(session, raw)
-                    enriched += 1
-                    time.sleep(
-                        random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s)
-                    )
-                yield raw
-            time.sleep(random.uniform(settings.scrape_request_min_s, settings.scrape_request_max_s))
+            seen_ids: set[str] = set()
+            # Walk pages (XE ~36/page; `&page=N` advances) until a page adds nothing new
+            # or we hit the page cap — deeper collection, but no wasted requests.
+            for page in range(1, settings.scrape_max_pages + 1):
+                url = base_url if page == 1 else f"{base_url}&page={page}"
+                # Page 1 gets the full retry budget (transient blocks matter); later pages
+                # get a small budget so an empty page past the last result ends fast.
+                html = self._fetch_html(session, url, max_attempts=None if page == 1 else 2)
+                if not html:
+                    break
+                cards = HTMLParser(html).css(self.CARD_SELECTOR)
+                new_on_page = 0
+                for card in cards:
+                    try:
+                        raw = self.parse_card(card.html, base_url=url)
+                    except Exception as exc:  # fail soft per card
+                        logger.warning("xe: card parse error: %s", exc)
+                        continue
+                    if not raw:
+                        continue
+                    sid = raw.get("source_id")
+                    if sid and sid in seen_ids:
+                        continue  # already yielded on an earlier page
+                    if sid:
+                        seen_ids.add(sid)
+                    new_on_page += 1
+                    if (
+                        settings.scrape_detail_pages
+                        and raw.get("url")
+                        and (cap == 0 or enriched < cap)
+                    ):
+                        self._enrich_from_detail(session, raw)
+                        enriched += 1
+                        self._paced_sleep(settings)
+                    yield raw
+                logger.info("xe: page %d -> %d new listings (%s)", page, new_on_page, base_url)
+                if new_on_page == 0:
+                    break  # exhausted this area's results
+                self._paced_sleep(settings)
 
     def parse_card(self, html: str, base_url: str) -> dict:
         tree = HTMLParser(html)

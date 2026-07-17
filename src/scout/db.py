@@ -54,11 +54,18 @@ _SNAPSHOT_FIELDS = (
     "is_private_seller",
     "is_currently_rented",
     "listed_rent",
+    "listed_date",
     "metro_distance_m",
     "nearest_metro",
+    "location_precision",
     "price_per_m2",
     "est_monthly_rent",
+    "rent_estimated",
     "gross_yield",
+    "net_yield",
+    "predicted_price",
+    "value_gap_pct",
+    "image_url",
 )
 
 
@@ -79,7 +86,24 @@ def init_db() -> None:
     """
     engine = get_engine()
     Base.metadata.create_all(engine)
-    _ensure_columns(engine, "listing", {"search_area": "VARCHAR(128)"})
+    _ensure_columns(
+        engine,
+        "listing",
+        {
+            "search_area": "VARCHAR(128)",
+            "predicted_price": "INTEGER",
+            "value_gap_pct": "DOUBLE PRECISION",
+            "image_url": "VARCHAR(1024)",
+            "negotiation_score": "DOUBLE PRECISION",
+            "listed_date": "TIMESTAMP",
+            "net_yield": "DOUBLE PRECISION",
+            "location_precision": "VARCHAR(16)",
+            "detail_checked_at": "TIMESTAMP",
+            # DEFAULT 1 so legacy rows (all scored on baseline/imputed rent) read as
+            # estimated — a NULL would break the Pydantic bool field in _row_to_listing.
+            "rent_estimated": "BOOLEAN DEFAULT 1",
+        },
+    )
     _ensure_index(engine, "ix_listing_search_area", "listing", "search_area")
 
 

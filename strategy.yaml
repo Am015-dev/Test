@@ -3,32 +3,95 @@
 
 search:
   municipality: Cholargos   # anchor area (XE geo_place_id); scraped first
-  # Northern suburbs on Metro LINE 3 (the modern metro) only — Line 1/ISAP suburbs
-  # (Kifisia, Marousi, Nea Ionia) and no-rail suburbs are deliberately excluded, since
-  # the thesis wants genuine metro proximity. The per-listing metro-distance filter is
-  # the real gate; these are the areas where listings can actually pass it.
+  # ALL-ATHENS coverage, organised by the classic Attica regions (see src/scout/regions.py
+  # for the area→region map the UI groups and filters by). Metro proximity is now a SCORING
+  # signal + an optional UI filter, NOT a hard cutoff — so non-metro regions (Glyfada,
+  # Marousi, Kallithea…) are collected and ranked too, and the buyer chooses whether to
+  # restrict to walk-to-metro. Every name below resolves via XE's autocomplete.
   areas:
+    # Κέντρο Αθήνας
+    - Koukaki
+    - Pagkrati
+    - Ampelokipoi
+    - Exarcheia
+    - Kolonaki
+    - Neos Kosmos
+    - Metaxourgeio
+    - Gkyzi
+    - Kypseli
+    - Zografou
+    - Vyronas
+    - Kaisariani
+    - Galatsi
+    # Βόρεια Προάστια
     - Papagou
     - Agia Paraskevi
     - Chalandri
+    - Vrilissia
+    - Marousi
+    - Nea Ionia
+    - Nea Filadelfeia
+    - Irakleio
+    - Metamorfosi
+    - Pefki
+    - Melissia
+    - Psychiko
+    - Filothei
+    # Νότια Προάστια
+    - Nea Smyrni
+    - Agios Dimitrios
+    - Dafni
+    - Ilioupoli
+    - Alimos
+    - Argyroupoli
+    - Elliniko
+    - Kallithea
+    - Moschato
+    - Glyfada
+    - Palaio Faliro
+    - Voula
+    - Vouliagmeni
+    # Δυτικά Προάστια
+    - Aigaleo
+    - Peristeri
+    - Haidari
+    - Ilion
+    - Petroupoli
+    - Agioi Anargyroi
+    - Kamatero
+    # Πειραιάς
+    - Piraeus
+    - Nikaia
+    - Korydallos
+    - Agios Ioannis Rentis
+    - Tavros
+    - Keratsini
+    - Perama
+    - Drapetsona
   neighborhoods: [Faneromeni, Ano Cholargos, Plateia Dimokratias, Lofos Tsakou]
   est_rent_eur_per_m2: 11.0   # baseline monthly rent estimate for gross-yield scoring
-  price_min: 120000
-  price_max: 320000
-  area_min_m2: 45
+  # Wider band for all-Athens coverage: captures more inventory across regions (centre
+  # commands higher €/m², so a low floor and a higher ceiling both widen the pool).
+  price_min: 90000
+  price_max: 450000
+  area_min_m2: 40
 
 hard_filters:
   min_floor: 1               # exclude ground/semi-basement/mezzanine (floor <= 0)
-  max_metro_distance_m: 600
+  # Metro distance is NO LONGER a hard cutoff (all-Athens coverage). It is a scoring
+  # signal (see metro_proximity below) and an optional UI filter. This value is only the
+  # default for that optional "only near metro" filter, not an exclusion.
+  max_metro_distance_m: 1000  # default for the optional "near metro" UI filter
 
-weights:                     # contribution to the 0-100 score
-  gross_yield: 30
-  price_vs_area_median: 18   # cheaper per m2 than the neighborhood median
-  newness: 16                # build/renovation year — favour new stock over old
-  energy_class: 8            # A/B efficient vs Ε/Ζ liability
-  price_drop: 12             # dropped since first_seen
-  is_currently_rented: 8     # proven rent (ground-truth comp)
-  is_private_seller: 8       # negotiation room
+weights:                     # contribution to the 0-100 score (quality-first)
+  newness: 18                # build/renovation year — favour new/renovated stock
+  gross_yield: 20            # realistic rental income (net yield preferred when known)
+  energy_class: 16           # A/B efficient & future-proof vs Ε/Ζ/Η liability
+  undervaluation: 15         # priced below hedonic fair value (secondary to quality)
+  metro_proximity: 14        # walk-to-metro bonus (replaces the old hard cutoff)
+  price_drop: 6              # dropped since first_seen
+  is_currently_rented: 6     # proven rent (ground-truth comp)
+  is_private_seller: 5       # negotiation room
 
 opportunity_flag:
   price_per_m2_below_median_pct: 0.85
@@ -40,3 +103,9 @@ scoring_reference:
   max_price_drop_pct: 0.20   # a 20% drop saturates the price_drop signal
   build_year_floor: 1980     # built in/before 1980 -> newness 0
   build_year_ceiling: 2015   # built in/after 2015 -> newness 1
+  target_undervaluation: 0.20  # priced 20% below fair value -> undervaluation signal 1
+  energy_liability_floor: 0.55 # worst energy class (G/Η) keeps 55% of score (EU-EPBD risk)
+  net_yield_floor: 0.015       # 1.5% net -> yield signal 0 (after Greek costs)
+  net_yield_ceiling: 0.055     # 5.5% net -> yield signal 1
+  # Metro-proximity signal: 0 m -> 1.0, at/beyond this ceiling -> 0 (linear between).
+  metro_distance_ceiling_m: 1200

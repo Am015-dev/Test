@@ -24,13 +24,37 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from scout import analytics, comps, finance  # noqa: E402
+from scout import (  # noqa: E402
+    acquisition,
+    analytics,
+    comps,
+    comps_panel,
+    deal_scorecard,
+    epbd,
+    finance,
+    investment,
+    liquidity,
+    listing_report,
+    projection,
+    score_explain,
+    sensitivity,
+)
 from scout.config import Strategy, load_strategy, save_strategy  # noqa: E402
-from scout.scoring import energy_class_score, newness_score  # noqa: E402
+from scout.regions import REGIONS  # noqa: E402
+from scout.scoring import (
+    energy_class_score,
+    energy_liability_multiplier,
+    newness_score,
+)  # noqa: E402
+from scout.ui import (
+    components,  # noqa: E402
+    queries,  # noqa: E402
+)
 from scout.ui import format as fmt  # noqa: E402
-from scout.ui import queries  # noqa: E402
+from scout.ui.theme import inject_css  # noqa: E402
 
 st.set_page_config(page_title="Holargos Property Scout", page_icon="🏠", layout="wide")
+inject_css()
 
 
 @st.cache_data(ttl=60)
@@ -46,7 +70,9 @@ def get_strategy() -> Strategy:
 @st.cache_data(ttl=60)
 def get_all_listings_debug() -> list[dict]:
     """Everything, including excluded and inactive (gone) listings — for the Debug page."""
-    return queries.load_listings(include_excluded=True, only_active=False)
+    return queries.load_listings(
+        include_excluded=True, only_active=False, collapse_relistings=False
+    )
 
 
 @st.cache_data(ttl=60)
@@ -62,6 +88,48 @@ def get_all_price_history() -> list[dict]:
 @st.cache_data(ttl=120)
 def get_recent_health() -> list[dict]:
     return queries.load_recent_health(10)
+
+
+@st.cache_data(ttl=120)
+def get_valuation_summary() -> dict:
+    return queries.load_valuation_summary()
+
+
+@st.cache_data(ttl=60)
+def get_recent_price_drops(hours: int = 24) -> list[dict]:
+    return queries.load_recent_price_drops(hours)
+
+
+def _valuation_banner() -> dict:
+    """Show — honestly — how much to trust the fair-value numbers, and return the summary
+    so callers can render ± bands. Never implies more precision than the fit supports."""
+    v = get_valuation_summary()
+    if not v.get("fitted"):
+        st.info(
+            "**Fair-value model:** not enough comparable listings yet to price properties "
+            "against their attributes — showing raw €/m² signals only."
+        )
+        return v
+    o = v["overall"]
+    r2, n, n_areas = o["r2"], o["n"], o.get("n_areas", 1)
+    band = f"±{(pow(2.718281828, o['residual_std']) - 1) * 100:.0f}%"
+    scope = f"{n_areas} area-specific models over {n} comparables"
+    basis = (
+        "Values are **relative to ASKING prices** in each submarket (Greek sold prices "
+        "aren't public), so read them as *priced-vs-comparable-listings*, not vs. what "
+        "flats actually sell for."
+    )
+    # One-line headline, with the full honesty caveats tucked in an expander so the top of
+    # the page isn't a five-line wall of yellow text on every visit.
+    conf = "reliable" if o["is_confident"] else "indicative — shortlist, then verify"
+    headline = f"📐 Fair-value model: R²={r2:.2f}, typical range {band} — {conf}."
+    (st.success if o["is_confident"] else st.warning)(headline)
+    with st.expander("How to read the fair-value figures"):
+        st.markdown(
+            f"{scope}. {basis} A wide ± range means the model can't price that submarket "
+            "precisely — use the ranking to shortlist and verify each listing on the portal."
+        )
+    return v
 
 
 def _last_updated(listings: list[dict]) -> datetime | None:
@@ -87,13 +155,43 @@ def _floor_label(value: float | None) -> str:
     return "—" if value is None else f"{value:.0f}"
 
 
+def _max_affordable_price(
+    monthly_income: float,
+    *,
+    dsr: float = 0.35,
+    rate: float = 0.045,
+    term_years: int = 25,
+    deposit_pct: float = 0.30,
+) -> int | None:
+    """Max purchase price supported by a monthly net income: cap the mortgage payment at a
+    debt-service ratio of income, invert the amortization to a loan, then gross up for the
+    deposit. A rough affordability gate for filtering, not mortgage advice."""
+    if monthly_income <= 0:
+        return None
+    max_payment = monthly_income * dsr
+    r = rate / 12
+    n = term_years * 12
+    loan = max_payment * n if r <= 0 else max_payment * (1 - (1 + r) ** -n) / r
+    return int(loan / max(1 - deposit_pct, 1e-9))
+
+
 def _table(rows: list[dict], show_reason: bool = False) -> None:
     """Render listings as a sortable, readable table (sorted by score, desc)."""
     records = []
     for d in rows:
         rec = {
             "Score": round(d["score"], 0),
+            "Asset": d.get("archetype", ""),
             "Price": d["price"],
+            # Only show a "Fair value" figure the model could actually stand behind (its
+            # value_gap survived the confidence + real-attributes gate); blank otherwise so
+            # an imputed prediction isn't read as a precise valuation.
+            "Fair value": (
+                d.get("predicted_price") if d.get("value_gap_pct") is not None else None
+            ),
+            "Value gap": (
+                (d.get("value_gap_pct") * 100) if d.get("value_gap_pct") is not None else None
+            ),
             "€/m²": d["price_per_m2"],
             "Area": d["area_m2"],
             "Floor": d["floor"],
@@ -113,7 +211,16 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
         "Score": st.column_config.ProgressColumn(
             "Score", help="0–100 fit vs strategy", min_value=0, max_value=100, format="%.0f"
         ),
+        "Asset": st.column_config.TextColumn(
+            "Asset", help="asset class — New build / Renovated / Modern / Dated / Energy liability"
+        ),
         "Price": st.column_config.NumberColumn("Price", format="€%d"),
+        "Fair value": st.column_config.NumberColumn(
+            "Fair value", help="hedonic model's fair price for this flat's attributes", format="€%d"
+        ),
+        "Value gap": st.column_config.NumberColumn(
+            "Value gap", help="+ = priced below fair value (undervalued)", format="%+.0f%%"
+        ),
         "€/m²": st.column_config.NumberColumn("€/m²", format="€%.0f"),
         "Area": st.column_config.NumberColumn("Area", format="%.0f m²"),
         "Floor": st.column_config.NumberColumn("Floor", format="%.0f"),
@@ -128,57 +235,28 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
     st.dataframe(df, use_container_width=True, hide_index=True, column_config=column_config)
 
 
-def _top_picks(rows: list[dict]) -> None:
-    """Three highlight cards for the best-scoring opportunities."""
-    if not rows:
-        return
-    st.markdown("#### ⭐ Top picks")
-    cols = st.columns(min(3, len(rows)))
-    for col, d in zip(cols, rows[:3], strict=False):
-        with col.container(border=True):
-            # Header: price + neighborhood
-            st.markdown(f"### {fmt.euro(d['price'])}")
-            dom = fmt.days_on_market(d.get("first_seen"), d.get("last_seen"))
-            dom_str = (
-                ("listed today" if dom == 0 else f"{dom}d on market") if dom is not None else ""
-            )
-            st.caption(
-                f"{d['neighborhood'] or '—'} · {d['area_m2']:.0f} m² · "
-                f"{fmt.euro_per_m2(d['price_per_m2'])} · floor {_floor_label(d['floor'])}"
-                + (f" · {dom_str}" if dom_str else "")
-            )
-
-            # Score bar
-            st.progress(min(max(int(d["score"]), 0), 100) / 100, text=f"Score {d['score']:.0f}/100")
-
-            # Badges
-            flags = " ".join(fmt.badges(d))
-            if flags:
-                st.write(flags)
-
-            # Investment case — the WHY
-            bullets = _investment_bullets(d)
-            if bullets:
-                for b in bullets[:3]:  # top 3 to keep card compact
-                    st.markdown(f"• {b}")
-
-            st.link_button("View listing ↗", d["url"], use_container_width=True)
-
-
 def _kpi_header(listings: list[dict]) -> None:
     eligible = _eligible(listings)
-    new = [d for d in eligible if d["is_new"]]
-    drops = [d for d in listings if d["price_dropped"]]
     ppm = [d["price_per_m2"] for d in eligible if d["price_per_m2"]]
     median_ppm = statistics.median(ppm) if ppm else None
-    cheapest_ppm = min(ppm) if ppm else None
+    nys = [d["net_yield"] for d in eligible if d.get("net_yield") is not None]
+    median_ny = statistics.median(nys) if nys else None
+    # Signals that are REAL and populated from the data we already hold (not temporal ones
+    # like "new today" that need a live daily diff): flats sitting >180 days (motivated
+    # sellers) and flats the model prices below fair value beyond its own noise band.
+    long_sitting = sum(1 for d in eligible if (d.get("days_on_market") or 0) > 180)
+    below_model = sum(1 for d in eligible if (d.get("value_gap_pct") or 0) > 0)
 
     c = st.columns(5)
     c[0].metric("Opportunities", len(eligible))
-    c[1].metric("New (24 h)", len(new))
-    c[2].metric("Price drops", len(drops))
+    c[1].metric(
+        "Sitting >180 days", long_sitting, help="On market over 6 months — likely negotiable"
+    )
+    c[2].metric(
+        "Below model value", below_model, help="Priced under fair value beyond the model's ±band"
+    )
     c[3].metric("Median €/m²", fmt.euro_per_m2(median_ppm))
-    c[4].metric("Cheapest €/m²", fmt.euro_per_m2(cheapest_ppm))
+    c[4].metric("Median net yield", fmt.pct(median_ny) if median_ny is not None else "—")
 
 
 # ---- investment-thesis helpers --------------------------------------------
@@ -187,6 +265,20 @@ def _kpi_header(listings: list[dict]) -> None:
 def _investment_bullets(d: dict) -> list[str]:
     """Plain-language reasons why this listing is (or isn't) interesting, ordered by impact."""
     bullets: list[str] = []
+
+    # Undervaluation vs hedonic fair value — the headline "is this a real bargain?" signal.
+    gap = d.get("value_gap_pct")
+    fair = d.get("predicted_price")
+    if gap is not None and fair:
+        if gap >= 0.10:
+            bullets.append(
+                f"**{gap*100:.0f}% under fair value** → model prices it at {fmt.euro(fair)} "
+                f"vs {fmt.euro(d.get('price', 0))} asked"
+            )
+        elif gap <= -0.10:
+            bullets.append(
+                f"**{abs(gap)*100:.0f}% over fair value** — model prices it at {fmt.euro(fair)}"
+            )
 
     # Yield + income — most important signal
     monthly = d.get("listed_rent") or d.get("est_monthly_rent")
@@ -208,8 +300,14 @@ def _investment_bullets(d: dict) -> list[str]:
         bullets.append(f"{label.capitalize()} **{yr}**{tag}")
     ec = d.get("energy_class")
     if ec:
-        good = energy_class_score(ec) >= 0.75
-        bullets.append(f"**Energy class {ec}**" + (" — efficient" if good else ""))
+        score_ec = energy_class_score(ec)
+        if score_ec >= 0.75:
+            note = " — efficient"
+        elif energy_liability_multiplier(ec, get_strategy().scoring_reference) < 0.999:
+            note = " — ⚠️ EU-EPBD renovation liability (score reduced)"
+        else:
+            note = ""
+        bullets.append(f"**Energy class {ec}**{note}")
 
     # Price drop — timing signal
     fp = d.get("first_price")
@@ -252,6 +350,13 @@ def _investment_bullets(d: dict) -> list[str]:
 
 def _score_breakdown(d: dict, strategy: Strategy) -> None:
     """Render a table showing each signal's contribution to the score."""
+    # Plain-language "why this score" first — what lifted it, what lowered it, what's
+    # unknown (and therefore not scored) — before the detailed weight table.
+    rows = score_explain.explain_score(d)
+    if rows:
+        icon = {"positive": "🟢", "negative": "🔴", "unknown": "⚪"}
+        for r in rows:
+            st.markdown(f"{icon.get(r['effect'], '•')} **{r['label']}** — {r['detail']}")
     w = strategy.weights
     ref = strategy.scoring_reference
     total_w = w.total() or 1.0
@@ -273,18 +378,34 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
     energy_sig = energy_class_score(d.get("energy_class"))
     built = d.get("renovated_year") or d.get("year_built")
 
+    gap = d.get("value_gap_pct")
+    target = max(getattr(ref, "target_undervaluation", 0.20), 1e-9)
+    if gap is not None:
+        under_sig = max(0.0, min(1.0, gap / target))
+        under_value = f"{gap*100:+.0f}% vs fair"
+        under_score = round(under_sig * w.undervaluation / total_w * 100, 1)
+    else:
+        # No hedonic fit for this area: the real scorer falls back to €/m²-vs-median,
+        # which the UI can't decompose here (it lacks the market medians). Show "—"
+        # rather than a misleading 0 that wouldn't reconcile with the total score.
+        under_value = "via €/m² fallback"
+        # Keep the column numeric (None → blank cell). A "—" string here made the whole
+        # "Score" column object-dtype, which Streamlit/pyarrow can't serialise under the
+        # NumberColumn config — the breakdown table then fell back to unformatted text.
+        under_score = None
+
     rows = [
+        {
+            "Signal": "Undervaluation",
+            "Value": under_value,
+            "Score": under_score,
+            "Max": round(w.undervaluation / total_w * 100, 1),
+        },
         {
             "Signal": "Gross yield",
             "Value": f"{gy*100:.1f}%" if gy else "—",
             "Score": round(yield_sig * w.gross_yield / total_w * 100, 1),
             "Max": round(w.gross_yield / total_w * 100, 1),
-        },
-        {
-            "Signal": "Price vs area median",
-            "Value": "See score",
-            "Score": "—",
-            "Max": round(w.price_vs_area_median / total_w * 100, 1),
         },
         {
             "Signal": "Newness (build/reno yr)",
@@ -327,10 +448,60 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
             "Max": st.column_config.NumberColumn("Max pts", format="%.1f"),
         },
     )
+    # The final score is scaled down for energy-inefficient stock (EU-EPBD liability), so
+    # the weighted rows above don't tell the whole story — surface that adjustment.
+    mult = energy_liability_multiplier(d.get("energy_class"), ref)
+    if mult < 0.999:
+        st.warning(
+            f"⚠️ **Energy-liability adjustment: ×{mult:.2f}** — class "
+            f"{d.get('energy_class') or '?'} faces EU-EPBD renovation mandates, so the "
+            f"final score is reduced ~{(1 - mult) * 100:.0f}% below the weighted total above."
+        )
     st.caption(
-        "Price vs area median is computed from all area listings — accurate once ≥ 3 "
-        "comparables exist per neighborhood."
+        "Undervaluation compares the asking price to a hedonic fair value predicted from "
+        "this flat's own size, floor, age, energy class, metro distance and area — so it "
+        "flags a genuine mispricing, not merely a cheap-but-inferior flat. It needs ≥ 25 "
+        "comparables to fit; below that it falls back to raw €/m² vs the area median."
     )
+
+
+def _fair_value_block(d: dict) -> None:
+    """Asking price vs the model's fair value, shown WITH a ±1σ range so the estimate is
+    never presented as more precise than the fit supports. Only calls it 'undervalued'
+    when the discount exceeds the model's own noise band."""
+    fair = d.get("predicted_price")
+    gap = d.get("value_gap_pct")
+    if not fair or gap is None:
+        return
+    v = get_valuation_summary()
+    # Use THIS listing's submarket band (fall back to the widest overall band).
+    area_info = v.get("areas", {}).get(d.get("search_area") or "", {})
+    sigma = area_info.get("residual_std") or v.get("overall", {}).get("residual_std") or 0.0
+    area_confident = area_info.get("is_confident", v.get("overall", {}).get("is_confident", False))
+    lo = int(round(fair * pow(2.718281828, -sigma)))
+    hi = int(round(fair * pow(2.718281828, sigma)))
+    ask = d.get("price", 0)
+
+    st.markdown("#### 💰 Fair value vs asking")
+    cols = st.columns(3)
+    cols[0].metric("Asking", fmt.euro(ask))
+    cols[1].metric("Model fair value", fmt.euro(fair), delta=f"{gap*100:+.0f}% vs asking")
+    cols[2].metric("Fair range (±1σ)", f"{fmt.euro(lo)} – {fmt.euro(hi)}")
+
+    # Only a discount BEYOND the model's noise earns a confident "undervalued" call.
+    beyond_noise = ask < lo
+    if gap > 0 and beyond_noise and area_confident:
+        st.success(
+            "Priced **below** the model's fair range — a genuine mispricing signal, not "
+            "just a cheap flat."
+        )
+    elif gap > 0:
+        st.caption(
+            "Priced below the point estimate, but *within* the model's uncertainty band — "
+            "suggestive, not conclusive. Verify the listing before acting."
+        )
+    elif ask > hi:
+        st.warning("Priced **above** the model's fair range — looks overpriced for its attributes.")
 
 
 def _net_return_and_financing(d: dict, lid: int) -> None:
@@ -397,18 +568,22 @@ def _net_return_and_financing(d: dict, lid: int) -> None:
 def _comparables(d: dict, listings: list[dict]) -> None:
     """Similar active listings in the same neighborhood, with a €/m² delta vs this one."""
     rows = comps.find_comparables(d, listings)
+    # Fall back to the softer, tested comps panel so the section is never empty just because
+    # nothing sat inside the strict tolerance bands.
+    if not rows:
+        rows = comps_panel.comparable_listings(d, listings, n=6)
     if not rows:
         st.caption("No comparable active listings in this neighborhood yet.")
         return
     records = [
         {
-            "Price": c["price"],
-            "€/m²": c["price_per_m2"],
-            "Area": c["area_m2"],
-            "Floor": c["floor"],
+            "Price": c.get("price"),
+            "€/m²": c.get("price_per_m2"),
+            "Area": c.get("area_m2"),
+            "Floor": c.get("floor"),
             "vs this €/m²": c.get("ppm2_delta_pct"),
-            "Score": round(c["score"], 0),
-            "Link": c["url"],
+            "Score": round(c["score"], 0) if c.get("score") is not None else None,
+            "Link": c.get("url"),
         }
         for c in rows
     ]
@@ -431,11 +606,221 @@ def _comparables(d: dict, listings: list[dict]) -> None:
     st.caption("Same neighborhood, within ±25% area and ±30% price, ranked by €/m² closeness.")
 
 
+def _acquisition_block(d: dict) -> None:
+    """Total cash to actually buy — sticker price is not the real cost. Greek purchase
+    carries transfer tax, notary, land registry, legal and (unless private) agent fees."""
+    price = d.get("price")
+    if not price:
+        return
+    private = bool(d.get("is_private_seller"))
+    ac = acquisition.acquisition_costs(price, agent_fee_pct=0.0 if private else 0.0248)
+    st.markdown("#### 🧾 Total acquisition cost")
+    c = st.columns(4)
+    c[0].metric("Sticker price", fmt.euro(ac["price"]))
+    c[1].metric(
+        "Fees & taxes",
+        fmt.euro(ac["total_fees"]),
+        help="Transfer tax, notary, registry, legal, agent",
+    )
+    c[2].metric("Total cash-in", fmt.euro(ac["total_cash"]))
+    c[3].metric("Fees % of price", f"{ac['fees_pct_of_price'] * 100:.1f}%")
+    st.caption(
+        f"Transfer tax {fmt.euro(ac['transfer_tax'])} · notary {fmt.euro(ac['notary'])} · "
+        f"registry {fmt.euro(ac['land_registry'])} · legal {fmt.euro(ac['legal'])} · "
+        f"agent {fmt.euro(ac['agent'])}"
+        + ("  _(private seller — no agent fee)_" if private else "")
+    )
+
+
+def _investor_metrics_block(d: dict) -> None:
+    """The recognized metrics an investor scans for by name — cap rate, GRM, DSCR,
+    break-even occupancy — on the same Greek cost model as the net yield above."""
+    price = d.get("price")
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if not price or not monthly:
+        return
+    from scout import metrics as _m
+
+    mm = _m.investor_metrics(
+        price, monthly * 12, d.get("area_m2"), is_private_seller=bool(d.get("is_private_seller"))
+    )
+    v = mm["verdicts"]
+    emoji = {"good": "🟢", "ok": "🟡", "weak": "🔴", None: "⚪"}
+
+    def cell(label, val, key, fmt_s):
+        shown = fmt_s.format(val) if val is not None else "—"
+        return f"{emoji[v[key]]} **{label}:** {shown}"
+
+    st.markdown("#### 📐 Investor metrics")
+    c = st.columns(4)
+    c[0].markdown(cell("Cap rate", mm["cap_rate"], "cap_rate", "{:.1%}"))
+    c[1].markdown(cell("GRM", mm["grm"], "grm", "{:.0f}×"))
+    c[2].markdown(cell("DSCR", mm["dscr"], "dscr", "{:.2f}"))
+    c[3].markdown(
+        cell("Break-even occ.", mm["break_even_occupancy"], "break_even_occupancy", "{:.0%}")
+    )
+    est = " Rent is estimated." if d.get("rent_estimated") else ""
+    st.caption(
+        "Athens-calibrated (cap rate ≥4.5%, GRM ≤22, DSCR ≥1.2, break-even ≤80% = good). We "
+        "deliberately don't use US rules like the '1% rule' — at ~5% Athens yields they'd fail "
+        "on every flat and tell you nothing." + est
+    )
+
+
+def _scorecard_block(d: dict) -> None:
+    """Transparent Athens-calibrated deal scorecard — every check, its points, and why,
+    so the grade isn't a black box."""
+    sc = deal_scorecard.scorecard(d)
+    if not sc.get("checks"):
+        return
+    color = {"Strong": "🟢", "Fair": "🟡", "Pass": "🔴"}
+    st.markdown(f"#### 🧮 Deal scorecard — {color.get(sc['verdict'], '')} {sc['verdict']}")
+    st.caption(f"{sc['points']}/{sc['max_points']} points ({sc['pct']:.0f}%). Athens-calibrated.")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {"Check": c["label"], "Pts": f"{c['points']}/{c['max_points']}", "Note": c["note"]}
+                for c in sc["checks"]
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+def _projection_block(d: dict) -> None:
+    """5-year total-return projection — the four pillars (cashflow, appreciation, debt
+    paydown, equity). Appreciation is a labelled assumption, not a forecast."""
+    price = d.get("price")
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if not price or not monthly:
+        return
+    pr = projection.five_year_projection(
+        price, monthly * 12, d.get("area_m2"), is_private_seller=bool(d.get("is_private_seller"))
+    )
+    if not pr:
+        return
+    t = pr["total"]
+    st.markdown("#### 📈 5-year projection")
+    c = st.columns(4)
+    c[0].metric("Cumulative cashflow", fmt.euro(t["cumulative_cash_flow"]))
+    c[1].metric("Appreciation (2%/yr)", fmt.euro(t["property_appreciation"]))
+    c[2].metric("Debt paydown", fmt.euro(t["debt_paydown"]))
+    c[3].metric("Total return on cash", f"{t['total_return_pct'] * 100:.0f}%")
+    st.caption(
+        "The four pillars of return over a 5-yr hold (30% down, 25-yr @4.5%). Appreciation is "
+        "a MODEST 2%/yr assumption, not a forecast — the market may do more or less."
+    )
+
+
+def _sensitivity_block(d: dict) -> None:
+    """How the return holds up if rates rise or the flat sits empty — the stress test an
+    investor actually underwrites on."""
+    price = d.get("price")
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if not price or not monthly:
+        return
+    grid = sensitivity.sensitivity_grid(price, monthly * 12)
+    if not grid.get("net_yield"):
+        return
+    st.markdown("#### 🎛️ Rate × vacancy sensitivity")
+    rates = grid["rates"]
+    vac = grid["vacancies"]
+    ny = pd.DataFrame(
+        grid["net_yield"],
+        index=[f"{r * 100:.0f}% rate" for r in rates],
+        columns=[f"{v * 100:.0f}% empty" for v in vac],
+    )
+    st.caption("Net yield (after vacancy, costs, mortgage interest) — 30% down, 25-yr term.")
+    st.dataframe(ny.style.format("{:.1%}"), use_container_width=True)
+
+    annual = monthly * 12
+    with st.expander("More what-ifs — rent & purchase-price moves"):
+        rs = sensitivity.rent_sensitivity(price, annual)
+        if rs.get("net_yield"):
+            rdf = pd.DataFrame(
+                {
+                    "Rent change": [f"{s * 100:+.0f}%" for s in rs["steps"]],
+                    "Net yield": rs["net_yield"],
+                    "Cashflow/mo": rs["cashflow_monthly"],
+                }
+            )
+            st.markdown("**If rent moves**")
+            st.dataframe(
+                rdf.style.format({"Net yield": "{:.1%}", "Cashflow/mo": "€{:.0f}"}),
+                use_container_width=True,
+                hide_index=True,
+            )
+        ps = sensitivity.price_sensitivity(price, annual)
+        if ps.get("net_yield"):
+            pdf = pd.DataFrame(
+                {
+                    "Price change": [f"{s * 100:+.0f}%" for s in ps["steps"]],
+                    "Net yield": ps["net_yield"],
+                    "Cash-on-cash": ps["cash_on_cash"],
+                }
+            )
+            st.markdown("**If you negotiate the price**")
+            st.dataframe(
+                pdf.style.format({"Net yield": "{:.1%}", "Cash-on-cash": "{:.1%}"}),
+                use_container_width=True,
+                hide_index=True,
+            )
+    if d.get("rent_estimated"):
+        st.caption("_Rent is estimated (no local comp) — treat these as indicative._")
+
+
 # ---- pages -----------------------------------------------------------------
+
+
+def _coverage_panel(listings: list[dict]) -> None:
+    """Honest per-region coverage: how many listings, how complete, how fresh. Trust comes
+    from showing exactly what we have and what's still shallow, not hiding the gaps."""
+    from collections import defaultdict
+
+    if not listings:
+        return
+    by_region: dict[str, list[dict]] = defaultdict(list)
+    for d in listings:
+        by_region[d.get("region") or "—"].append(d)
+    total = len(listings)
+    complete = sum(1 for d in listings if d.get("data_complete"))
+    with st.expander(
+        (
+            f"📦 Coverage — {total:,} listings, {complete / total * 100:.0f}% fully-detailed"
+            if total
+            else "📦 Coverage"
+        ),
+        expanded=False,
+    ):
+        rows = []
+        for region, ds in sorted(by_region.items(), key=lambda kv: -len(kv[1])):
+            n = len(ds)
+            comp = sum(1 for d in ds if d.get("data_complete"))
+            en = sum(1 for d in ds if (d.get("energy_class") or "").strip())
+            exact = sum(1 for d in ds if d.get("location_precision") == "exact")
+            newest = max((d["last_seen"] for d in ds if d.get("last_seen")), default=None)
+            rows.append(
+                {
+                    "Region": region,
+                    "Listings": n,
+                    "Fully detailed": f"{comp / n * 100:.0f}%" if n else "—",
+                    "Has energy": f"{en / n * 100:.0f}%" if n else "—",
+                    "Exact location": f"{exact / n * 100:.0f}%" if n else "—",
+                    "Last updated": newest.strftime("%Y-%m-%d %H:%M") if newest else "—",
+                }
+            )
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.caption(
+            "Depth is recovered continuously by the detail-enrichment pass; card-only "
+            "listings carry a *limited data* badge until then."
+        )
 
 
 def page_opportunities(listings: list[dict]) -> None:
     st.subheader("Opportunities")
+    _valuation_banner()
+    _coverage_panel(_eligible(listings))
 
     if not listings:
         st.info(
@@ -461,6 +846,19 @@ def page_opportunities(listings: list[dict]) -> None:
     # Sidebar filters — defaults include everything so nothing hides silently.
     with st.sidebar:
         st.subheader("Filters")
+        # Region filter — the classic Attica grouping (Κέντρο / Βόρεια / Νότια / Δυτικά /
+        # Πειραιάς). Default = all regions present, so nothing hides until the user picks.
+        present_regions = [r for r in REGIONS if any(d.get("region") == r for d in eligible)]
+        chosen_regions = (
+            st.multiselect("Περιοχή / Region", present_regions, default=present_regions)
+            if present_regions
+            else []
+        )
+        near_metro_only = st.checkbox(
+            "🚇 Μόνο κοντά σε μετρό / Near metro only",
+            value=False,
+            help="Keep only listings within the metro distance below (Line 2/3).",
+        )
         prices = [d["price"] for d in eligible]
         pmin, pmax = min(prices), max(prices)
         price_range = (
@@ -468,28 +866,69 @@ def page_opportunities(listings: list[dict]) -> None:
             if pmin < pmax
             else (pmin, pmax)
         )
+        income = st.number_input(
+            "Monthly net income (€) — 0 = off",
+            min_value=0,
+            value=0,
+            step=100,
+            help="Filters to homes a 25-yr mortgage at ~30% down supports on this income.",
+        )
+        max_afford = _max_affordable_price(income)
+        if max_afford:
+            st.caption(
+                f"≈ affordable up to **{fmt.euro(max_afford)}** (35% of income, ~4.5%, 25 yr)."
+            )
+        present_strats = sorted({t for d in eligible for t in (d.get("strategy_tags") or [])})
+        strat_filter = (
+            st.multiselect(
+                "Strategy",
+                present_strats,
+                default=[],
+                help="Cashflow · Value-add · Underpriced · Motivated seller · Prime location",
+            )
+            if present_strats
+            else []
+        )
         areas = [d["area_m2"] for d in eligible]
         amin, amax = int(min(areas)), int(max(areas)) + 1
         area_range = (
             st.slider("Area (m²)", amin, amax, (amin, amax)) if amin < amax else (amin, amax)
         )
         min_yield = st.slider("Min gross yield (%)", 0.0, 12.0, 0.0, step=0.5) / 100
+        min_value_gap = st.slider(
+            "Min value gap (% below fair value)",
+            0,
+            40,
+            0,
+            step=5,
+            help="Only flats the hedonic model prices at least this far below fair value.",
+        )
         min_year = st.slider("Built/renovated after", 1950, 2025, 1950, step=5)
         new_only = st.checkbox("New builds only (≥ 2010)", value=False)
         include_unknown_year = st.checkbox("Include unknown build year", value=True)
-        max_metro = st.slider("Max metro distance (m)", 0, 2000, 2000, step=50)
+        max_metro = st.slider("Max metro distance (m)", 0, 5000, 5000, step=50)
         include_unknown_metro = st.checkbox("Include unknown metro distance", value=True)
 
     def _built_year(d: dict) -> int | None:
         return d.get("renovated_year") or d.get("year_built")
 
     def keep(d: dict) -> bool:
+        if chosen_regions and d.get("region") not in chosen_regions:
+            return False
         if not (price_range[0] <= d["price"] <= price_range[1]):
+            return False
+        if max_afford is not None and d["price"] > max_afford:
+            return False
+        if strat_filter and not (set(strat_filter) & set(d.get("strategy_tags") or [])):
             return False
         if not (area_range[0] <= d["area_m2"] <= area_range[1]):
             return False
         if (d["gross_yield"] or 0) < min_yield:
             return False
+        if min_value_gap > 0:
+            gap = d.get("value_gap_pct")
+            if gap is None or gap * 100 < min_value_gap:
+                return False
         yr = _built_year(d)
         effective_min = max(min_year, 2010) if new_only else min_year
         if yr is None:
@@ -498,30 +937,140 @@ def page_opportunities(listings: list[dict]) -> None:
         elif yr < effective_min:
             return False
         if d["metro_distance_m"] is None:
-            return include_unknown_metro
-        return d["metro_distance_m"] <= max_metro
+            # "Near metro only" is a hard walk-to-metro requirement: an unlocatable
+            # listing can't prove it qualifies, so it's excluded when the toggle is on.
+            return include_unknown_metro and not near_metro_only
+        limit = (
+            min(max_metro, get_strategy().hard_filters.max_metro_distance_m)
+            if near_metro_only
+            else max_metro
+        )
+        return d["metro_distance_m"] <= limit
 
-    rows = sorted([d for d in eligible if keep(d)], key=lambda d: d["score"], reverse=True)
+    # Let the buyer rank by the signal they care about — not just the quality score. All
+    # of these are real numbers already in the data. Every sort puts BUY verdicts ahead of
+    # WATCH ahead of PASS first: a verified BUY at score 70 beats an unverifiable WATCH at
+    # 75 — the verdict already encodes how much of that score we can stand behind.
+    _verdict_rank = {"BUY": 2, "WATCH": 1, "PASS": 0}
+    sort_opts = {
+        "Best overall (score)": lambda d: (d["score"], d.get("data_complete", False)),
+        "Biggest discount (below model)": lambda d: (d.get("value_gap_pct") or -1),
+        "Most negotiable (days on market)": lambda d: (d.get("days_on_market") or 0),
+        "Highest net yield": lambda d: (d.get("net_yield") or -1),
+    }
+    scol, fcol = st.columns([4, 1])
+    with scol:
+        sort_by = st.radio(
+            "Sort by", list(sort_opts), horizontal=True, label_visibility="collapsed"
+        )
+    with fcol:
+        buys_only = st.checkbox("🟢 BUYs only", value=False, help="Verified BUY verdicts only")
+    inner = sort_opts[sort_by]
+    rows = sorted(
+        [d for d in eligible if keep(d) and (not buys_only or d.get("rec_verdict") == "BUY")],
+        key=lambda d: (_verdict_rank.get(d.get("rec_verdict"), 0), inner(d)),
+        reverse=True,
+    )
 
-    _top_picks(rows)
     st.markdown(f"**{len(rows)}** opportunities match your filters (of {len(eligible)} eligible)")
     if rows:
-        _table(rows)
+        # Cap the card grid to the top N by score — rendering all ~9k cards ships a
+        # multi-megabyte DOM that janks the browser. The full set stays in the table/CSV.
+        grid_cap = 60
+        components.listing_grid(rows[:grid_cap])
+        if len(rows) > grid_cap:
+            st.caption(
+                f"Showing the top {grid_cap} cards ({sort_by.split(' (')[0].lower()}). "
+                "Full list in the table below."
+            )
+        with st.expander("Table view (sort / export)"):
+            _table(rows)
     else:
         st.info("No listings match the current filters. Widen them in the sidebar.")
 
 
 def page_today(listings: list[dict]) -> None:
-    st.subheader("Today")
-    st.caption("New in the last 24 h that pass the hard filters, ranked by score.")
-    today = sorted(
-        [d for d in _eligible(listings) if d["is_new"]], key=lambda d: d["score"], reverse=True
-    )
-    if not today:
-        st.info("Nothing new in the last 24 h. See **Opportunities** for the full list.")
-        return
-    _top_picks(today)
-    _table(today)
+    st.subheader("🗞️ Daily brief")
+    elig = _eligible(listings)
+    cap = 30
+
+    new = sorted([d for d in elig if d["is_new"]], key=lambda d: d["score"], reverse=True)
+    new_buys = [d for d in new if d.get("rec_verdict") == "BUY"]
+    try:
+        drops = get_recent_price_drops(24)
+    except Exception:
+        drops = []
+
+    # Counts strip — the "what changed since yesterday" a subscriber opens the tool for.
+    c = st.columns(3)
+    c[0].metric("🟢 New BUYs (24 h)", len(new_buys))
+    c[1].metric("💸 Price drops (24 h)", len(drops))
+    c[2].metric("🆕 New listings (24 h)", len(new))
+    st.divider()
+
+    # Lead with the actual decisions: BUY-verdict listings that appeared today. This is the
+    # feed a paying user wants — not "here's everything new", but "here's what to act on".
+    if new_buys:
+        st.markdown("#### 🟢 New BUY signals today")
+        components.listing_grid(new_buys[:cap])
+        st.divider()
+
+    # Price cuts today — the classic motivated-seller trigger, straight from price history.
+    if drops:
+        st.markdown("#### 💸 Price drops in the last 24 h")
+        for d in drops:
+            # Surface the cut as a lead strategy pill (the recommendation line owns the
+            # thesis slot, so a deal_thesis here would never render). €old→€new is the
+            # actionable bit — a fresh cut is the classic motivated-seller trigger.
+            pill = f"💸 −{d['drop_pct'] * 100:.0f}% today (€{d['new_price']:,.0f})"
+            d["strategy_tags"] = [pill, *(d.get("strategy_tags") or [])]
+        components.listing_grid(sorted(drops, key=lambda d: d["drop_pct"], reverse=True)[:cap])
+        st.divider()
+
+    if new and not new_buys:
+        st.markdown(f"#### 🆕 {len(new)} new in the last 24 h (none cleared the BUY bar)")
+        components.listing_grid(new[:cap])
+        st.divider()
+
+    # Always-useful daily brief from the real signals: the best value, the most negotiable,
+    # and the highest yield right now — so the landing view is actionable even between runs.
+    briefs = [
+        (
+            "💰 Biggest discounts (below fair value)",
+            lambda d: d.get("value_gap_pct") or -1,
+            lambda d: (d.get("value_gap_pct") or 0) > 0,
+        ),
+        (
+            "⏳ Most negotiable (longest on market)",
+            lambda d: d.get("days_on_market") or 0,
+            lambda d: (d.get("days_on_market") or 0) > 90,
+        ),
+        (
+            "📈 Highest net yield",
+            lambda d: d.get("net_yield") or -1,
+            lambda d: d.get("net_yield") is not None,
+        ),
+    ]
+    for title, keyfn, pred in briefs:
+        picks = sorted([d for d in elig if pred(d)], key=keyfn, reverse=True)[:4]
+        if picks:
+            st.markdown(f"#### {title}")
+            components.listing_grid(picks)
+    if not new and not drops and not any(any(pred(d) for d in elig) for _, _, pred in briefs):
+        st.info("No listings yet — run the pipeline from the sidebar.")
+
+
+def _rank_color(t: float) -> list[int]:
+    """Red → amber → green for a rank fraction t∈[0,1]. Colours by RELATIVE rank, not the
+    absolute score: the market's absolute scores are low (data is thin), so an absolute
+    red→green scale paints almost everything red and hides where the best options are.
+    Rank-colouring makes the map a useful heatmap of relatively-better listings."""
+    t = max(0.0, min(1.0, t))
+    if t < 0.5:
+        u = t / 0.5
+        return [220, int(70 + 120 * u), 60]  # (220,70,60) red → (220,190,60) amber
+    u = (t - 0.5) / 0.5
+    return [int(220 - 170 * u), int(190 - 10 * u), int(60 + 20 * u)]  # amber → (50,180,80) green
 
 
 def page_map(listings: list[dict]) -> None:
@@ -535,44 +1084,199 @@ def page_map(listings: list[dict]) -> None:
         return
     from scout.enrich import METRO_STATIONS
 
-    listing_df = pd.DataFrame({"lat": d["lat"], "lon": d["lng"], "score": d["score"]} for d in pts)
+    # Split exact vs approx (centroid) points: an approx point is one shared location for a
+    # whole municipality, so plotting it as a precise pin would imply an accuracy we don't
+    # have. Exact points render solid & small; approx render large, faint and hollow — read
+    # as an area blob, not an address.
+    exact = [d for d in pts if d.get("location_precision") == "exact"]
+    approx = [d for d in pts if d.get("location_precision") != "exact"]
+    exact_df = pd.DataFrame({"lat": d["lat"], "lon": d["lng"], "score": d["score"]} for d in exact)
+    if not exact_df.empty:
+        # Colour by rank within the plotted set (greener = better than most in view), so the
+        # map surfaces the relatively-best options instead of a sea of red on low absolutes.
+        ranks = exact_df["score"].fillna(0).rank(pct=True, method="average")
+        exact_df["fill"] = [_rank_color(t) for t in ranks]
+    approx_df = pd.DataFrame(
+        {"lat": d["lat"], "lon": d["lng"], "score": d["score"]} for d in approx
+    )
+    center = exact_df if not exact_df.empty else approx_df
     metro_df = pd.DataFrame(
         {"lat": lat, "lon": lng, "name": n} for n, (lat, lng) in METRO_STATIONS.items()
     )
     try:
         import pydeck as pdk
 
+        layers = []
+        if not approx_df.empty:
+            layers.append(
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=approx_df,
+                    get_position="[lon, lat]",
+                    get_fill_color="[150, 150, 160, 40]",  # faint = approximate area location
+                    get_radius=300,
+                )
+            )
+        if not exact_df.empty:
+            layers.append(
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=exact_df,
+                    get_position="[lon, lat]",
+                    get_fill_color="fill",
+                    get_radius=60,
+                    pickable=True,
+                )
+            )
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=metro_df,
+                get_position="[lon, lat]",
+                get_fill_color="[30, 90, 255]",
+                get_radius=90,
+            )
+        )
         st.pydeck_chart(
             pdk.Deck(
-                map_style=None,
+                map_style="light",  # token-free Carto basemap so pins sit on real streets
                 initial_view_state=pdk.ViewState(
-                    latitude=listing_df["lat"].mean(),
-                    longitude=listing_df["lon"].mean(),
-                    zoom=13,
+                    latitude=center["lat"].mean(), longitude=center["lon"].mean(), zoom=13
                 ),
-                layers=[
-                    pdk.Layer(
-                        "ScatterplotLayer",
-                        data=listing_df,
-                        get_position="[lon, lat]",
-                        get_fill_color="[255 - score*2.55, score*2.55, 80]",
-                        get_radius=60,
-                        pickable=True,
-                    ),
-                    pdk.Layer(
-                        "ScatterplotLayer",
-                        data=metro_df,
-                        get_position="[lon, lat]",
-                        get_fill_color="[30, 90, 255]",
-                        get_radius=90,
-                    ),
-                ],
+                layers=layers,
                 tooltip={"text": "Score: {score}"},
             )
         )
-        st.caption("Listings colored green (high score) → red (low). Blue = metro stations.")
+        st.caption(
+            f"Solid pins ({len(exact)}) = exact location, coloured by **relative rank** "
+            "(greener = scores better than most listings in view). "
+            f"Faint blobs ({len(approx)}) = approximate (area centroid — not enriched yet). "
+            "Blue = metro stations."
+        )
     except Exception:
-        st.map(listing_df)
+        st.map(center)
+
+
+@st.cache_data(ttl=300)
+def get_area_liquidity() -> dict:
+    """Per-area liquidity (median days-on-market before delisting + absorption) over the
+    full tracked set — the exit signal. Plain dicts so Streamlit can cache it."""
+    allrows = queries.load_listings(include_excluded=True, only_active=False)
+    out = {}
+    for area, liq in liquidity.liquidity_by_area(allrows).items():
+        out[area] = {
+            "median_days": liq.median_days_on_market,
+            "cleared": liq.cleared,
+            "absorption": liq.absorption_rate,
+        }
+    return out
+
+
+def _scenarios_block(d: dict) -> None:
+    """Downside range + the questions a buyer underwrites on: net-yield under good/bad
+    assumptions, yield if they land the recommended offer, break-even rent, and payback."""
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if not monthly:
+        return
+    annual = monthly * 12
+    price, area, priv = d["price"], d.get("area_m2"), bool(d.get("is_private_seller"))
+    st.markdown("#### 📉 Downside & scenarios")
+    sens = investment.net_yield_sensitivity(price, annual, area, priv)
+    if sens:
+        c = st.columns(3)
+        c[0].metric(
+            "Net yield — pessimistic",
+            fmt.pct(sens["pessimistic"]),
+            help="12% vacancy + higher maintenance",
+        )
+        c[1].metric("Net yield — base", fmt.pct(sens["base"]))
+        c[2].metric(
+            "Net yield — optimistic",
+            fmt.pct(sens["optimistic"]),
+            help="2% vacancy + light maintenance",
+        )
+    c2 = st.columns(3)
+    yoo = d.get("yield_on_offer")
+    if yoo is not None:
+        c2[0].metric(
+            "Net yield at suggested offer",
+            fmt.pct(yoo),
+            help=f"if you land it at {fmt.euro(d.get('suggested_offer'))}",
+        )
+    be = investment.break_even_rent(price, area, priv)
+    if be:
+        c2[1].metric(
+            "Break-even rent",
+            fmt.euro(be) + "/mo",
+            help="rent below which it bleeds cash before financing",
+        )
+    pb = investment.payback_years(price, annual, area, priv)
+    if pb:
+        c2[2].metric("Payback (unlevered)", f"~{pb:.0f} yrs")
+    tax = investment.greek_rental_tax(annual)
+    if tax:
+        st.caption(
+            f"🧾 Greek rental-income tax ≈ **{fmt.euro(tax['annual_tax'])}/yr** "
+            f"({tax['effective_rate'] * 100:.0f}% effective) — inside the net figures above."
+        )
+    reno = investment.renovation_roi(d.get("energy_class"), area, annual)
+    if reno:
+        st.caption(
+            f"🔧 Retrofit case: ~{fmt.euro(reno['capex'])} capex → "
+            f"+{fmt.euro(reno['annual_rent_uplift'])}/yr rent "
+            f"({reno['roi_pct'] * 100:.0f}% ROI, ~{reno['payback_years']:.0f}yr payback)."
+        )
+    if d.get("rent_estimated"):
+        st.caption(
+            "_Rent is an area estimate — treat these as indicative until a real comp lands._"
+        )
+
+
+def _risk_and_context(d: dict, listings: list[dict]) -> None:
+    """EPBD renovation liability, transparent price percentile, area liquidity, and a
+    leverage one-liner — the decision context portals don't give."""
+    st.markdown("#### 🧭 Risk & context")
+
+    # EPBD renovation-mandate liability + indicative capex (only for a known poor class).
+    flag = epbd.epbd_flag(d.get("energy_class"), d.get("area_m2"))
+    if flag.at_risk:
+        st.warning(f"⚠️ **EPBD liability** — {flag.note}")
+
+    cols = st.columns(2)
+    # Transparent, checkable value signal: cheaper per m² than X% of this municipality.
+    dist = analytics.area_ppm2_distributions(listings)
+    pct = analytics.ppm2_percentile_cheaper(
+        d.get("price_per_m2"), dist.get(d.get("search_area"), [])
+    )
+    if pct is not None:
+        cols[0].metric(
+            "Cheaper per m² than",
+            f"{pct * 100:.0f}% of {d.get('search_area') or 'area'}",
+            help="Share of active listings in this municipality with a higher €/m².",
+        )
+
+    # Area liquidity — how fast this submarket clears (from our own tracked lifecycle).
+    liq = get_area_liquidity().get(d.get("search_area"))
+    if liq and liq["median_days"] is not None:
+        cols[1].metric(
+            "Typical days on market",
+            f"~{liq['median_days']:.0f}",
+            help=(
+                f"Median dwell before delisting in {d.get('search_area')} "
+                f"({liq['cleared']} tracked; absorption {(liq['absorption'] or 0) * 100:.0f}%). "
+                "Delisting is a proxy for sold."
+            ),
+        )
+
+    # Leverage: cash-on-cash at standard assumptions (a buyer tweaks them per deal).
+    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+    if monthly:
+        line = finance.leverage_oneliner(
+            d["price"], monthly * 12, d.get("area_m2"), bool(d.get("is_private_seller"))
+        )
+        if line:
+            est = " _(rent est.)_" if d.get("rent_estimated") else ""
+            st.caption(f"🏦 {line}{est}")
 
 
 def page_detail(listings: list[dict]) -> None:
@@ -596,85 +1300,131 @@ def page_detail(listings: list[dict]) -> None:
     cols[3].metric("Days on market", dom if dom is not None else "—")
     cols[4].metric("Score", f"{d['score']:.0f} / 100")
 
-    st.write(" ".join(fmt.badges(d)) or "_no badges_")
     if d["excluded"]:
         st.error(f"Excluded by hard filter: {d['exclusion_reason']}")
 
-    # --- investment math ---
-    st.markdown("#### 💰 Investment case")
-    monthly = d.get("listed_rent") or d.get("est_monthly_rent")
-    if monthly:
-        annual = monthly * 12
-        gy = d.get("gross_yield")
-        math_cols = st.columns(4)
-        math_cols[0].metric("Est. monthly rent", fmt.euro(monthly))
-        math_cols[1].metric("Annual income", fmt.euro(annual))
-        math_cols[2].metric("Purchase price", fmt.euro(d["price"]))
-        math_cols[3].metric("Gross yield", fmt.pct(gy))
-        if fp and d["price"] < fp:
-            drop_pct = (fp - d["price"]) / fp * 100
-            st.info(
-                f"📉 Price dropped **{drop_pct:.0f}%** from {fmt.euro(fp)} to {fmt.euro(d['price'])} "
-                f"(saved {fmt.euro(fp - d['price'])})"
-            )
-    else:
-        st.caption("_No rent data scraped — yield estimate uses the strategy fallback €/m²/month._")
+    # Verdict up front — the answer before any deep dive.
+    sc = deal_scorecard.scorecard(d)
+    vic = {"Strong": "🟢", "Fair": "🟡", "Pass": "🔴"}
+    vc = st.columns(4)
+    vc[0].metric("Deal grade", d.get("deal_grade") or "—")
+    vc[1].metric("Scorecard", f"{vic.get(sc['verdict'], '')} {sc['verdict']}")
+    vc[2].metric("Net yield", fmt.pct(d["net_yield"]) if d.get("net_yield") is not None else "—")
+    gap = d.get("value_gap_pct")
+    vc[3].metric(
+        "Vs model value",
+        f"{gap * 100:+.0f}%" if gap is not None else "—",
+        help="Only shown when the price clears the model's ±band (else it's noise).",
+    )
+    if d.get("strategy_tags"):
+        st.write(" ".join(f"`{t}`" for t in d["strategy_tags"]))
+    # The recommendation — the decision, up front: verdict + concrete action + why + risks.
+    from scout.recommendation import verdict_emoji
 
-    bullets = _investment_bullets(d)
-    if bullets:
-        for b in bullets:
+    rv, rh = d.get("rec_verdict"), d.get("rec_headline")
+    if rv and rh:
+        box = {"BUY": st.success, "WATCH": st.info, "PASS": st.error}.get(rv, st.info)
+        box(f"{verdict_emoji(rv)} **{rv} — {rh}**")
+        rc = st.columns(2)
+        if d.get("rec_rationale"):
+            rc[0].markdown("**Why:**\n" + "\n".join(f"- {x}" for x in d["rec_rationale"]))
+        if d.get("rec_risks"):
+            rc[1].markdown("**Watch out:**\n" + "\n".join(f"- {x}" for x in d["rec_risks"]))
+    elif d.get("deal_thesis"):
+        st.info(f"💡 {d['deal_thesis']}")
+
+    tabs = st.tabs(
+        ["💰 Returns", "🧾 Costs & risk", "🎛️ Sensitivity", "🧮 Score & comps", "🏗️ Details"]
+    )
+
+    with tabs[0]:
+        monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+        if monthly:
+            math_cols = st.columns(4)
+            math_cols[0].metric("Est. monthly rent", fmt.euro(monthly))
+            math_cols[1].metric("Annual income", fmt.euro(monthly * 12))
+            math_cols[2].metric("Purchase price", fmt.euro(d["price"]))
+            math_cols[3].metric("Gross yield", fmt.pct(d.get("gross_yield")))
+            if fp and d["price"] < fp:
+                drop_pct = (fp - d["price"]) / fp * 100
+                st.info(
+                    f"📉 Price dropped **{drop_pct:.0f}%** from {fmt.euro(fp)} to "
+                    f"{fmt.euro(d['price'])} (saved {fmt.euro(fp - d['price'])})"
+                )
+        else:
+            st.caption("_No rent scraped — yield uses the strategy fallback €/m²/month._")
+        for b in _investment_bullets(d):
             st.markdown(f"• {b}")
+        _fair_value_block(d)
+        _net_return_and_financing(d, lid)
+        _investor_metrics_block(d)
+        _projection_block(d)
 
-    # --- net return (after Greek costs) + financing ---
-    _net_return_and_financing(d, lid)
+    with tabs[1]:
+        _acquisition_block(d)
+        _risk_and_context(d, listings)
+        _scenarios_block(d)
 
-    # --- score breakdown ---
-    strategy = get_strategy()
-    st.markdown("#### 📊 Score breakdown")
-    _score_breakdown(d, strategy)
+    with tabs[2]:
+        _sensitivity_block(d)
 
-    # --- comparable listings ---
-    st.markdown("#### 🔁 Comparable active listings nearby")
-    _comparables(d, listings)
+    with tabs[3]:
+        _scorecard_block(d)
+        st.markdown("#### 📊 Score breakdown")
+        _score_breakdown(d, get_strategy())
+        st.markdown("#### 🔁 Comparable active listings nearby")
+        _comparables(d, listings)
 
-    # --- property specs ---
-    st.markdown("#### 🏗️ Property specs")
-    spec_cols = st.columns(3)
-    spec_cols[0].markdown(
-        f"**Area:** {d['area_m2']:.0f} m²  \n"
-        f"**Bedrooms:** {d['bedrooms'] or '—'}  \n"
-        f"**Floor:** {_floor_label(d['floor'])}  \n"
-        f"**Built:** {d.get('year_built') or '—'}"
-        + (f" (renov. {d['renovated_year']})" if d.get("renovated_year") else "")
-    )
-    spec_cols[1].markdown(
-        f"**Neighborhood:** {d['neighborhood'] or '—'}  \n"
-        f"**Address:** {d['address'] or '—'}  \n"
-        f"**Nearest metro:** {d.get('nearest_metro') or '—'}  \n"
-        f"**Metro distance:** {_metro_label(d)}"
-    )
-    spec_cols[2].markdown(
-        f"**Energy class:** {d.get('energy_class') or '—'}  \n"
-        f"**Heating:** {d.get('heating') or '—'}  \n"
-        f"**Private seller:** {'✅ yes' if d['is_private_seller'] else '✗ no'}  \n"
-        f"**Currently rented:** {'✅ yes' if d['is_currently_rented'] else '✗ no'}"
-    )
-
-    # --- price history ---
-    st.markdown("#### 📈 Price history")
-    history = get_history(lid)
-    if len(history) >= 2:
-        hist_df = pd.DataFrame(history, columns=["observed_at", "price"]).set_index("observed_at")
-        st.line_chart(hist_df)
-    elif len(history) == 1:
-        st.caption(
-            f"First recorded price: {fmt.euro(history[0][1])} on {history[0][0]:%Y-%m-%d}. "
-            "Price history builds up over multiple pipeline runs."
+    with tabs[4]:
+        st.markdown("#### 🏗️ Property specs")
+        spec_cols = st.columns(3)
+        spec_cols[0].markdown(
+            f"**Area:** {d['area_m2']:.0f} m²  \n"
+            f"**Bedrooms:** {d['bedrooms'] or '—'}  \n"
+            f"**Floor:** {_floor_label(d['floor'])}  \n"
+            f"**Built:** {d.get('year_built') or '—'}"
+            + (f" (renov. {d['renovated_year']})" if d.get("renovated_year") else "")
         )
-    else:
-        st.caption("No price history yet — runs each day and accumulates over time.")
+        spec_cols[1].markdown(
+            f"**Neighborhood:** {d['neighborhood'] or '—'}  \n"
+            f"**Address:** {d['address'] or '—'}  \n"
+            f"**Nearest metro:** {d.get('nearest_metro') or '—'}  \n"
+            f"**Metro distance:** {_metro_label(d)}"
+        )
+        spec_cols[2].markdown(
+            f"**Energy class:** {d.get('energy_class') or '—'}  \n"
+            f"**Heating:** {d.get('heating') or '—'}  \n"
+            f"**Private seller:** {'✅ yes' if d['is_private_seller'] else '✗ no'}  \n"
+            f"**Currently rented:** {'✅ yes' if d['is_currently_rented'] else '✗ no'}"
+        )
+        st.markdown("#### 📈 Price history")
+        history = get_history(lid)
+        if len(history) >= 2:
+            hist_df = pd.DataFrame(history, columns=["observed_at", "price"]).set_index(
+                "observed_at"
+            )
+            st.line_chart(hist_df)
+        elif len(history) == 1:
+            st.caption(
+                f"First recorded price: {fmt.euro(history[0][1])} on {history[0][0]:%Y-%m-%d}. "
+                "Price history builds up over multiple pipeline runs."
+            )
+        else:
+            st.caption("No price history yet — accumulates over daily runs.")
 
-    st.link_button("Open on portal ↗", d["url"])
+    st.divider()
+    lb, db = st.columns(2)
+    with lb:
+        st.link_button("Open on portal ↗", d["url"], use_container_width=True)
+    with db:
+        st.download_button(
+            "⬇ One-page report (HTML)",
+            listing_report.build_report_html(d),
+            file_name=f"holargos-{lid}.html",
+            mime="text/html",
+            use_container_width=True,
+            help="A printable one-pager to hand a client — the agent deliverable.",
+        )
     watched = st.checkbox("On watchlist", value=d["is_watched"], key=f"watch-{lid}")
     if watched != d["is_watched"]:
         queries.set_watched(lid, watched)
@@ -683,18 +1433,32 @@ def page_detail(listings: list[dict]) -> None:
 
 
 def page_watchlist(listings: list[dict]) -> None:
-    st.subheader("Watchlist")
+    st.subheader("⭐ Watchlist")
     watched = [d for d in listings if d["is_watched"]]
     if not watched:
         st.info("Pin listings from the **Listing detail** page to watch them here.")
         return
+
+    # Portfolio summary across the shortlist — the "if I bought all of these" snapshot.
+    prices = [d["price"] for d in watched if d.get("price")]
+    nys = [d["net_yield"] for d in watched if d.get("net_yield") is not None]
+    doms = [d["days_on_market"] for d in watched if d.get("days_on_market") is not None]
+    c = st.columns(4)
+    c[0].metric("Watched", len(watched))
+    c[1].metric("Total asking", fmt.euro(sum(prices)) if prices else "—")
+    c[2].metric("Median net yield", fmt.pct(statistics.median(nys)) if nys else "—")
+    c[3].metric("Median days on market", f"{int(statistics.median(doms))}d" if doms else "—")
+
     for d in watched:
         if d["price_dropped"]:
             st.success(
                 f"📉 {d['title']} dropped to {fmt.euro(d['price'])} "
                 f"(from {fmt.euro(d['first_price'])})"
             )
-    _table(sorted(watched, key=lambda d: d["score"], reverse=True))
+
+    components.listing_grid(sorted(watched, key=lambda d: d["score"], reverse=True))
+    with st.expander("Table view (sort / export)"):
+        _table(sorted(watched, key=lambda d: d["score"], reverse=True))
 
 
 def page_strategy() -> None:
@@ -706,12 +1470,18 @@ def page_strategy() -> None:
         st.markdown("**Hard filters**")
         min_floor = st.number_input("Min floor", value=strategy.hard_filters.min_floor, step=1)
         max_metro = st.number_input(
-            "Max metro distance (m)", value=strategy.hard_filters.max_metro_distance_m, step=50
+            "Metro distance for the 'near metro' filter (m)",
+            value=strategy.hard_filters.max_metro_distance_m,
+            step=50,
+            help="Not a hard cutoff — metro proximity is a scoring signal. This only sets the "
+            "threshold for the optional 'Near metro only' toggle on Opportunities.",
         )
         st.markdown("**Weights**")
         w = strategy.weights
+        under = st.slider(
+            "Undervaluation (vs hedonic fair value)", 0.0, 50.0, float(w.undervaluation)
+        )
         gy = st.slider("Gross yield", 0.0, 50.0, float(w.gross_yield))
-        pm = st.slider("Price vs area median", 0.0, 50.0, float(w.price_vs_area_median))
         newness = st.slider("Newness (build/reno year)", 0.0, 50.0, float(w.newness))
         energy = st.slider("Energy class", 0.0, 50.0, float(w.energy_class))
         pd_ = st.slider("Price drop", 0.0, 50.0, float(w.price_drop))
@@ -733,8 +1503,8 @@ def page_strategy() -> None:
     if submitted:
         strategy.hard_filters.min_floor = int(min_floor)
         strategy.hard_filters.max_metro_distance_m = int(max_metro)
+        strategy.weights.undervaluation = under
         strategy.weights.gross_yield = gy
-        strategy.weights.price_vs_area_median = pm
         strategy.weights.newness = newness
         strategy.weights.energy_class = energy
         strategy.weights.price_drop = pd_
@@ -776,6 +1546,24 @@ def page_debug() -> None:
     )
     if first_seens:
         st.write(f"**Earliest record seen:** {min(first_seens):%Y-%m-%d %H:%M:%S} UTC")
+
+    # Data-quality audit panel — the same numbers the improvement loop optimises, so the
+    # depth of the dataset is visible, not hidden.
+    st.markdown("**Data-quality audit**")
+    try:
+        from scout.data_quality import audit as _audit
+
+        a = _audit()
+        ac = st.columns(4)
+        ac[0].metric("Fully detailed", f"{a.get('complete_pct', 0) * 100:.0f}%")
+        ac[1].metric("Top-100 complete", f"{a.get('top100_complete', 0)}%")
+        ac[2].metric("Biggest gap", str(a.get("top_gap", "—")))
+        ac[3].metric("Eligible", a.get("total", len(active)))
+        fields = a.get("fields") or {}
+        if fields:
+            st.caption(" · ".join(f"{k}: {v * 100:.0f}%" for k, v in fields.items()))
+    except Exception as exc:  # never break the debug page on an audit hiccup
+        st.caption(f"_audit unavailable: {exc}_")
 
     st.markdown("**Records by source**")
     src: dict[str, int] = {}
@@ -842,23 +1630,62 @@ def page_neighborhoods(listings: list[dict]) -> None:
         {
             "Neighborhood": s["neighborhood"],
             "Listings": s["count"],
-            "Median price": s["median_price"],
-            "Median €/m²": s["median_ppm2"],
-            "Median yield": s["median_yield_pct"],
+            "Median price": fmt.euro(s["median_price"]),
+            "Median €/m²": fmt.euro_per_m2(s["median_ppm2"]),
+            "Median gross yield": (
+                f"{s['median_yield_pct']:.1f}%" if s["median_yield_pct"] is not None else "—"
+            ),
             "Opportunities": s["opportunities"],
+            "Sitting >180d": s["long_sitting"],
+            "Below model": s["below_model"],
             "Rented": s["rented"],
         }
         for s in stats
     ]
-    st.dataframe(
-        pd.DataFrame(records),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Median price": st.column_config.NumberColumn("Median price", format="€%d"),
-            "Median €/m²": st.column_config.NumberColumn("Median €/m²", format="€%.0f"),
-            "Median yield": st.column_config.NumberColumn("Median yield", format="%.1f%%"),
-        },
+    st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
+
+    # Rental market by area — REAL asked rents (scraped rental listings), joined with the
+    # sale market to show where yield is structurally high vs low. This is the aggregation
+    # a free portal never gives: the rent gradient (e.g. Vouliagmeni ~€22/m² vs Kamatero
+    # ~€8/m²) next to what flats cost to buy there.
+    try:
+        import statistics as _stats
+
+        from scout.rent_comps import OVERALL_KEY, load_rent_comps
+
+        comps = load_rent_comps()
+        sale_by_area: dict[str, list[float]] = {}
+        for d in _eligible(listings):
+            if d.get("price_per_m2") and d.get("search_area"):
+                sale_by_area.setdefault(d["search_area"], []).append(d["price_per_m2"])
+        rent_rows = []
+        for area, per_hood in sorted(comps.items()):
+            rent = per_hood.get(OVERALL_KEY)
+            sales = sale_by_area.get(area) or []
+            if not rent or len(sales) < 5:
+                continue
+            sale_med = _stats.median(sales)
+            rent_rows.append(
+                {
+                    "Area": area,
+                    "Median rent (€/m²/mo)": round(rent, 1),
+                    "Median sale (€/m²)": int(sale_med),
+                    "Implied gross yield": f"{rent * 12 / sale_med * 100:.1f}%",
+                }
+            )
+        if rent_rows:
+            st.markdown("#### 🏠 Rental market by area — real asked rents")
+            rent_rows.sort(key=lambda r: -float(r["Implied gross yield"].rstrip("%")))
+            st.dataframe(pd.DataFrame(rent_rows), use_container_width=True, hide_index=True)
+            st.caption(
+                "Median asked rent from scraped rental listings ÷ median sale €/m² = the "
+                "area's structural gross yield — where rental demand outruns prices."
+            )
+    except Exception:  # rent table must never break the page
+        pass
+    st.caption(
+        "**Sitting >180d** = motivated-seller supply · **Below model** = flats priced under "
+        "fair value (beyond the model's ±band) — where to hunt for deals in each area."
     )
 
     st.markdown("#### 📈 Market price index (monthly median)")
@@ -871,12 +1698,227 @@ def page_neighborhoods(listings: list[dict]) -> None:
         st.caption("The price index builds up over multiple pipeline runs.")
 
 
+def page_deals(listings: list[dict]) -> None:
+    """Motivated-seller intelligence — the sellable core: owners most likely to negotiate,
+    ranked by the negotiation signal, with an exportable agent lead list."""
+    import csv
+    import io
+
+    st.subheader("💰 Deals — motivated sellers")
+    st.caption(
+        "Owners most likely to negotiate, ranked by days-on-market, price cuts, "
+        "over-asked-and-sitting, and relistings — the signals free portals hide. This "
+        "sharpens every day the tracker runs (the price/status history compounds)."
+    )
+    eligible = _eligible(listings)
+    ranked = sorted(eligible, key=lambda d: d.get("negotiation_score") or 0, reverse=True)
+    motivated = [d for d in ranked if (d.get("negotiation_score") or 0) >= 45]
+
+    c = st.columns(3)
+    c[0].metric("Motivated-seller leads", len(motivated))
+    c[1].metric("Tracked & eligible", len(eligible))
+    tracked_days = None
+    seens = [d["first_seen"] for d in eligible if d.get("first_seen")]
+    if seens:
+        tracked_days = (datetime.utcnow() - min(seens)).days
+    c[2].metric("Market tracked for", f"{tracked_days} d" if tracked_days is not None else "—")
+
+    # Agent lead export (the Pro product — a per-territory motivated-seller list).
+    buf = io.StringIO()
+    from scout import metrics as _m
+
+    w = csv.writer(buf)
+    w.writerow(
+        [
+            "negotiation_score",
+            "deal_grade",
+            "price_eur",
+            "suggested_offer_eur",
+            "area_m2",
+            "eur_per_m2",
+            "neighborhood",
+            "region",
+            "days_on_market",
+            "price_cut_pct",
+            "below_model_pct",
+            "net_yield_pct",
+            "cap_rate_pct",
+            "energy_class",
+            "private_seller",
+            "strategy_tags",
+            "url",
+        ]
+    )
+    for d in ranked:
+        dom = fmt.days_on_market(d.get("first_seen"), d.get("last_seen"))
+        fp, cp = d.get("first_price"), d.get("price", 0)
+        cut = (fp - cp) / fp if (fp and cp < fp) else 0.0
+        monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+        cap = _m.cap_rate(d["price"], monthly * 12, d.get("area_m2")) if monthly else None
+        gap = d.get("value_gap_pct")
+        ny = d.get("net_yield")
+        w.writerow(
+            [
+                round(d.get("negotiation_score") or 0, 1),
+                d.get("deal_grade") or "",
+                d["price"],
+                d.get("suggested_offer") or "",
+                f"{d['area_m2']:.0f}",
+                f"{d['price_per_m2']:.0f}" if d.get("price_per_m2") else "",
+                d.get("neighborhood") or "",
+                d.get("region") or "",
+                dom if dom is not None else "",
+                f"{cut * 100:.0f}%",
+                f"{gap * 100:.0f}%" if gap is not None else "",
+                f"{ny * 100:.1f}%" if ny is not None else "",
+                f"{cap * 100:.1f}%" if cap is not None else "",
+                d.get("energy_class") or "",
+                "yes" if d.get("is_private_seller") else "no",
+                " | ".join(d.get("strategy_tags") or []),
+                d["url"],
+            ]
+        )
+    st.download_button(
+        "⬇  Export agent lead list (CSV) — **Pro**",
+        buf.getvalue(),
+        "motivated_sellers.csv",
+        "text/csv",
+        help="The per-territory motivated-seller list agents subscribe for.",
+    )
+
+    if not motivated:
+        st.info(
+            "No strong motivated-seller signals yet — this is expected on a fresh market. "
+            "The signal is built from **change over time** (price cuts, days-on-market, "
+            "relistings); it fills in as the daily tracker accumulates history. Showing the "
+            "current ranking below."
+        )
+    components.listing_grid(ranked[:60], metric="negotiation_score")
+
+
+def page_saved_searches(listings: list[dict]) -> None:
+    """Saved searches — the recurring investor mandate. Create one, see live matches, and
+    (with an alert sink configured) get only these delivered daily. The €19/mo core loop."""
+    from scout import saved_search as ss
+
+    st.subheader("🔔 Saved searches")
+    st.caption(
+        "Define your mandate once — region, budget, min net yield, min deal grade. The daily "
+        "digest then delivers only what matches, before you'd find it yourself."
+    )
+    eligible = _eligible(listings)
+
+    with st.form("new_saved_search"):
+        name = st.text_input("Name", placeholder="e.g. Centre ≤€200k, ≥4% net")
+        regions = st.multiselect("Regions", list(REGIONS.keys()))
+        c = st.columns(3)
+        max_price = c[0].number_input("Max price (€)", 0, 2_000_000, 250_000, step=10_000)
+        min_ny = c[1].slider("Min net yield (%)", 0.0, 8.0, 3.0, step=0.5) / 100
+        min_grade = c[2].selectbox("Min grade", ["", "A", "B", "C"], index=0)
+        if st.form_submit_button("💾 Save search") and name:
+            ss.create_saved_search(
+                ss.SavedSearch(
+                    id=None,
+                    name=name,
+                    regions=regions,
+                    max_price=int(max_price) or None,
+                    min_net_yield=min_ny or None,
+                    min_grade=min_grade or None,
+                )
+            )
+            st.success(f"Saved '{name}'. It will appear below.")
+            st.rerun()
+
+    searches = ss.list_saved_searches()
+    if not searches:
+        st.info("No saved searches yet — create one above.")
+        return
+    for s in searches:
+        matched = ss.matching_listings(s, eligible)
+        new = [d for d in matched if d.get("is_new")]
+        with st.expander(
+            f"**{s.name}** — {len(matched)} matches · {len(new)} new today", expanded=False
+        ):
+            bits = []
+            if s.regions:
+                bits.append("/".join(s.regions))
+            if s.max_price:
+                bits.append(f"≤{fmt.euro(s.max_price)}")
+            if s.min_net_yield:
+                bits.append(f"≥{s.min_net_yield * 100:.1f}% net")
+            if s.min_grade:
+                bits.append(f"≥grade {s.min_grade}")
+            st.caption(" · ".join(bits) or "no filters")
+            if matched:
+                components.listing_grid(matched[:12])
+            if st.button("🗑 Delete", key=f"del-{s.id}"):
+                ss.delete_saved_search(s.id)
+                st.rerun()
+
+
+def page_compare(listings: list[dict]) -> None:
+    """Shortlist several flats and rank them side-by-side on the numbers that decide it —
+    the "which of these do I chase?" view (inspired by deal-analyzer compare tools)."""
+    from scout import metrics as _m
+
+    st.subheader("⚖️ Compare")
+    st.caption("Pick 2–4 listings to line up their metrics side by side.")
+    elig = _eligible(listings)
+    if not elig:
+        st.info("No listings to compare yet.")
+        return
+    opts = {
+        f"[{d['score']:.0f}] {d.get('neighborhood') or d['source_id']} · {fmt.euro(d['price'])}": d[
+            "id"
+        ]
+        for d in elig
+    }
+    picks = st.multiselect("Listings", list(opts.keys()), max_selections=4)
+    chosen = [next(x for x in elig if x["id"] == opts[p]) for p in picks]
+    if len(chosen) < 2:
+        st.info("Select at least two listings.")
+        return
+
+    def _metrics(d: dict) -> dict:
+        monthly = d.get("listed_rent") or d.get("est_monthly_rent")
+        annual = monthly * 12 if monthly else None
+        im = _m.investor_metrics(
+            d["price"], annual, d.get("area_m2"), is_private_seller=bool(d.get("is_private_seller"))
+        )
+        return {
+            "Score": f"{d['score']:.0f}",
+            "Grade": d.get("deal_grade") or "—",
+            "Price": fmt.euro(d["price"]),
+            "€/m²": fmt.euro_per_m2(d.get("price_per_m2")),
+            "Area": f"{d['area_m2']:.0f} m²" if d.get("area_m2") else "—",
+            "Net yield": fmt.pct(d.get("net_yield")) if d.get("net_yield") is not None else "—",
+            "Cap rate": f"{im['cap_rate']:.1%}" if im["cap_rate"] is not None else "—",
+            "GRM": f"{im['grm']:.0f}×" if im["grm"] is not None else "—",
+            "DSCR": f"{im['dscr']:.2f}" if im["dscr"] is not None else "—",
+            "Days on market": (
+                d.get("days_on_market") if d.get("days_on_market") is not None else "—"
+            ),
+            "To metro": _metro_label(d),
+            "Energy": d.get("energy_class") or "—",
+        }
+
+    table = {}
+    for d in chosen:
+        label = f"{d.get('neighborhood') or d['source_id']}"
+        table[label] = _metrics(d)
+    st.dataframe(pd.DataFrame(table), use_container_width=True)
+    st.caption("Higher score/net yield/cap rate & lower GRM/days-on-market is better.")
+
+
 PAGES = {
     "Opportunities": page_opportunities,
+    "Deals": page_deals,
+    "Saved searches": page_saved_searches,
     "Today": page_today,
     "Map": page_map,
     "Neighborhoods": page_neighborhoods,
     "Listing detail": page_detail,
+    "Compare": page_compare,
     "Watchlist": page_watchlist,
 }
 
@@ -898,10 +1940,28 @@ def main() -> None:
 
     last_up = _last_updated(listings)
     if last_up is not None:
+        sources = sorted({d["source"] for d in listings if d.get("source")})
+        src_label = ", ".join(s.upper() for s in sources) if sources else "—"
         st.caption(
             f"🕒 Data last updated **{last_up:%Y-%m-%d %H:%M} UTC** · "
-            f"{len(listings)} active listings"
+            f"{len(listings)} active listings · source: {src_label}"
         )
+        # Freshness doctor: the whole product's premise is a daily-refreshed feed. If the
+        # pipeline hasn't run in days the "opportunities" are stale — say so loudly rather
+        # than let a buyer act on old prices.
+        stale_days = (datetime.utcnow() - last_up).days
+        if stale_days >= 3:
+            st.warning(
+                f"⚠️ Data is **{stale_days} days old** — the daily pipeline may not be running. "
+                "Prices, new listings and price-drops won't be current until it runs again "
+                "(**Refresh now**, or check the scheduled job)."
+            )
+        if len(sources) <= 1:
+            st.caption(
+                "ℹ️ Coverage is currently a single portal (XE.gr) — a slice of the market, "
+                "not every listing. Additional portals (Spitogatos, Indomio) are supported "
+                "and can be enabled to broaden coverage."
+            )
     else:
         st.caption("🕒 No data yet — press **Refresh now** or wait for the daily run.")
 

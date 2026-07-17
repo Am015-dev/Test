@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     scrape_max_retries: int = 4
     scrape_retry_backoff_s: float = 8.0
     scrape_cache_ttl_minutes: int = 360
+    # How many result PAGES to walk per area (XE returns ~36 per page; `&page=N`
+    # advances). Deeper collection = more inventory; the crawl stops early when a page
+    # returns no new listings, so a small area never wastes requests.
+    scrape_max_pages: int = 20
 
     # Fetch each listing's detail page for the rich investment signals the search cards
     # lack (year built, energy class, bedrooms, full description → rent/rented/private).
@@ -133,20 +137,29 @@ class HardFilters(BaseModel):
 
 
 class Weights(BaseModel):
-    gross_yield: float = 30
-    price_vs_area_median: float = 18
-    newness: float = 16  # build/renovation year — new stock rents better, costs less to hold
-    energy_class: float = 8  # A/B rent higher and are future-proof vs EU efficiency rules
-    price_drop: float = 12
-    is_currently_rented: float = 8
-    is_private_seller: float = 8
+    # Quality-first: a buy-to-let investor wants a good ASSET at a fair price, not the
+    # cheapest flat. Newness + energy (asset quality) together outweigh undervaluation, so
+    # an efficient, well-built property near metro ranks above an old energy-H flat that
+    # merely looks "cheap for its (poor) attributes". On top of these weights, the score
+    # is further scaled down for energy-liability stock (see energy_liability_floor).
+    newness: float = 18  # build/renovation year — new stock rents better, costs less to hold
+    gross_yield: float = 20  # realistic rental income (net yield preferred when known)
+    energy_class: float = 16  # A/B rent higher and are future-proof vs EU efficiency rules
+    undervaluation: float = 15  # priced below hedonic fair value (secondary to quality now)
+    # Walk-to-metro bonus. Replaces the old hard metro cutoff now that coverage spans all
+    # of Athens: proximity to a Line 2/3 station lifts the score instead of gating entry.
+    metro_proximity: float = 14
+    price_drop: float = 6
+    is_currently_rented: float = 6
+    is_private_seller: float = 5
 
     def total(self) -> float:
         return (
-            self.gross_yield
-            + self.price_vs_area_median
+            self.undervaluation
+            + self.gross_yield
             + self.newness
             + self.energy_class
+            + self.metro_proximity
             + self.price_drop
             + self.is_currently_rented
             + self.is_private_seller
@@ -160,11 +173,26 @@ class OpportunityFlag(BaseModel):
 class ScoringReference(BaseModel):
     yield_floor: float = 0.02
     yield_ceiling: float = 0.08
+    # Net-yield band (after Greek acquisition/holding costs + vacancy). Net yields run
+    # ~1.5-2 pts below gross, so they get their own, lower band: a ~1.5% net return scores
+    # ~0 and a ~5.5% net return scores a full 1.0. The yield signal prefers net over gross.
+    net_yield_floor: float = 0.015
+    net_yield_ceiling: float = 0.055
+    # Metro-proximity signal: 0 m scores 1.0, at/beyond this ceiling scores 0 (linear).
+    metro_distance_ceiling_m: int = 1200
     max_price_drop_pct: float = 0.20
     # Newness normalization: a build/renovation year at/below the floor scores 0, at/above
     # the ceiling scores 1 (linear between). Unknown year is treated as neutral-low.
     build_year_floor: int = 1980
     build_year_ceiling: int = 2015
+    # Undervaluation normalization: a listing priced this fraction below its hedonic
+    # fair value scores a full 1.0 on the undervaluation signal (linear from 0). 0.20 =
+    # "20% under fair value is a top-tier bargain".
+    target_undervaluation: float = 0.20
+    # Energy-liability demotion: the multiplier applied to the WORST energy class (G/Η).
+    # The best class keeps 1.0; classes scale linearly between. 0.55 means a bottom-class
+    # energy-H flat loses ~45% of its score — reflecting the EU-EPBD renovation liability.
+    energy_liability_floor: float = 0.55
 
 
 class Strategy(BaseModel):

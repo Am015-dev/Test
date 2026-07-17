@@ -167,3 +167,40 @@ def leverage_summary(
         "annual_cashflow_after_debt": annual_cashflow_after_debt,
         "cash_on_cash": cash_on_cash,
     }
+
+
+# Standard leverage assumptions for the one-line UI summary (a buyer tweaks them per deal).
+_DEFAULT_DEPOSIT_PCT = 0.25
+_DEFAULT_RATE = 0.045
+_DEFAULT_TERM_YEARS = 25
+
+
+def leverage_oneliner(
+    price: int,
+    annual_rent: float | None,
+    area_m2: float | None,
+    is_private_seller: bool,
+    a: CostAssumptions = _DEFAULT,
+) -> str | None:
+    """A single actionable leverage line, e.g. "At 25% down (4.5%, 25y): ~6.1% cash-on-cash,
+    €180/mo cashflow." Returns None when it can't be computed (no rent / bad inputs)."""
+    s = leverage_summary(
+        price,
+        annual_rent,
+        area_m2,
+        is_private_seller,
+        deposit_pct=_DEFAULT_DEPOSIT_PCT,
+        annual_rate=_DEFAULT_RATE,
+        years=_DEFAULT_TERM_YEARS,
+        a=a,
+    )
+    if not s or s.get("cash_on_cash") is None:
+        return None
+    coc = s["cash_on_cash"] * 100
+    monthly_cf = s["annual_cashflow_after_debt"] / 12
+    sign = "+" if monthly_cf >= 0 else "−"
+    return (
+        f"At {int(_DEFAULT_DEPOSIT_PCT * 100)}% down "
+        f"({_DEFAULT_RATE * 100:.1f}%, {_DEFAULT_TERM_YEARS}y): "
+        f"~{coc:.1f}% cash-on-cash, {sign}€{abs(monthly_cf):,.0f}/mo"
+    )

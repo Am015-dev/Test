@@ -13,10 +13,12 @@ from datetime import datetime
 
 from sqlalchemy import select, update
 
+from . import negotiation
 from .collectors import default_collectors
 from .collectors.base import Collector
 from .config import Strategy, load_strategy
 from .db import (
+    get_engine,
     init_db,
     mark_unseen_as_gone,
     session_scope,
@@ -24,11 +26,14 @@ from .db import (
 )
 from .dedup import deduplicate
 from .enrich import enrich_listing
+from .enrich import gross_yield as _gross_yield
+from .finance import net_yield as _net_yield_after_costs
 from .models import Listing, ListingRow, PriceHistoryRow
 from .normalize import normalize
-from .rent_comps import compute_rent_comps
+from .rent_comps import OVERALL_KEY, compute_rent_comps, load_rent_comps
 from .rent_comps import rent_for as rent_comps_for
 from .scoring import compute_market_stats, score
+from .valuation import fit_and_apply_by_area
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +115,9 @@ def run(
     for raw in raws:
         lst = normalize(raw, now=now)
         if lst is not None:
+            # Tag the area NOW (not only at store time) so enrichment's municipality-
+            # centroid location fallback can use it for card-only listings.
+            lst.search_area = effective_area
             listings.append(lst)
     # Portals that produced *usable* listings this run. Only these are eligible for
     # retirement below, so a portal that returned nothing — or only junk that failed
@@ -121,6 +129,14 @@ def run(
     rent_comps: dict[str, float] = {}
     if use_network:
         rent_comps = _fetch_rent_comps(collectors)
+        # Persist them so a later rescore (which never scrapes) applies real rent too.
+        if rent_comps:
+            from .rent_comps import save_rent_comps
+
+            try:
+                save_rent_comps(effective_area, rent_comps)
+            except Exception as exc:  # persistence must never break a run
+                logger.warning("rent comps: persist failed for %s: %s", effective_area, exc)
 
     # 2. Enrich (network steps degrade gracefully). Fail-soft per listing.
     enriched: list[Listing] = []
@@ -129,12 +145,17 @@ def run(
         prelim_stats = compute_market_stats(listings)
         for lst in listings:
             try:
-                # Prefer the real rental-market median for this neighbourhood/area.
+                # Prefer the real rental-market median for this neighbourhood/area. Track
+                # whether the rent is a genuine local comp (so yield counts as a real
+                # signal) or the flat baseline (an estimate that must not be scored).
                 median_rent = rent_comps_for(rent_comps, lst.neighborhood)
+                rent_is_comp = median_rent is not None
                 if not median_rent:
                     n_stats = prelim_stats.by_neighborhood.get(lst.neighborhood or "")
                     median_rent = n_stats.median_rent_per_m2 if n_stats else None
-                # Fall back to the configured baseline so yield is always computable.
+                    rent_is_comp = median_rent is not None
+                # Fall back to the configured baseline so yield is always computable
+                # (marked as an estimate via rent_is_comp=False).
                 if not median_rent:
                     median_rent = strategy.search.est_rent_eur_per_m2
                 # SAVEPOINT per listing: enrich_listing writes the geocode cache via
@@ -147,6 +168,7 @@ def run(
                         median_rent_per_m2=median_rent,
                         session=session,
                         use_network=use_network,
+                        rent_is_comp=rent_is_comp,
                     )
                 enriched.append(result)
             except Exception as exc:
@@ -156,6 +178,22 @@ def run(
     # 3. Dedup (keep cheapest canonical per physical property).
     groups = deduplicate(enriched)
     canonical = [g.canonical for g in groups]
+
+    # 3b. Hedonic valuation: fit a fair-price model PER AREA and annotate each listing
+    # with predicted_price + value_gap_pct. This is what lets scoring tell a genuine
+    # bargain (priced below what its own attributes justify) from a flat that is merely
+    # cheap because it's old/small/low. Per-area fits are far more accurate than one
+    # pooled model (R²≈0.7-0.8 vs ≈0.3). Fails soft: too few comps → the undervaluation
+    # signal falls back to the naive €/m²-vs-median.
+    val_models = fit_and_apply_by_area(canonical)
+    for area, m in val_models.items():
+        logger.info(
+            "valuation model [%s]: %d comps, R²=%.2f, ±%.0f%% band",
+            area or "(default)",
+            m.n_samples,
+            m.r2,
+            (2.718281828**m.residual_std - 1) * 100,
+        )
 
     # 4. Store with history + 5. recompute market stats + 6. rescore active listings.
     market_stats = compute_market_stats(canonical)
@@ -195,6 +233,26 @@ def run(
                     row.is_opportunity = scored.is_opportunity
                     row.excluded = scored.excluded
                     row.exclusion_reason = scored.exclusion_reason
+                    row.predicted_price = lst.predicted_price
+                    row.value_gap_pct = lst.value_gap_pct
+                    hist = [
+                        (p.observed_at, p.price)
+                        for p in session.scalars(
+                            select(PriceHistoryRow)
+                            .where(PriceHistoryRow.listing_id == row.id)
+                            .order_by(PriceHistoryRow.observed_at)
+                        ).all()
+                    ]
+                    row.negotiation_score = negotiation.analyze(
+                        price_history=hist,
+                        first_seen=row.first_seen,
+                        now=now,
+                        current_price=row.price,
+                        ppm2=lst.price_per_m2,
+                        area_median_ppm2=market_stats.price_per_m2_median_for(lst.neighborhood),
+                        is_private_seller=bool(lst.is_private_seller),
+                        listed_date=lst.listed_date,
+                    ).score
                 stored += 1
             except Exception as exc:
                 logger.warning("store/score failed for %s: %s", lst.dedup_key, exc)
@@ -254,23 +312,91 @@ def _first_price(session, listing_id: int) -> int | None:
     )
 
 
-def rescore_all(strategy: Strategy | None = None) -> int:
-    """Re-score every active listing from the current DB (used by the UI Strategy editor)."""
+def rescore_all(strategy: Strategy | None = None, chunk: int = 2000) -> int:
+    """Re-score every active listing from the current DB (used by the UI Strategy editor).
+
+    Writes are committed in chunks (``expire_on_commit=False`` so row values survive each
+    commit) rather than as one giant transaction — at ~9k listings a single commit held a
+    long write lock and blocked the UI; chunking bounds both.
+    """
+    from sqlalchemy.orm import Session
+
     strategy = strategy or load_strategy()
-    with session_scope() as session:
+    with Session(get_engine(), expire_on_commit=False) as session:
         # Active rows only: gone listings must not skew the medians the UI scores
         # against (the pipeline computes stats over active/canonical listings).
         rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
         listings = [_row_to_listing(r) for r in rows]
+        # Refit the hedonic model PER AREA over the current active set so the
+        # undervaluation signal (and the Fair value / Value gap the UI shows) reflect the
+        # live market with per-submarket accuracy.
+        fit_and_apply_by_area(listings)
         market_stats = compute_market_stats(listings)
-        for row, lst in zip(rows, listings, strict=True):
-            first_price = _first_price(session, row.id)
+        # Persisted real rental comps → a real rent for the yield signal without re-scraping.
+        rent_store = load_rent_comps()
+        histories = _all_price_histories(session, [r.id for r in rows])
+        now = datetime.utcnow()
+        for i, (row, lst) in enumerate(zip(rows, listings, strict=True), 1):
+            hist = histories.get(row.id, [])
+            first_price = hist[0][1] if hist else None
+            # Apply a REAL local rent comp when we have one (neighbourhood, else area-wide):
+            # the yield stops being an imputed inverse of €/m² and becomes a real signal.
+            area_comps = rent_store.get(lst.search_area or "")
+            if area_comps and lst.area_m2 and not lst.listed_rent:
+                ppm = area_comps.get(lst.neighborhood) or area_comps.get(OVERALL_KEY)
+                if ppm:
+                    lst.est_monthly_rent = int(round(ppm * lst.area_m2))
+                    lst.rent_estimated = False
+                    row.est_monthly_rent = lst.est_monthly_rent
+                    row.rent_estimated = False
+                    row.gross_yield = lst.gross_yield = _gross_yield(
+                        lst.est_monthly_rent, lst.price
+                    )
+            # Recompute net yield from the (now possibly real) rent so the after-cost figure
+            # is honest without a re-scrape.
+            annual_rent = lst.est_monthly_rent * 12 if lst.est_monthly_rent else None
+            lst.net_yield = _net_yield_after_costs(
+                lst.price, annual_rent, lst.area_m2, bool(lst.is_private_seller)
+            )
+            row.net_yield = lst.net_yield
             scored = score(lst, market_stats, strategy, first_price=first_price)
             row.score = scored.score
             row.is_opportunity = scored.is_opportunity
             row.excluded = scored.excluded
             row.exclusion_reason = scored.exclusion_reason
+            row.predicted_price = lst.predicted_price
+            row.value_gap_pct = lst.value_gap_pct
+            # Negotiation / motivated-seller intelligence (the sellable signal).
+            neg = negotiation.analyze(
+                price_history=hist,
+                first_seen=row.first_seen,
+                now=now,
+                current_price=row.price,
+                ppm2=lst.price_per_m2,
+                area_median_ppm2=market_stats.price_per_m2_median_for(lst.neighborhood),
+                is_private_seller=bool(row.is_private_seller),
+                listed_date=row.listed_date,
+            )
+            row.negotiation_score = neg.score
+            if i % chunk == 0:
+                session.commit()  # bound the write-lock duration at scale
+        session.commit()
         return len(rows)
+
+
+def _all_price_histories(session, ids: list[int]) -> dict[int, list[tuple]]:
+    """Bulk-load {listing_id: [(observed_at, price), ...]} ascending, for negotiation."""
+    out: dict[int, list[tuple]] = {}
+    if not ids:
+        return out
+    rows = session.scalars(
+        select(PriceHistoryRow)
+        .where(PriceHistoryRow.listing_id.in_(ids))
+        .order_by(PriceHistoryRow.listing_id, PriceHistoryRow.observed_at)
+    ).all()
+    for ph in rows:
+        out.setdefault(ph.listing_id, []).append((ph.observed_at, ph.price))
+    return out
 
 
 def _row_to_listing(row: ListingRow) -> Listing:

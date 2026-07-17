@@ -14,20 +14,55 @@ from datetime import datetime
 import requests
 
 from .config import Settings, get_settings
+from .finance import net_yield as _net_yield_after_costs
 from .models import Listing
 
-# Metro **Line 3** (blue) stations along the north-east corridor that serves the target
-# suburbs. Deliberately Line 3 only — the strategy counts the modern metro (Lines 2/3),
-# NOT the Line 1 / ISAP electric railway (Kifisia, Marousi, Nea Ionia), so listings out
-# there correctly fall outside the max-metro-distance filter.
+# Metro **Line 2 (red)** and **Line 3 (blue)** stations — the modern metro the strategy
+# counts. The Line 1 / ISAP electric railway (Kifisia, Marousi, Nea Ionia) is deliberately
+# excluded, so listings out there correctly fall outside the max-metro-distance filter.
+# Coordinates are OSM station nodes (~11 m precision), cross-checked against Wikipedia.
 METRO_STATIONS: dict[str, tuple[float, float]] = {
-    "Katehaki": (37.9869, 23.7776),
-    "Ethniki Amyna": (37.9946, 23.7856),
-    "Holargos": (37.9998, 23.7963),
-    "Nomismatokopio": (38.0058, 23.8090),
-    "Agia Paraskevi": (38.0166, 23.8229),
-    "Chalandri": (38.0216, 23.8186),
-    "Doukissis Plakentias": (38.0331, 23.8330),
+    # Line 3 (blue) — north-east corridor
+    "Evangelismos": (37.9761, 23.7471),
+    "Megaro Moussikis": (37.9790, 23.7530),
+    "Ambelokipi": (37.9872, 23.7577),
+    "Panormou": (37.9932, 23.7636),
+    "Katehaki": (37.9931, 23.7764),
+    "Ethniki Amyna": (37.9992, 23.7845),
+    "Holargos": (38.0049, 23.7947),
+    "Nomismatokopio": (38.0091, 23.8058),
+    "Agia Paraskevi": (38.0171, 23.8125),
+    "Chalandri": (38.0217, 23.8208),
+    "Doukissis Plakentias": (38.0240, 23.8326),
+    # Line 2 (red) — southern corridor
+    "Syntagma": (37.9755, 23.7357),
+    "Akropoli": (37.9689, 23.7295),
+    "Syngrou-Fix": (37.9646, 23.7268),
+    "Neos Kosmos": (37.9577, 23.7284),
+    "Agios Ioannis": (37.9564, 23.7347),
+    "Dafni": (37.9496, 23.7372),
+    "Agios Dimitrios": (37.9404, 23.7407),
+    "Ilioupoli": (37.9297, 23.7445),
+    "Alimos": (37.9181, 23.7442),
+    "Argyroupoli": (37.9030, 23.7455),
+    "Elliniko": (37.8926, 23.7471),
+    # Line 2 (red) — north-west leg (Peristeri)
+    "Larissa Station": (37.9923, 23.7207),
+    "Attiki": (37.9995, 23.7228),
+    "Sepolia": (38.0026, 23.7140),
+    "Agios Antonios": (38.0061, 23.6997),
+    "Peristeri": (38.0129, 23.6958),
+    "Anthoupoli": (38.0171, 23.6909),
+    # Line 3 (blue) — west leg to Piraeus (Aigaleo / Nikaia / Korydallos / Piraeus)
+    "Kerameikos": (37.9787, 23.7110),
+    "Eleonas": (37.9878, 23.6934),
+    "Aigaleo": (37.9914, 23.6818),
+    "Agia Marina": (37.9969, 23.6671),
+    "Nikaia": (37.9658, 23.6473),
+    "Korydallos": (37.9771, 23.6504),
+    "Maniatika": (37.9596, 23.6398),
+    "Piraeus": (37.9481, 23.6423),
+    "Dimotiko Theatro": (37.9429, 23.6476),
 }
 
 EARTH_RADIUS_M = 6_371_000
@@ -52,6 +87,88 @@ _NEIGHBORHOOD_CENTROIDS: tuple[tuple[str, tuple[float, float]], ...] = (
     ("χολαργ", (38.0003, 23.7950)),  # bare Cholargos town centre (catch-all)
     ("cholargos", (38.0003, 23.7950)),
 )
+
+
+# Approximate municipality centroids (WGS84) for every scraped area, keyed by the exact
+# ``search_area`` string. Used as a free, offline location fallback so a CARD-ONLY listing
+# (collected without a detail-page fetch) still gets a map point and a metro-distance
+# estimate — the difference between "thousands of listings, all locatable" and "thousands
+# with no location". Coarse by design (a municipality centre, ~1-2 km), refined to the real
+# point whenever the detail page is later fetched.
+# These are municipality/town CENTRES (main square or town hall), deliberately NOT the
+# metro station — an area centroid placed on the station would make every card-only
+# listing there read "0 m to metro" (provably false) and pile every map dot onto the
+# station. Each point sits 0.4–1.5 km from its station, an honest area-level anchor.
+MUNICIPALITY_CENTROIDS: dict[str, tuple[float, float]] = {
+    # Κέντρο Αθήνας
+    "Koukaki": (37.9635, 23.7278),
+    "Pagkrati": (37.9685, 23.7530),
+    "Ampelokipoi": (37.9880, 23.7640),
+    "Exarcheia": (37.9862, 23.7330),
+    "Kolonaki": (37.9795, 23.7440),
+    "Neos Kosmos": (37.9555, 23.7250),
+    "Metaxourgeio": (37.9865, 23.7205),
+    "Gkyzi": (37.9930, 23.7420),
+    "Kypseli": (37.9930, 23.7360),
+    "Zografou": (37.9790, 23.7700),
+    "Vyronas": (37.9610, 23.7560),
+    "Kaisariani": (37.9660, 23.7660),
+    "Galatsi": (38.0180, 23.7480),
+    # Βόρεια Προάστια
+    "Cholargos": (38.0003, 23.7950),
+    "Papagou": (37.9950, 23.7960),
+    "Agia Paraskevi": (38.0085, 23.8195),
+    "Chalandri": (38.0235, 23.7990),
+    "Vrilissia": (38.0330, 23.8320),
+    "Marousi": (38.0500, 23.8070),
+    "Nea Ionia": (38.0356, 23.7500),
+    "Nea Filadelfeia": (38.0345, 23.7390),
+    "Irakleio": (38.0470, 23.7660),
+    "Metamorfosi": (38.0640, 23.7620),
+    "Pefki": (38.0625, 23.7944),
+    "Melissia": (38.0525, 23.8375),
+    "Psychiko": (38.0100, 23.7750),
+    "Filothei": (38.0185, 23.7815),
+    # Νότια Προάστια
+    "Nea Smyrni": (37.9450, 23.7140),
+    "Agios Dimitrios": (37.9330, 23.7330),
+    "Dafni": (37.9475, 23.7345),
+    "Ilioupoli": (37.9300, 23.7540),
+    "Alimos": (37.9095, 23.7300),
+    "Argyroupoli": (37.9020, 23.7530),
+    "Elliniko": (37.8870, 23.7420),
+    "Kallithea": (37.9560, 23.7010),
+    "Moschato": (37.9540, 23.6810),
+    "Glyfada": (37.8650, 23.7540),
+    "Palaio Faliro": (37.9280, 23.6990),
+    "Voula": (37.8480, 23.7700),
+    "Vouliagmeni": (37.8130, 23.7830),
+    # Δυτικά Προάστια
+    "Aigaleo": (37.9955, 23.6810),
+    "Peristeri": (38.0150, 23.6910),
+    "Haidari": (38.0180, 23.6520),
+    "Ilion": (38.0330, 23.7000),
+    "Petroupoli": (38.0420, 23.6870),
+    "Agioi Anargyroi": (38.0300, 23.7220),
+    "Kamatero": (38.0560, 23.7030),
+    # Πειραιάς
+    "Piraeus": (37.9435, 23.6500),
+    "Nikaia": (37.9680, 23.6420),
+    "Korydallos": (37.9800, 23.6500),
+    "Agios Ioannis Rentis": (37.9640, 23.6690),
+    "Tavros": (37.9640, 23.6960),
+    "Keratsini": (37.9640, 23.6200),
+    "Perama": (37.9680, 23.5720),
+    "Drapetsona": (37.9560, 23.6260),
+}
+
+
+def municipality_centroid(search_area: str | None) -> tuple[float | None, float | None]:
+    """Approximate (lat, lng) for a scraped municipality, or (None, None) if unknown."""
+    if not search_area:
+        return None, None
+    coords = MUNICIPALITY_CENTROIDS.get(search_area)
+    return coords if coords else (None, None)
 
 
 def neighborhood_centroid(neighborhood: str | None) -> tuple[float | None, float | None]:
@@ -160,7 +277,10 @@ def nearest_metro(
     dist: float | None = None
     if use_osrm:
         dist = _osrm_walking_distance_m(lat, lng, best_coords[0], best_coords[1], settings)
-    if dist is None:
+    # A non-positive OSRM distance is a degenerate response (both points snapped to the
+    # same node, or a malformed route), NOT a flat literally at the station entrance —
+    # fall back to the straight-line estimate so we never surface an implausible "0 m".
+    if dist is None or dist <= 0:
         dist = best_hav * WALK_DETOUR_FACTOR
     return MetroResult(best_name, int(round(dist)))
 
@@ -228,22 +348,36 @@ def enrich_listing(
     session=None,
     settings: Settings | None = None,
     use_network: bool = True,
+    rent_is_comp: bool = False,
 ) -> Listing:
     """Populate computed fields on a listing in place and return it.
 
     Pure computations (EUR/m2, rent, yield) always run. Network steps (geocode,
     OSRM) run only when ``use_network`` and degrade gracefully.
+
+    ``rent_is_comp`` tells us whether ``median_rent_per_m2`` is a REAL local rent comp
+    (a scraped/neighbourhood median) or the flat fallback baseline. It's recorded on
+    ``rent_estimated`` so scoring won't treat a baseline-derived yield as a real signal.
     """
     settings = settings or get_settings()
 
-    if (listing.lat is None or listing.lng is None) and listing.address and use_network:
+    # Track how precisely we located the listing. A real point (its own coordinates, or a
+    # geocoded street address) is "exact"; a centroid fallback is "approx" — the same point
+    # for a whole area, which must not masquerade as a precise per-listing metro distance.
+    had_own_point = listing.lat is not None and listing.lng is not None
+    if not had_own_point and listing.address and use_network:
         listing.lat, listing.lng = geocode(listing.address, session=session, settings=settings)
+    geocoded = not had_own_point and listing.lat is not None and listing.lng is not None
 
     # Free, offline fallback when per-listing geocoding didn't resolve (e.g. Nominatim
-    # 403s cloud IPs): place the listing at its neighborhood centroid so the map and
-    # metro distance still work instead of showing "unknown" for every listing.
+    # 403s cloud IPs, or a card-only listing with no detail-page coordinates): place the
+    # listing at its neighborhood centroid, then at its municipality centroid, so the map
+    # still shows an area — but flagged "approx" so metro distance isn't scored as precise.
     if listing.lat is None or listing.lng is None:
         listing.lat, listing.lng = neighborhood_centroid(listing.neighborhood)
+    if listing.lat is None or listing.lng is None:
+        listing.lat, listing.lng = municipality_centroid(listing.search_area)
+    listing.location_precision = "exact" if (had_own_point or geocoded) else "approx"
 
     metro = nearest_metro(listing.lat, listing.lng, settings=settings, use_osrm=use_network)
     listing.nearest_metro = metro.nearest_metro
@@ -251,5 +385,14 @@ def enrich_listing(
 
     listing.price_per_m2 = price_per_m2(listing.price, listing.area_m2)
     listing.est_monthly_rent = estimate_monthly_rent(listing, median_rent_per_m2)
+    # Rent is a real datapoint only if the listing stated its own rent, or the median we
+    # applied was a genuine local comp; otherwise it's the flat baseline (an estimate).
+    listing.rent_estimated = not (listing.listed_rent or rent_is_comp)
     listing.gross_yield = gross_yield(listing.est_monthly_rent, listing.price)
+    # Net yield after Greek acquisition + holding costs and vacancy (finance.py) — the
+    # honest return an investor keeps. Fails soft to None (blank field) on missing rent.
+    annual_rent = listing.est_monthly_rent * 12 if listing.est_monthly_rent else None
+    listing.net_yield = _net_yield_after_costs(
+        listing.price, annual_rent, listing.area_m2, bool(listing.is_private_seller)
+    )
     return listing

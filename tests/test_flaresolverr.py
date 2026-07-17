@@ -91,11 +91,21 @@ def test_collect_via_flaresolverr_parses_cards(monkeypatch):
 
 
 def test_default_collectors_adds_waf_portals_only_when_configured(monkeypatch):
+    # XE and Green-Acres are always-on (both static-HTML, browser-free).
     monkeypatch.setattr(collectors_pkg, "get_settings", lambda: Settings(flaresolverr_url=""))
-    assert [type(c).__name__ for c in default_collectors(Strategy())] == ["XeCollector"]
+    assert [type(c).__name__ for c in default_collectors(Strategy())] == [
+        "XeCollector",
+        "GreenAcresCollector",
+    ]
 
+    # The PerimeterX/Cloudflare portals are added only when FlareSolverr is configured.
     monkeypatch.setattr(
         collectors_pkg, "get_settings", lambda: Settings(flaresolverr_url="http://flare:8191/v1")
     )
     names = [type(c).__name__ for c in default_collectors(Strategy())]
-    assert names == ["XeCollector", "SpitogatosCollector", "IndomioCollector"]
+    assert names == [
+        "XeCollector",
+        "GreenAcresCollector",
+        "SpitogatosCollector",
+        "IndomioCollector",
+    ]

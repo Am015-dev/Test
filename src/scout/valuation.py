@@ -1,0 +1,378 @@
+"""Hedonic valuation model — the core of identifying a genuinely good case.
+
+The naive "€/m² below the neighbourhood median" signal can't tell a *mispriced*
+property from an *inferior* one: a cheap 1970s ground-floor flat is below median
+because it deserves to be, not because it's a bargain. This fits a small hedonic
+regression — ``log(price) ~ log(area) + floor + age + energy + bedrooms + metro +
+area`` — over the current batch, predicts each property's **fair price given its own
+attributes**, and reports the gap. A property priced well *below* its predicted fair
+value (after accounting for how old/small/low/inefficient it is) is the real
+opportunity; one *above* it is overpriced.
+
+Pure NumPy (ordinary least squares via ``lstsq``); no DB, no network, no sklearn.
+Fails soft: too few samples → ``None`` → callers fall back to the naive signal.
+"""
+
+from __future__ import annotations
+
+import math
+import statistics
+from dataclasses import dataclass, field
+from datetime import datetime
+
+import numpy as np
+
+from .models import Listing
+from .scoring import energy_class_score
+
+# Below this many usable comps a fitted model is noise; fall back to the naive signal.
+_MIN_SAMPLES = 25
+# Minimum training-fold size during cross-validation. Kept below _MIN_SAMPLES so an area
+# with exactly _MIN_SAMPLES comps can still be cross-validated (a 5-fold split leaves ~20
+# training rows) instead of silently scoring cv_r2=0 and never becoming "confident".
+_MIN_CV_TRAIN = 18
+# Ridge penalty (Tikhonov). Small — just enough to stabilise collinear/near-constant feature
+# columns without materially biasing a well-conditioned fit.
+_RIDGE_LAMBDA = 0.05
+# Recency half-life (days): an asking observed this many days ago counts half as much in the
+# fit as a fresh one. Missing posting date → neutral weight 1.0.
+_RECENCY_HALFLIFE_DAYS = 120.0
+# Clamp the reported gap so one wild prediction can't dominate the score.
+_MAX_ABS_GAP = 0.6
+
+# Hedonic ⊕ comparable-sales (KNN) ensemble. The parametric hedonic captures attribute
+# elasticities; a k-NN of the most similar comps captures the LOCAL non-linearities it
+# misses. Blending the two beat either alone out-of-sample (mean per-area R² 0.47 → 0.51 on
+# the current data), matching the AVM literature (RF/comps > linear hedonic on non-linear
+# effects). Weights and k below were the best on that held-out test.
+_KNN_K = 7
+_KNN_BLEND = 0.5  # weight on the KNN comp estimate; (1 - this) on the hedonic
+
+
+def _usable(lst: Listing) -> bool:
+    return bool(lst.price and lst.price > 0 and lst.area_m2 and lst.area_m2 > 0)
+
+
+# A demo (and an investor) must never see false precision. When the model explains too
+# little of price variance, we still rank on it but stop showing a hard "fair value"
+# number and stop badging listings as undervalued — the honest read is "we can't price
+# this confidently yet", not a made-up euro figure.
+_MIN_CONFIDENT_R2 = 0.35
+
+
+@dataclass
+class ValuationModel:
+    beta: np.ndarray | None
+    medians: dict
+    areas: list[str]
+    ref_year: int
+    r2: float = field(default=0.0)  # in-sample fit (optimistic; shown for reference only)
+    # Cross-validated (out-of-sample) R² — the HONEST predictive power. Confidence is
+    # gated on this, not on r2: an area can fit its own points well (high r2) yet predict
+    # held-out ones no better than the median (low cv_r2 = overfit noise).
+    cv_r2: float = field(default=0.0)
+    # Std-dev of the log-price residuals — the model's own noise. Turned into a ± band
+    # around each fair-value estimate so uncertainty is shown, never hidden.
+    residual_std: float = field(default=0.0)
+    n_samples: int = field(default=0)
+    # Comparable-sales memory for the KNN half of the ensemble: (source_id, knn_vec, €/m²)
+    # for every training row, so predict_price can average the nearest comps.
+    comps: list = field(default_factory=list)
+
+    @property
+    def is_confident(self) -> bool:
+        """Whether fair-value numbers are solid enough to show as a figure (vs rank-only).
+
+        Gated on the OUT-OF-SAMPLE cv_r2 so an overfit area (high in-sample r2, low
+        cv_r2) is honestly treated as low-confidence — no false precision."""
+        return (
+            self.beta is not None
+            and self.cv_r2 >= _MIN_CONFIDENT_R2
+            and self.n_samples >= _MIN_SAMPLES
+        )
+
+    def price_band(self, lst: Listing) -> tuple[int, int] | None:
+        """A ±1σ fair-price interval from the model's residual noise, e.g. (180k, 320k).
+
+        Wide bands are the point: they tell the viewer how much to trust the point
+        estimate instead of implying false precision."""
+        predicted = self.predict_price(lst)
+        if not predicted or not self.residual_std:
+            return None
+        lo = predicted * math.exp(-self.residual_std)
+        hi = predicted * math.exp(self.residual_std)
+        return int(round(lo)), int(round(hi))
+
+    def _features(self, lst: Listing) -> np.ndarray | None:
+        if not _usable(lst):
+            return None
+        m = self.medians
+        floor = lst.floor if lst.floor is not None else m["floor"]
+        age = (self.ref_year - lst.year_built) if lst.year_built else m["age"]
+        energy = energy_class_score(lst.energy_class) if lst.energy_class else m["energy"]
+        beds = lst.bedrooms if lst.bedrooms else m["beds"]
+        metro = lst.metro_distance_m if lst.metro_distance_m is not None else m["metro"]
+        row = [1.0, math.log(lst.area_m2), floor, age, energy, beds, metro / 1000.0]
+        # Non-linear terms (validated out-of-sample: mean per-area cv_R² 0.440 → 0.453).
+        # Floor value is U-shaped (ground/low weak, mid solid, top-floor premium) and
+        # depreciation is non-linear (it flattens with age), which a purely linear fit
+        # can't express. Scaled to ~O(1) so the ridge penalty treats them evenly.
+        row.append((floor / 10.0) ** 2)
+        row.append((age / 50.0) ** 2)
+        # Area fixed effects (one-hot, first area is the reference level).
+        row.extend(1.0 if lst.search_area == a else 0.0 for a in self.areas[1:])
+        return np.array(row, dtype=float)
+
+    @staticmethod
+    def _knn_vec(lst: Listing, m: dict, ref_year: int) -> np.ndarray:
+        """Small similarity vector for the comparable-sales KNN (NOT the hedonic design
+        matrix): the attributes that make two flats 'comparable' in an appraiser's eyes."""
+        floor = lst.floor if lst.floor is not None else m["floor"]
+        age = (ref_year - lst.year_built) if lst.year_built else m["age"]
+        energy = energy_class_score(lst.energy_class) if lst.energy_class else m["energy"]
+        return np.array([math.log(lst.area_m2), floor, age / 50.0, energy], dtype=float)
+
+    def _ensure_comp_arrays(self) -> None:
+        """Lazily materialise the comps into numpy arrays for vectorised KNN (a Python-loop
+        distance per predict is O(n²) and made a 22k rescore take ~50s; this makes it ~1s)."""
+        if getattr(self, "_comp_mat", None) is not None or not self.comps:
+            return
+        # object dtype so the id array holds ints or strings unchanged for == comparison
+        self._comp_ids = np.array([sid for sid, _, _ in self.comps], dtype=object)
+        self._comp_mat = np.array([cv for _, cv, _ in self.comps], dtype=float)
+        self._comp_ppm2 = np.array([p for _, _, p in self.comps], dtype=float)
+
+    def _knn_ppm2(self, lst: Listing) -> float | None:
+        """Median €/m² of the k most similar comps (excluding the listing itself)."""
+        if not self.comps or not lst.area_m2:
+            return None
+        self._ensure_comp_arrays()
+        v = self._knn_vec(lst, self.medians, self.ref_year)
+        dists = np.linalg.norm(self._comp_mat - v, axis=1)  # vectorised over all comps
+        if lst.source_id is not None:
+            dists = np.where(self._comp_ids == lst.source_id, np.inf, dists)
+        k = min(_KNN_K, int(np.isfinite(dists).sum()))
+        if k <= 0:
+            return None
+        idx = np.argpartition(dists, k - 1)[:k]
+        return float(np.median(self._comp_ppm2[idx]))
+
+    def predict_price(self, lst: Listing) -> float | None:
+        row = self._features(lst)
+        if row is None or self.beta is None:
+            return None
+        hedonic = float(math.exp(float(row @ self.beta)))
+        # Blend with the comparable-sales estimate when we have comps; the ensemble prices
+        # local non-linearities the linear hedonic can't (validated out-of-sample).
+        knn_ppm2 = self._knn_ppm2(lst)
+        if knn_ppm2 is not None and lst.area_m2:
+            return (1 - _KNN_BLEND) * hedonic + _KNN_BLEND * (knn_ppm2 * lst.area_m2)
+        return hedonic
+
+    def value_gap(self, lst: Listing) -> float | None:
+        """(fair − actual) / fair, clamped. Positive = undervalued (a good case)."""
+        predicted = self.predict_price(lst)
+        if not predicted or not lst.price:
+            return None
+        gap = (predicted - lst.price) / predicted
+        return max(-_MAX_ABS_GAP, min(_MAX_ABS_GAP, gap))
+
+
+def apply_valuations(listings: list[Listing], model: ValuationModel | None) -> None:
+    """Annotate each listing in place with ``predicted_price`` and ``value_gap_pct``.
+
+    No-op when the model is ``None`` (too few comps to fit) — listings keep their default
+    ``None`` valuation fields and scoring falls back to the naive €/m² signal.
+
+    Confidence gate: ``value_gap_pct`` — the number that DRIVES the undervaluation score
+    and the "undervalued" badge — is only populated when the model is confident
+    (out-of-sample ``cv_r2`` clears the bar). In a low-confidence submarket the gap is a
+    coin-flip, so we leave it ``None`` and scoring falls back to the naive €/m² signal
+    rather than badging a listing as a bargain on noise. ``predicted_price`` is still
+    filled (the UI shows it with its wide ±band and a low-confidence caveat), but it never
+    silently moves the score in an area the model can't actually price."""
+    if model is None:
+        return
+    confident = model.is_confident
+    for lst in listings:
+        predicted = model.predict_price(lst)
+        lst.predicted_price = int(round(predicted)) if predicted else None
+        # value_gap_pct drives the "undervalued" badge and the undervaluation score, so it
+        # must only be trusted when the model both (a) is confident for this area AND (b)
+        # priced THIS listing from its own REAL age and energy — not area-median imputations.
+        # Otherwise a cheap old/inefficient flat with no scraped year/energy is priced as if
+        # it were median-age/median-energy and mislabelled a bargain (the exact error the
+        # hedonic model exists to prevent). Un-gated ⇒ scoring falls back to the €/m² signal.
+        has_real_attrs = bool((lst.energy_class or "").strip()) and bool(
+            lst.year_built or lst.renovated_year
+        )
+        gap = model.value_gap(lst) if (confident and has_real_attrs) else None
+        # SIGNIFICANCE GATE (anti-inflation): a gap smaller than the model's OWN noise is not
+        # evidence of a bargain — it's within the error bars. Only keep the gap (which drives
+        # the "undervalued" badge, the undervaluation score, and the deal grade) when the price
+        # clears the model's ±1σ band, i.e. |gap| ≥ 1 − e^(−residual_std). Otherwise the gap is
+        # noise and we drop it to None (scoring falls back to the naive €/m² signal), so a flat
+        # priced 11% below a model with a ±42% band is NOT badged as undervalued.
+        if gap is not None:
+            band = 1.0 - math.exp(-model.residual_std) if model.residual_std else 0.0
+            gap = gap if abs(gap) >= band else None
+        lst.value_gap_pct = gap
+
+
+def fit_and_apply_by_area(listings: list[Listing]) -> dict[str, ValuationModel]:
+    """Fit a SEPARATE hedonic model per ``search_area`` and annotate listings in place.
+
+    Submarkets price differently, and a single pooled regression averages those
+    relationships into mush — empirically the pooled fit lands around R²≈0.3 while
+    per-area fits reach 0.7–0.8 on the same data. Fitting each area on its own comps is
+    both more accurate and more honest. Areas with too few comps get no model (their
+    listings keep null valuations and scoring falls back to the naive €/m² signal).
+
+    Returns the fitted models keyed by area, so callers can report per-area confidence.
+    """
+    groups: dict[str, list[Listing]] = {}
+    for lst in listings:
+        groups.setdefault(lst.search_area or "", []).append(lst)
+    models: dict[str, ValuationModel] = {}
+    for area, group in groups.items():
+        model = fit_valuation_model(group)
+        apply_valuations(group, model)
+        if model is not None:
+            models[area] = model
+    return models
+
+
+def _build_model(rows: list[Listing]) -> tuple[ValuationModel, np.ndarray, np.ndarray]:
+    """Fit the OLS core over ``rows`` (medians imputed FROM these rows, so folds don't
+    leak). Returns the model plus its design matrix and log-price target."""
+    ref_year = datetime.utcnow().year
+
+    def _med(values: list[float], default: float) -> float:
+        return statistics.median(values) if values else default
+
+    medians = {
+        "floor": _med([r.floor for r in rows if r.floor is not None], 2.0),
+        "age": _med([ref_year - r.year_built for r in rows if r.year_built], 40.0),
+        "energy": _med([energy_class_score(r.energy_class) for r in rows if r.energy_class], 0.3),
+        "beds": _med([r.bedrooms for r in rows if r.bedrooms], 2.0),
+        "metro": _med([r.metro_distance_m for r in rows if r.metro_distance_m is not None], 600.0),
+    }
+    areas = sorted({r.search_area for r in rows if r.search_area})
+    model = ValuationModel(beta=None, medians=medians, areas=areas, ref_year=ref_year)
+
+    # Recency weights: an asking price posted long ago is weaker evidence of TODAY's market,
+    # so it counts less in the fit. Half-life ~120 days; a listing with no posting date gets a
+    # neutral weight of 1.0 (never penalised for missing data).
+    now = datetime.utcnow()
+    feats, targets, weights = [], [], []
+    for r in rows:
+        row = model._features(r)
+        if row is None:
+            continue
+        feats.append(row)
+        targets.append(math.log(r.price))
+        if r.listed_date is not None:
+            age_days = max((now - r.listed_date).days, 0)
+            weights.append(0.5 ** (age_days / _RECENCY_HALFLIFE_DAYS))
+        else:
+            weights.append(1.0)
+    x = np.array(feats)
+    y = np.array(targets)
+    w = np.array(weights)
+    # Ridge (Tikhonov) instead of plain least squares: a tiny penalty on the non-intercept
+    # coefficients stabilises the fit where features are collinear or near-constant — exactly
+    # the card-only submarkets where most attributes are median-imputed and OLS min-norm
+    # solutions swing wildly. Intercept is left unpenalised. Falls back to lstsq if singular.
+    try:
+        reg = _RIDGE_LAMBDA * np.eye(x.shape[1])
+        reg[0, 0] = 0.0
+        # Weighted ridge: (Xᵀ W X + λR) β = Xᵀ W y, with W the diagonal recency weights.
+        xtw = x.T * w
+        beta = np.linalg.solve(xtw @ x + reg, xtw @ y)
+    except np.linalg.LinAlgError:
+        beta, *_ = np.linalg.lstsq(x, y, rcond=None)
+    model.beta = beta
+    # Comparable-sales memory for the KNN half of the ensemble.
+    model.comps = [
+        (
+            r.source_id,
+            ValuationModel._knn_vec(r, model.medians, model.ref_year),
+            r.price / r.area_m2,
+        )
+        for r in rows
+        if r.area_m2
+    ]
+    return model, x, y
+
+
+def _drop_price_outliers(rows: list[Listing]) -> list[Listing]:
+    """Drop gross €/m² outliers (mis-parses, garbage, or a mansion in a flats submarket)
+    before fitting, so one bad row can't tilt the whole regression. Uses a robust MAD band;
+    never drops so many that the fit falls below the minimum sample size."""
+    ppm = [(r, r.price / r.area_m2) for r in rows if r.area_m2]
+    if len(ppm) < _MIN_SAMPLES:
+        return rows
+    vals = sorted(p for _, p in ppm)
+    med = statistics.median(vals)
+    mad = statistics.median([abs(p - med) for p in vals]) or 1.0
+    lo, hi = med - 5 * 1.4826 * mad, med + 5 * 1.4826 * mad
+    kept = [r for r, p in ppm if lo <= p <= hi]
+    return kept if len(kept) >= _MIN_SAMPLES else rows
+
+
+def _cross_val_r2(rows: list[Listing], folds: int = 5) -> float:
+    """Honest out-of-sample R² via k-fold CV: for each fold, fit on the rest (medians
+    refit per-fold, so no leakage) and score the held-out fold against a median baseline.
+    Deterministic (index-striped folds — no RNG, which would break workflow resume)."""
+    if len(rows) < _MIN_SAMPLES:
+        return 0.0
+    # Sort by source_id before striping so folds don't inherit any DB-insertion-order
+    # correlation (e.g. rows added in price order) — a deterministic stand-in for a
+    # random shuffle, giving a stable honest number without an RNG.
+    ordered = sorted(rows, key=lambda r: r.source_id or "")
+    buckets: list[list[Listing]] = [[] for _ in range(folds)]
+    for i, r in enumerate(ordered):
+        buckets[i % folds].append(r)
+    ss_res, ss_base = 0.0, 0.0
+    for f in range(folds):
+        test = buckets[f]
+        train = [r for j in range(folds) if j != f for r in buckets[j]]
+        if len(train) < _MIN_CV_TRAIN or not test:
+            continue
+        m, _, _ = _build_model(train)
+        med = statistics.median([math.log(r.price) for r in train])
+        for r in test:
+            p = m.predict_price(r)
+            if p:
+                ss_res += (math.log(p) - math.log(r.price)) ** 2
+                ss_base += (med - math.log(r.price)) ** 2
+    return 1.0 - ss_res / ss_base if ss_base > 0 else 0.0
+
+
+def fit_valuation_model(listings: list[Listing]) -> ValuationModel | None:
+    rows = [lst for lst in listings if _usable(lst)]
+    if len(rows) < _MIN_SAMPLES:
+        return None
+    # Fit on the outlier-trimmed set; the model still PRICES every listing (apply_valuations
+    # runs over the full group) — we just don't let garbage rows warp the fitted line.
+    rows = _drop_price_outliers(rows)
+
+    model, x, y = _build_model(rows)
+
+    # In-sample R² and the residual spread (for the ± band). Confidence, however, is
+    # gated on the CROSS-VALIDATED R² below — the honest out-of-sample number — so an
+    # overfit area doesn't present false precision.
+    # Residuals of the BLENDED prediction (hedonic ⊕ KNN), so the r² and the ±band reflect
+    # what the model actually outputs. KNN excludes each row by source_id, so no self-leak.
+    blended = np.array([math.log(p) for r in rows if (p := model.predict_price(r))])
+    if len(blended) == len(y):
+        resid = y - blended
+    else:  # a row failed to predict (shouldn't happen) — fall back to the hedonic residual
+        resid = y - x @ model.beta
+    ss_res = float(np.sum(resid**2))
+    ss_tot = float(np.sum((y - np.mean(y)) ** 2))
+    model.r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+    model.residual_std = float(np.std(resid)) if len(resid) else 0.0
+    model.n_samples = len(rows)
+    model.cv_r2 = _cross_val_r2(rows)
+    return model

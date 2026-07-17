@@ -16,9 +16,16 @@ pipeline + scoring.
 - `hard_filters`: `min_floor` (ground/low floors excluded), `max_metro_distance_m`
   (listings farther than this are excluded). Exclusion sets `excluded=True` + a reason; it
   doesn't delete.
-- `weights`: relative importance of `gross_yield`, `price_vs_area_median`, `price_drop`,
-  `is_currently_rented`, `is_private_seller`. They don't need to sum to 100 (`total()`
-  normalizes).
+- `weights` (quality-first): relative importance of `newness`, `gross_yield`,
+  `energy_class`, `undervaluation` (asking price vs the hedonic fair-value model — falls
+  back to raw €/m² vs area median when too few comps to fit), `price_drop`,
+  `is_currently_rented`, `is_private_seller`. Newness + energy (asset quality) outweigh
+  undervaluation so efficient/new stock ranks above old flats that merely look cheap.
+  They don't need to sum to 100 (`total()` normalizes).
+- `scoring_reference.energy_liability_floor`: the final score is multiplied down for
+  energy-inefficient stock (E/F/G — Greek Ε/Ζ/Η) to reflect EU-EPBD renovation mandates;
+  the worst class keeps this fraction of its score (default 0.55), the best keeps 1.0.
+  Energy-liability flats are also never flagged as `is_opportunity`.
 - `opportunity_flag.price_per_m2_below_median_pct`: the €/m² threshold (vs area median) to
   flag a listing as an opportunity (drives the digest's TOP OPPORTUNITIES).
 - `scoring_reference`: `yield_floor`/`yield_ceiling` (the yield range mapped to 0..1),

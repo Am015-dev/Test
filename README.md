@@ -17,7 +17,9 @@ over time, and surfaces the best opportunities in a Streamlit web app.
 - **Normalize** — every portal maps onto one canonical `Listing` schema.
 - **Dedup** — the same flat across portals collapses to one record (cheapest kept).
 - **Enrich** — €/m², geocoding (Nominatim, cached), walking distance to the nearest
-  Metro Line 3 station (OSRM with haversine×1.3 fallback), estimated rent, gross yield.
+  Metro **Line 2 / Line 3** station (OSRM with haversine×1.3 fallback), estimated rent,
+  gross yield. Coverage spans the metro-served municipalities on both modern lines (the
+  Line 1 / ISAP suburbs are deliberately excluded).
 - **Score** — pure, unit-tested engine driven entirely by `strategy.yaml`: hard
   filters (exclude floor ≤ 0, exclude > 600 m from metro) + weighted soft signals
   (yield, price-vs-median, price drop, currently-rented, private-seller) → 0–100.
@@ -137,10 +139,18 @@ Current collector status:
   autocomplete is unreachable the collector falls back to the (unfiltered)
   `geo_place_name` search so it still returns something. `tests/fixtures/xe_card.html`
   is a real captured card.
-- **Spitogatos, Indomio** — behind a CloudFront/WAF that 403s a plain client. Set
-  `FLARESOLVERR_URL` (start the free `flaresolverr` compose service) and they're
-  scraped through it — FlareSolverr drives a real browser and solves the challenge,
-  returning rendered HTML, so they're added to the default collectors automatically.
+- **Green-Acres** — a second always-on source. Serves static per-city pages
+  (`/property-for-sale/<city>`) to a plain client, so it's scraped browser-free like XE
+  and runs by default. Provides price/area/bedrooms/location + precise coordinates (from
+  the detail page) but not energy class / build year, so its listings score lower under
+  the quality-first weights until those are known. `tests/fixtures/greenacres_card.html`
+  is a real captured card. Inventory for the inland target suburbs is modest (~a dozen
+  apartments) and complements XE rather than replacing it.
+- **Spitogatos, Indomio** — behind PerimeterX / Cloudflare that block a plain client
+  (and even their sitemaps). Set `FLARESOLVERR_URL` (start the free `flaresolverr`
+  compose service) and they're scraped through it — FlareSolverr drives a real browser
+  and solves the challenge, returning rendered HTML, so they're added automatically.
+  Note: PerimeterX (Spitogatos) can resist even FlareSolverr without residential IPs.
   Their within-card selectors are reasonable placeholders; finalize them against the
   first live capture under `data/raw/` (the rest of the pipeline is unaffected).
 
