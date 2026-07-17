@@ -107,6 +107,12 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
         ttl = settings.scrape_cache_ttl_minutes
         for row in rows:
             processed += 1
+            # Periodic commit: the sandbox restarts every few hours, and a multi-hour run
+            # that only commits at scope exit loses ALL its fills/stamps to a restart —
+            # each resume then re-pays the whole dead-ad tail. Committing every 100 rows
+            # makes an interruption lose minutes of work, not hours.
+            if processed % 100 == 0:
+                db.commit()
             # A page already cached on disk needs no network round-trip — so don't pay the
             # polite sleep for it. This makes resumed runs fly through the pages a previous
             # run already fetched, only spacing the genuinely new network fetches.
