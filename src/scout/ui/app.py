@@ -53,11 +53,25 @@ from scout.ui import (
 from scout.ui import format as fmt  # noqa: E402
 from scout.ui.theme import inject_css  # noqa: E402
 
-st.set_page_config(page_title="Holargos Property Scout", page_icon="🏠", layout="wide")
+st.set_page_config(
+    page_title="Holargos Property Scout",
+    page_icon="🏠",
+    layout="wide",
+    # Keep the filter sidebar open on load (mobile/narrow viewports otherwise hide it
+    # behind the « chevron and the filters look "lost").
+    initial_sidebar_state="expanded",
+)
 inject_css()
 
+# MEMORY: the big reads use st.cache_RESOURCE, not cache_data. cache_data pickles the
+# value and hands every access a fresh deep copy — with 22k listing dicts (~226 MB
+# materialised) a couple of concurrent reruns blew straight past Streamlit Community
+# Cloud's ~1 GB limit and the app OOM-restarted (dropped websocket, "lost" sidebar).
+# cache_resource shares ONE object across sessions; pages treat these as READ-ONLY —
+# never mutate a dict from these caches (copy first).
 
-@st.cache_data(ttl=60)
+
+@st.cache_resource(ttl=300)
 def get_listings() -> list[dict]:
     return queries.load_listings(include_excluded=True, only_active=True)
 
@@ -67,7 +81,7 @@ def get_strategy() -> Strategy:
     return load_strategy()
 
 
-@st.cache_data(ttl=60)
+@st.cache_resource(ttl=600)
 def get_all_listings_debug() -> list[dict]:
     """Everything, including excluded and inactive (gone) listings — for the Debug page."""
     return queries.load_listings(
@@ -80,7 +94,7 @@ def get_history(listing_id: int):
     return queries.load_price_history(listing_id)
 
 
-@st.cache_data(ttl=300)
+@st.cache_resource(ttl=600)
 def get_all_price_history() -> list[dict]:
     return queries.load_all_price_history()
 
@@ -90,7 +104,7 @@ def get_recent_health() -> list[dict]:
     return queries.load_recent_health(10)
 
 
-@st.cache_data(ttl=120)
+@st.cache_resource(ttl=300)
 def get_valuation_summary() -> dict:
     return queries.load_valuation_summary()
 
@@ -1429,6 +1443,7 @@ def page_detail(listings: list[dict]) -> None:
     if watched != d["is_watched"]:
         queries.set_watched(lid, watched)
         st.cache_data.clear()
+        st.cache_resource.clear()
         st.rerun()
 
 
@@ -1517,6 +1532,7 @@ def page_strategy() -> None:
 
         n = rescore_all(strategy)
         st.cache_data.clear()
+        st.cache_resource.clear()
         st.success(f"Saved and re-scored {n} listings.")
 
 
@@ -1933,6 +1949,7 @@ def main() -> None:
 
                 summary = run()
             st.cache_data.clear()
+            st.cache_resource.clear()
             st.success(f"Done: {summary}")
         page = st.radio("Page", [*PAGES.keys(), "Strategy", "Debug"])
 
