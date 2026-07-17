@@ -1,0 +1,52 @@
+# Daily data refresh — the "cron" of the completely-free deployment:
+#   GitHub Actions collects + enriches + rescores, then commits data/listings.db
+#   back to the branch; Streamlit Community Cloud auto-redeploys on push.
+name: daily-refresh
+on:
+  schedule:
+    - cron: "0 4 * * *"   # 04:00 UTC = 07:00 Athens, before the workday
+  workflow_dispatch: {}    # manual "Run workflow" button for testing
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e .
+      - name: Collect + rescore (all areas, card-only)
+        env:
+          SCRAPE_DETAIL_PAGES: "false"
+          SCRAPE_REQUEST_MIN_S: "4"
+          SCRAPE_REQUEST_MAX_S: "7"
+        run: python scripts/run_daily.py
+        continue-on-error: true   # a blocked scrape must not lose the rescore/commit
+      - name: Detail-enrich a bounded batch
+        env:
+          SCRAPE_REQUEST_MIN_S: "6"
+          SCRAPE_REQUEST_MAX_S: "10"
+          SCRAPE_DETAIL_PAGES: "false"
+        run: python scripts/enrich_details.py --limit 20000 --max-fetches 300
+        continue-on-error: true
+      - name: Commit refreshed DB
+        run: |
+          git config user.name "daily-refresh-bot"
+          git config user.email "actions@github.com"
+          git add -f data/listings.db
+          if git diff --cached --quiet; then
+            echo "DB unchanged — nothing to commit"
+          else
+            git commit -m "data: daily refresh $(date -u +%F)"
+            git push
+          fi

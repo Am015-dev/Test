@@ -1,0 +1,3 @@
+# Streamlit Community Cloud entrypoint requirements: install the app itself
+# (pyproject.toml carries the real dependency list).
+.

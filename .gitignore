@@ -1,5 +1,6 @@
 # Data store & scraped artifacts
-data/listings.db
+# data/listings.db is COMMITTED — it is the deploy artifact
+!data/listings.db
 data/listings.db-*
 data/raw/
 
