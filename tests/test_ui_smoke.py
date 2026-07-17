@@ -56,7 +56,10 @@ def _db(tmp_path, monkeypatch):
         monkeypatch.delenv("DATABASE_URL", raising=False)  # force the SQLite fixture path
         monkeypatch.setenv("DB_PATH", str(tmp_path / "ui.db"))
         get_settings.cache_clear()
-        st.cache_data.clear()  # get_listings is @st.cache_data — don't leak across tests
+        # get_listings is @st.cache_resource (shared object, survives across AppTest
+        # instances in-process) — clear BOTH cache kinds or tests leak into each other.
+        st.cache_data.clear()
+        st.cache_resource.clear()
         _seed_db(tmp_path / "ui.db", exclude_all=exclude_all)
 
     return _make
@@ -134,6 +137,7 @@ def test_app_renders_fair_value_views(tmp_path, monkeypatch):
     monkeypatch.setenv("DB_PATH", str(tmp_path / "ui.db"))
     get_settings.cache_clear()
     st.cache_data.clear()
+    st.cache_resource.clear()  # get_listings is cache_resource — shared across AppTests
     _seed_valued_db(tmp_path)
 
     at = AppTest.from_file(APP, default_timeout=30).run()
