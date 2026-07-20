@@ -82,7 +82,7 @@ def recommend(d: dict) -> Recommendation:
     if gap and gap >= 0.10:
         rationale.append(f"priced {gap * 100:.0f}% below the model's fair value (beyond its ±band)")
     if ny is not None and ny >= 0.045 and not rent_est:
-        rationale.append(f"strong {_fmt_pct(ny)} net yield on a real rent comp")
+        rationale.append(f"strong {_fmt_pct(ny)} net yield on the listing's own stated rent")
         play = "Cashflow buy-to-let"
     elif ny is not None and ny >= 0.035:
         rationale.append(f"{_fmt_pct(ny)} net yield")
@@ -150,9 +150,25 @@ def recommend(d: dict) -> Recommendation:
     #   • too little verified data to underwrite (card-only listing missing the essentials).
     inconsistent = bool(d.get("consistency_flags"))
     thin_data = len(d.get("data_missing") or []) >= 2
-    buy_ok = not inconsistent and not thin_data
+    # A data-quality-suspect listing (whole building priced as a flat, future year, off-by-10x
+    # €/m²/yield) must never clear the BUY bar — its headline numbers are artifacts. It still
+    # shows (as WATCH/PASS, badged and demoted), so the buyer sees WHY, never a silent drop.
+    suspect = bool(d.get("is_suspect"))
+    buy_ok = not inconsistent and not thin_data and not suspect
 
-    if strong >= 2 and not (rent_est and gap is None) and buy_ok:
+    # BUY is a *high-conviction shortlist*, not a "notable" tag. Both of our soft, largely
+    # independent estimates must AGREE and each clear a WIDER bar than the WATCH-level marks:
+    #   • significantly under the model's fair value (asking-vs-model gap, past its ±band), AND
+    #   • a genuinely solid net yield — not just the 4.5% "decent" line.
+    # Either signal ALONE is too soft to buy on: the gap is asking-based, the yield rests on
+    # an area-imputed rent, and both share the asking price, so one cheap number can inflate
+    # both at once. Only when they corroborate — past raised bars, on non-suspect, non-thin
+    # data — does a listing earn the green light. This is deliberately a few-hundred set, not
+    # a tenth of inventory; if the data only supports WATCH, WATCH is the honest verdict.
+    BUY_GAP, BUY_YIELD = 0.15, 0.055
+    would_buy = (gap is not None and gap >= BUY_GAP) and (ny is not None and ny >= BUY_YIELD)
+
+    if would_buy and buy_ok:
         verdict = "BUY"
     elif strong >= 2 or rationale:
         verdict = "WATCH"
@@ -160,9 +176,9 @@ def recommend(d: dict) -> Recommendation:
         verdict = "PASS"
         rationale = rationale or ["no standout signal — fairly priced, ordinary return"]
 
-    # Did the listing clear the signal bar but get held at WATCH only for want of trust?
+    # Cleared the BUY bar but held at WATCH only for want of trust (suspect / thin data)?
     # Say so plainly in the headline so the discipline is visible, not silent.
-    capped = verdict == "WATCH" and strong >= 2 and not (rent_est and gap is None)
+    capped = verdict == "WATCH" and would_buy
 
     # ---- headline: the concrete action -------------------------------------------
     if verdict == "PASS":

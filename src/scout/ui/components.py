@@ -203,6 +203,16 @@ def _card_html(d: dict, metric: str = "score") -> str:
         f'<div class="ph-inconsistent">⚠ Check: {_esc("; ".join(cflags))}.</div>' if cflags else ""
     )
 
+    # Data-quality guard: the listing's numbers look like a DATA ERROR (a whole building
+    # priced as a flat, a future year, an off-by-10x €/m²). This is WHY the ranking demoted
+    # it — badge it loudly, never hide it. Reuses the ph-inconsistent warning style.
+    dqflags = d.get("data_quality_flags") or []
+    data_quality_html = (
+        f'<div class="ph-inconsistent">⚠️ Data looks off: {_esc("; ".join(dqflags))}.</div>'
+        if dqflags
+        else ""
+    )
+
     # Header strip. When we have a real listing photo we show it full-bleed (96px).
     # When we DON'T (most card-only listings), a big empty gradient block just makes
     # every card look unfinished — so we collapse to a thin archetype-coloured accent
@@ -237,6 +247,7 @@ def _card_html(d: dict, metric: str = "score") -> str:
     {thesis_html}
     {completeness_html}
     {consistency_html}
+    {data_quality_html}
     <div class="ph-card-foot">
       <div class="ph-badges">{badges}</div>
       <a class="ph-cta" href="{url}" target="_blank" rel="noopener">View listing ↗</a>

@@ -40,9 +40,7 @@ def main():
             # use_network=False → offline centroids + haversine metro (no per-listing OSRM
             # call), so a card-only breadth sweep runs in ~2 min/area, not ~11. A single
             # recompute_metro at the end fixes any distances.
-            summary = run(
-                strategy=a_s, collectors=[XeCollector(a_s)], area=area, use_network=False
-            )
+            summary = run(strategy=a_s, collectors=[XeCollector(a_s)], area=area, use_network=False)
             grand += summary.get("stored", 0)
             log.info(
                 "[%d/%d] %s (%s): %s in %.0fs grand=%d",

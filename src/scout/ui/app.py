@@ -41,6 +41,11 @@ from scout import (  # noqa: E402
 )
 from scout.config import Strategy, load_strategy, save_strategy  # noqa: E402
 from scout.regions import REGIONS  # noqa: E402
+from scout.regulatory import (  # noqa: E402
+    golden_visa_status,
+    renovation_subsidy,
+    str_legality,
+)
 from scout.scoring import (
     energy_class_score,
     energy_liability_multiplier,
@@ -212,6 +217,11 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
             "Built": d.get("renovated_year") or d.get("year_built"),
             "Energy": d.get("energy_class") or "",
             "Yield": (d["gross_yield"] * 100) if d["gross_yield"] is not None else None,
+            "Short-let": {
+                "FROZEN": "🚫 frozen",
+                "EXPANDING_RISK": "⚠️ risk",
+                "ALLOWED": "✓ ok",
+            }.get(str_legality(_area_key(d)).status, ""),
             "Metro": d["metro_distance_m"],
             "Neighborhood": d["neighborhood"] or "—",
             "Flags": " ".join(fmt.badges(d)) or "",
@@ -230,10 +240,19 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
         ),
         "Price": st.column_config.NumberColumn("Price", format="€%d"),
         "Fair value": st.column_config.NumberColumn(
-            "Fair value", help="hedonic model's fair price for this flat's attributes", format="€%d"
+            "Fair value (est.)",
+            help="Model estimate vs TYPICAL ASKING for similar flats (±44% band, not a "
+            "sold-price valuation — Greece has no open sold register). Blank when too noisy.",
+            format="€%d",
         ),
         "Value gap": st.column_config.NumberColumn(
-            "Value gap", help="+ = priced below fair value (undervalued)", format="%+.0f%%"
+            "vs asking (est.)",
+            help="+ = priced below the model's estimate of typical asking. An indicative "
+            "screen, not a proven discount.",
+            format="%+.0f%%",
+        ),
+        "Short-let": st.column_config.TextColumn(
+            "Short-let", help="Can a buyer legally run a NEW Airbnb here? (2026 Athens freeze)"
         ),
         "€/m²": st.column_config.NumberColumn("€/m²", format="€%.0f"),
         "Area": st.column_config.NumberColumn("Area", format="%.0f m²"),
@@ -251,26 +270,78 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
 
 def _kpi_header(listings: list[dict]) -> None:
     eligible = _eligible(listings)
-    ppm = [d["price_per_m2"] for d in eligible if d["price_per_m2"]]
-    median_ppm = statistics.median(ppm) if ppm else None
     nys = [d["net_yield"] for d in eligible if d.get("net_yield") is not None]
     median_ny = statistics.median(nys) if nys else None
-    # Signals that are REAL and populated from the data we already hold (not temporal ones
-    # like "new today" that need a live daily diff): flats sitting >180 days (motivated
-    # sellers) and flats the model prices below fair value beyond its own noise band.
-    long_sitting = sum(1 for d in eligible if (d.get("days_on_market") or 0) > 180)
-    below_model = sum(1 for d in eligible if (d.get("value_gap_pct") or 0) > 0)
+    # Lead with what's REAL and differentiated, not with "every eligible listing = an
+    # opportunity" (which flagged 82% of inventory and sorted nothing). Two honest headline
+    # counts: the curated BUY verdicts (the actual shortlist), and the regulatory signal no
+    # portal offers — how many listings a buyer cannot legally short-let, and how many clear
+    # the Golden-Visa bar. These are computed from data we already hold, no history needed.
+    buys = sum(1 for d in eligible if d.get("rec_verdict") == "BUY")
+    str_frozen = sum(1 for d in eligible if str_legality(_area_key(d)).status == "FROZEN")
+    # Golden Visa is intentionally NOT a headline here: this suburban inventory is almost
+    # entirely below the €800k Attica threshold, so the count is ~0 — useless as a KPI (it
+    # still shows per-listing on the detail page for the rare qualifier). The energy-subsidy
+    # candidate count IS real and populated (74% of listings carry an EPC class).
+    reno = sum(
+        1
+        for d in eligible
+        if renovation_subsidy(d.get("energy_class"), d.get("year_built")).candidate
+    )
 
     c = st.columns(5)
-    c[0].metric("Opportunities", len(eligible))
+    c[0].metric("Listings tracked", len(eligible), help="Active listings after hard filters")
     c[1].metric(
-        "Sitting >180 days", long_sitting, help="On market over 6 months — likely negotiable"
+        "🟢 BUY shortlist",
+        buys,
+        help="Listings that clear the verified BUY bar — the curated picks, not all inventory",
     )
     c[2].metric(
-        "Below model value", below_model, help="Priced under fair value beyond the model's ±band"
+        "🚫 Short-let frozen",
+        str_frozen,
+        help="In Athens districts where a buyer cannot get a new Airbnb licence (2026 freeze)",
     )
-    c[3].metric("Median €/m²", fmt.euro_per_m2(median_ppm))
-    c[4].metric("Median net yield", fmt.pct(median_ny) if median_ny is not None else "—")
+    c[3].metric(
+        "🔧 Energy-subsidy",
+        reno,
+        help="EPC class C or lower — candidates for the Exoikonomo 2026 renovation subsidy",
+    )
+    c[4].metric("Median net yield (est.)", fmt.pct(median_ny) if median_ny is not None else "—")
+
+
+def _area_key(d: dict) -> str | None:
+    """The area name to resolve regulatory zones against. `search_area` is the clean Latin
+    scrape area ("Koukaki", "Pagkrati") that matches the regulatory tables; `neighborhood`
+    is free-text Greek ("Αθήνα (Κουκάκι)") and won't match — so prefer search_area."""
+    return d.get("search_area") or d.get("neighborhood")
+
+
+def _regulatory_panel(d: dict) -> None:
+    """The differentiator no portal shows: can a buyer legally short-let this, does it clear
+    the Golden-Visa bar, is it an energy-subsidy candidate. Indicative flags — always tell the
+    user to verify with a lawyer; regulation shifts and a wrong call costs real money."""
+    strl = str_legality(_area_key(d))
+    gv = golden_visa_status(d.get("price"), d.get("area_m2"))
+    reno = renovation_subsidy(d.get("energy_class"), d.get("year_built"))
+
+    st.markdown("#### 📜 Regulatory check — what portals don't tell you")
+    box = {"FROZEN": st.error, "EXPANDING_RISK": st.warning, "ALLOWED": st.success}.get(
+        strl.status, st.info
+    )
+    box(f"**Short-let (Airbnb):** {strl.headline} — {strl.detail}")
+
+    cols = st.columns(2)
+    (cols[0].success if gv.qualifies else cols[0].info)(
+        f"**Golden Visa:** {gv.headline}" + (f" — {gv.detail}" if gv.detail else "")
+    )
+    if reno.candidate:
+        cols[1].info(f"**Energy subsidy:** {reno.headline} — {reno.detail}")
+    else:
+        cols[1].caption("Energy subsidy: not flagged (needs EPC class C or lower).")
+    st.caption(
+        "⚖️ Indicative flags from public 2026 rules — confirm STR/visa/subsidy eligibility "
+        "with a Greek lawyer before committing. Sources in docs/PRODUCT_STRATEGY.md."
+    )
 
 
 # ---- investment-thesis helpers --------------------------------------------
@@ -903,6 +974,19 @@ def page_opportunities(listings: list[dict]) -> None:
             if present_strats
             else []
         )
+        # Regulatory filters — the differentiator, made actionable. No portal lets you screen
+        # "only listings I can legally short-let" or "energy-subsidy candidates".
+        short_let_filter = st.selectbox(
+            "🏠 Short-let (Airbnb)",
+            ["Any", "Short-let allowed", "Frozen (long-let only)"],
+            index=0,
+            help="Frozen = a buyer cannot get a new Airbnb licence (2026 Athens district freeze).",
+        )
+        subsidy_only = st.checkbox(
+            "🔧 Energy-subsidy candidates only",
+            value=False,
+            help="EPC class C or lower — eligible for the Exoikonomo 2026 renovation subsidy.",
+        )
         areas = [d["area_m2"] for d in eligible]
         amin, amax = int(min(areas)), int(max(areas)) + 1
         area_range = (
@@ -934,6 +1018,17 @@ def page_opportunities(listings: list[dict]) -> None:
         if max_afford is not None and d["price"] > max_afford:
             return False
         if strat_filter and not (set(strat_filter) & set(d.get("strategy_tags") or [])):
+            return False
+        if short_let_filter != "Any":
+            status = str_legality(_area_key(d)).status
+            if short_let_filter == "Short-let allowed" and status == "FROZEN":
+                return False
+            if short_let_filter == "Frozen (long-let only)" and status != "FROZEN":
+                return False
+        if (
+            subsidy_only
+            and not renovation_subsidy(d.get("energy_class"), d.get("year_built")).candidate
+        ):
             return False
         if not (area_range[0] <= d["area_m2"] <= area_range[1]):
             return False
@@ -982,11 +1077,21 @@ def page_opportunities(listings: list[dict]) -> None:
     inner = sort_opts[sort_by]
     rows = sorted(
         [d for d in eligible if keep(d) and (not buys_only or d.get("rec_verdict") == "BUY")],
-        key=lambda d: (_verdict_rank.get(d.get("rec_verdict"), 0), inner(d)),
+        # Data-quality suspects (whole building priced as a flat, future year, off-by-10x
+        # €/m²) sink below every clean listing regardless of score — they can't top the rank.
+        key=lambda d: (
+            not d.get("is_suspect"),
+            _verdict_rank.get(d.get("rec_verdict"), 0),
+            inner(d),
+        ),
         reverse=True,
     )
 
-    st.markdown(f"**{len(rows)}** opportunities match your filters (of {len(eligible)} eligible)")
+    n_buys = sum(1 for d in rows if d.get("rec_verdict") == "BUY")
+    st.markdown(
+        f"**{len(rows)}** listings match your filters (of {len(eligible)} tracked) · "
+        f"**{n_buys}** on the BUY shortlist"
+    )
     if rows:
         # Cap the card grid to the top N by score — rendering all ~9k cards ships a
         # multi-megabyte DOM that janks the browser. The full set stays in the table/CSV.
@@ -1020,6 +1125,17 @@ def page_today(listings: list[dict]) -> None:
     c[0].metric("🟢 New BUYs (24 h)", len(new_buys))
     c[1].metric("💸 Price drops (24 h)", len(drops))
     c[2].metric("🆕 New listings (24 h)", len(new))
+    # Honest framing when the 24h feed is empty: the change-signals (new listings, price
+    # drops, motivated sellers) are BUILT by comparing daily snapshots — they only appear
+    # once the pipeline has run on consecutive days. Show that instead of three bare zeros
+    # that read as "broken". The always-useful briefs below still make the page actionable.
+    if not new_buys and not drops and not new:
+        st.info(
+            "No 24-hour changes to show yet. The daily-change feed (new listings, price "
+            "drops, motivated sellers) is built by comparing snapshots across days and fills "
+            "in as the pipeline runs — the price-history depth grows every day. Meanwhile the "
+            "**best current opportunities** are below."
+        )
     st.divider()
 
     # Lead with the actual decisions: BUY-verdict listings that appeared today. This is the
@@ -1347,6 +1463,8 @@ def page_detail(listings: list[dict]) -> None:
     elif d.get("deal_thesis"):
         st.info(f"💡 {d['deal_thesis']}")
 
+    _regulatory_panel(d)
+
     tabs = st.tabs(
         ["💰 Returns", "🧾 Costs & risk", "🎛️ Sensitivity", "🧮 Score & comps", "🏗️ Details"]
     )
@@ -1577,7 +1695,16 @@ def page_debug() -> None:
         ac[3].metric("Eligible", a.get("total", len(active)))
         fields = a.get("fields") or {}
         if fields:
-            st.caption(" · ".join(f"{k}: {v * 100:.0f}%" for k, v in fields.items()))
+
+            def _fld(k: str, v: float) -> str:
+                # "real_rent" is the share with the listing's OWN scraped rent; the rest use an
+                # area-comp ESTIMATE. Show it to 0.1% (a ~0.3% share must not read as "0%") and
+                # spell out the estimated majority so the yield isn't mistaken for measured.
+                if k == "real_rent":
+                    return f"real rent (own): {v * 100:.1f}% · {(1 - v) * 100:.0f}% estimated (area comp)"
+                return f"{k}: {v * 100:.0f}%"
+
+            st.caption(" · ".join(_fld(k, v) for k, v in fields.items()))
     except Exception as exc:  # never break the debug page on an audit hiccup
         st.caption(f"_audit unavailable: {exc}_")
 
@@ -1957,8 +2084,27 @@ def main() -> None:
 
     last_up = _last_updated(listings)
     if last_up is not None:
-        sources = sorted({d["source"] for d in listings if d.get("source")})
-        src_label = ", ".join(s.upper() for s in sources) if sources else "—"
+        # Honest source label: name the dominant source with its real share rather than
+        # listing every source equally (99.7% XE + a handful of green-acres read as
+        # "multi-source" when it isn't). Shows the true mix.
+        counts: dict[str, int] = {}
+        for d in listings:
+            if d.get("source"):
+                counts[d["source"]] = counts.get(d["source"], 0) + 1
+        total = sum(counts.values())
+        if counts:
+            top, top_n = max(counts.items(), key=lambda kv: kv[1])
+            share = top_n / total if total else 0
+            src_label = (
+                top.upper()
+                if share >= 0.98
+                else " + ".join(
+                    f"{s.upper()} {n/total:.0%}"
+                    for s, n in sorted(counts.items(), key=lambda kv: -kv[1])
+                )
+            )
+        else:
+            src_label = "—"
         st.caption(
             f"🕒 Data last updated **{last_up:%Y-%m-%d %H:%M} UTC** · "
             f"{len(listings)} active listings · source: {src_label}"
@@ -1973,7 +2119,7 @@ def main() -> None:
                 "Prices, new listings and price-drops won't be current until it runs again "
                 "(**Refresh now**, or check the scheduled job)."
             )
-        if len(sources) <= 1:
+        if len(counts) <= 1 or (total and max(counts.values()) / total >= 0.98):
             st.caption(
                 "ℹ️ Coverage is currently a single portal (XE.gr) — a slice of the market, "
                 "not every listing. Additional portals (Spitogatos, Indomio) are supported "

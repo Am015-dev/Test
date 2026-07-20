@@ -75,12 +75,16 @@ class GreenAcresCollector(Collector):
         return re.sub(r"\s+", "-", area.strip().lower())
 
     def search_urls(self, strategy: Strategy) -> list[str]:
-        """One static per-city page per configured area. A missing city 404s and is
-        skipped in ``collect`` — never fatal."""
-        return [
-            f"{self.BASE}/property-for-sale/{self._slug(area)}"
-            for area in strategy.search.all_areas()
-        ]
+        """One static per-city page for the run's scoped municipality. A missing city
+        404s and is skipped in ``collect`` — never fatal.
+
+        Scoped to ``municipality`` (the ONE area this run scrapes), not ``all_areas()``:
+        ``run_for_area`` runs the pipeline once per area, so pulling every area here made
+        a single per-area run re-scrape all 55 areas (with a 4-7s detail fetch per card),
+        blowing past the daily job's 45-min collect timeout — the process was killed
+        before ``run()`` reached its store phase, so no ``last_seen`` ever advanced. XE is
+        scoped the same way."""
+        return [f"{self.BASE}/property-for-sale/{self._slug(strategy.search.municipality)}"]
 
     def _new_session(self) -> requests.Session:
         session = requests.Session()
@@ -106,7 +110,7 @@ class GreenAcresCollector(Collector):
         settings = get_settings()
         s = self.strategy.search
         session = self._new_session()
-        for area, url in zip(s.all_areas(), self.search_urls(self.strategy), strict=True):
+        for area, url in zip([s.municipality], self.search_urls(self.strategy), strict=True):
             html = self._fetch(session, url)
             if not html:
                 continue

@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+from .data_quality_guards import clean_future_years
 from .models import Listing
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,12 @@ def normalize(raw: dict, now: datetime | None = None) -> Listing | None:
     payload = {k: v for k, v in raw.items() if k in _ALLOWED}
     payload.setdefault("first_seen", now)
     payload.setdefault("last_seen", now)
+    # A future build/renovation year is a data error (the year, not the listing, is wrong):
+    # null it here so it never reaches valuation/scoring or gets shown as-is. The suspect
+    # FLAG is raised downstream in the UI (data_quality_guards.future_year_flag).
+    payload["year_built"], payload["renovated_year"] = clean_future_years(
+        payload.get("year_built"), payload.get("renovated_year"), current_year=now.year
+    )
 
     try:
         return Listing(**payload)

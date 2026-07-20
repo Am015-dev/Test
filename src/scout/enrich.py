@@ -348,16 +348,16 @@ def enrich_listing(
     session=None,
     settings: Settings | None = None,
     use_network: bool = True,
-    rent_is_comp: bool = False,
 ) -> Listing:
     """Populate computed fields on a listing in place and return it.
 
     Pure computations (EUR/m2, rent, yield) always run. Network steps (geocode,
     OSRM) run only when ``use_network`` and degrade gracefully.
 
-    ``rent_is_comp`` tells us whether ``median_rent_per_m2`` is a REAL local rent comp
-    (a scraped/neighbourhood median) or the flat fallback baseline. It's recorded on
-    ``rent_estimated`` so scoring won't treat a baseline-derived yield as a real signal.
+    A rent is REAL only when the listing stated its OWN rent (``listed_rent``). An
+    area/neighbourhood comp median is a genuinely useful ESTIMATE, but it is still an
+    estimate for THIS listing — no matter how many comps back it — so ``rent_estimated``
+    stays True unless the listing carries its own ``listed_rent``.
     """
     settings = settings or get_settings()
 
@@ -385,9 +385,9 @@ def enrich_listing(
 
     listing.price_per_m2 = price_per_m2(listing.price, listing.area_m2)
     listing.est_monthly_rent = estimate_monthly_rent(listing, median_rent_per_m2)
-    # Rent is a real datapoint only if the listing stated its own rent, or the median we
-    # applied was a genuine local comp; otherwise it's the flat baseline (an estimate).
-    listing.rent_estimated = not (listing.listed_rent or rent_is_comp)
+    # Rent is a real datapoint ONLY if the listing stated its own rent. Every area/comp
+    # median is an estimate for this specific listing, so it does not make the rent "real".
+    listing.rent_estimated = not listing.listed_rent
     listing.gross_yield = gross_yield(listing.est_monthly_rent, listing.price)
     # Net yield after Greek acquisition + holding costs and vacancy (finance.py) — the
     # honest return an investor keeps. Fails soft to None (blank field) on missing rent.
