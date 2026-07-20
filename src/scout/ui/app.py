@@ -1125,6 +1125,17 @@ def page_today(listings: list[dict]) -> None:
     c[0].metric("🟢 New BUYs (24 h)", len(new_buys))
     c[1].metric("💸 Price drops (24 h)", len(drops))
     c[2].metric("🆕 New listings (24 h)", len(new))
+    # Honest framing when the 24h feed is empty: the change-signals (new listings, price
+    # drops, motivated sellers) are BUILT by comparing daily snapshots — they only appear
+    # once the pipeline has run on consecutive days. Show that instead of three bare zeros
+    # that read as "broken". The always-useful briefs below still make the page actionable.
+    if not new_buys and not drops and not new:
+        st.info(
+            "No 24-hour changes to show yet. The daily-change feed (new listings, price "
+            "drops, motivated sellers) is built by comparing snapshots across days and fills "
+            "in as the pipeline runs — the price-history depth grows every day. Meanwhile the "
+            "**best current opportunities** are below."
+        )
     st.divider()
 
     # Lead with the actual decisions: BUY-verdict listings that appeared today. This is the
