@@ -42,6 +42,16 @@ def test_renovation_candidate_only_c_or_lower():
     assert renovation_subsidy("A+", 2015).candidate is False
     assert renovation_subsidy("B", 2010).candidate is False
     assert renovation_subsidy(None, 1975).candidate is False
+
+
+def test_renovation_accepts_greek_epc_letters():
+    # Data stores Greek letters: Γ=C, Δ=D, Ε=E, Ζ=F, Η=G → all eligible; Α/Β not.
+    for greek in ("Γ", "Δ", "Ε", "Ζ", "Η"):
+        assert renovation_subsidy(greek, 1975).candidate is True, greek
+    for greek in ("Α+", "Α", "Β", "Β+"):
+        assert renovation_subsidy(greek, 2015).candidate is False, greek
+    # "Εξαιρείται" (exempt) starts with Ε but must NOT be read as class E.
+    assert renovation_subsidy("Εξαιρείται", 1970).candidate is False
     # pre-1980 bonus text appears only for old builds
     assert "Pre-1980" in renovation_subsidy("F", 1970).detail
     assert "Pre-1980" not in renovation_subsidy("F", 2000).detail

@@ -69,8 +69,12 @@ def test_app_renders_with_opportunities(_db):
     _db(exclude_all=False)
     at = AppTest.from_file(APP, default_timeout=30).run()
     assert not at.exception
-    # KPI header + ranked table present.
-    assert any(m.label == "Opportunities" for m in at.metric)
+    # KPI header + ranked table present. The header leads with honest counts, not the
+    # inflated "every eligible listing is an opportunity" — so assert the tracked-count and
+    # the regulatory differentiator metrics render.
+    labels = {m.label for m in at.metric}
+    assert "Listings tracked" in labels
+    assert any("Short-let" in x for x in labels)  # the regulatory differentiator is surfaced
     assert len(at.dataframe) >= 1
 
 

@@ -145,7 +145,23 @@ def golden_visa_status(price: float | None, area_m2: float | None) -> GoldenVisa
 # buildings score higher; income affects the RATE, not access. Rates are PROVISIONAL
 # (press previews, final ΦΕΚ not yet open). Sources: selectra.gr; powergame.gr; espa.io.
 _SUBSIDY_CLASSES = {"c", "d", "e", "f", "g", "h"}  # EPC C or lower = eligible starting point
+# Greek EPC bands map straight onto the Latin scale: Α+ Α Β+ Β Γ Δ Ε Ζ Η → A+ A B+ B C D E F G.
+_EPC_GREEK_TO_LATIN = {"α": "a", "β": "b", "γ": "c", "δ": "d", "ε": "e", "ζ": "f", "η": "g"}
 _RENO_SOURCE = "Exoikonomo 2026 (provisional — final decree pending)"
+
+
+def _epc_latin(energy_class: str | None) -> str | None:
+    """Latin EPC letter for a listing's class, accepting the Greek letters the data uses.
+    Returns None for exempt/blank/unrecognized (never guesses)."""
+    if not isinstance(energy_class, str):
+        return None
+    s = energy_class.strip().lower()
+    if not s or s.startswith("εξαιρ"):  # "Εξαιρείται" = exempt from EPC (starts with Ε — guard it)
+        return None
+    first = s[0]
+    if first in _EPC_GREEK_TO_LATIN:
+        return _EPC_GREEK_TO_LATIN[first]
+    return first if first in "abcdefgh" else None
 
 
 @dataclass(frozen=True)
@@ -158,7 +174,7 @@ class RenovationSubsidy:
 
 def renovation_subsidy(energy_class: str | None, build_year: int | None) -> RenovationSubsidy:
     """Flag likely Exoikonomo-2026 energy-upgrade-subsidy candidates. Needs an EPC class."""
-    cls = energy_class.strip().lower()[:1] if isinstance(energy_class, str) and energy_class else ""
+    cls = _epc_latin(energy_class)
     if cls not in _SUBSIDY_CLASSES:
         return RenovationSubsidy(
             False,
