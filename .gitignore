@@ -26,3 +26,6 @@ venv/
 
 # QA screenshot scratch (agent working dir, not a deliverable)
 scratch_qa/
+
+# Isolated agent worktrees (temporary, not deliverables)
+.claude/worktrees/
