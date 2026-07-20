@@ -1,11 +1,22 @@
-# Daily data refresh — the "cron" of the completely-free deployment:
-#   GitHub Actions collects + enriches + rescores, then commits data/listings.db
-#   back to the branch; Streamlit Community Cloud auto-redeploys on push.
+# Daily data refresh — the "cron" of the completely-free deployment.
+#
+# Each run scrapes ONE rotating 1/5 slice of areas (full coverage every 5 days),
+# rescores the whole panel from the DB, and commits data/listings.db back to main;
+# Streamlit Community Cloud auto-redeploys on push.
+#
+# Why a slice, not all 55 areas: a full two-portal sweep runs >5h — it can't finish
+# inside a sane CI window, and on a PRIVATE repo (2000 free Actions min/month) daily
+# 5h runs blow the quota in under a week. A ~20-min slice keeps us well inside both.
+#
+# Structure matters: collect is best-effort and time-boxed, but rescore + commit run
+# with `if: always()` so even a blocked or half-finished scrape still ships whatever
+# fresh data we got. (The old job-level timeout cancelled the whole run, so the commit
+# step was skipped and NOTHING was ever pushed — the bug that left data 5 days stale.)
 name: daily-refresh
 on:
   schedule:
     - cron: "0 4 * * *"   # 04:00 UTC = 07:00 Athens, before the workday
-  workflow_dispatch: {}    # manual "Run workflow" button for testing
+  workflow_dispatch: {}    # manual "Run workflow" button
 
 permissions:
   contents: write
@@ -17,7 +28,6 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,21 +35,26 @@ jobs:
           python-version: "3.11"
       - name: Install
         run: pip install -e .
-      - name: Collect + rescore (all areas, card-only)
+
+      - name: Collect today's area slice (best-effort, time-boxed)
+        timeout-minutes: 45          # cap the ONE slow step; the job is never cancelled
+        continue-on-error: true      # a block/timeout must not lose the rescore + commit
         env:
           SCRAPE_DETAIL_PAGES: "false"
           SCRAPE_REQUEST_MIN_S: "4"
           SCRAPE_REQUEST_MAX_S: "7"
-        run: python scripts/run_daily.py
-        continue-on-error: true   # a blocked scrape must not lose the rescore/commit
-      - name: Detail-enrich a bounded batch
-        env:
-          SCRAPE_REQUEST_MIN_S: "6"
-          SCRAPE_REQUEST_MAX_S: "10"
-          SCRAPE_DETAIL_PAGES: "false"
-        run: python scripts/enrich_details.py --limit 20000 --max-fetches 300
-        continue-on-error: true
+        run: python scripts/run_daily.py --shards 5
+
+      - name: Rescore whole panel from the DB (no network)
+        if: always()                 # runs even if collect was cut off — fresh medians/scores
+        timeout-minutes: 15
+        run: |
+          python -c "import sys; sys.path.insert(0, 'src'); \
+          from scout.config import load_strategy; from scout.pipeline import rescore_all; \
+          print('rescored', rescore_all(load_strategy()), 'listings')"
+
       - name: Commit refreshed DB
+        if: always()
         run: |
           git config user.name "daily-refresh-bot"
           git config user.email "actions@github.com"

@@ -9,8 +9,10 @@ existing data.
 
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -21,16 +23,39 @@ from scout.pipeline import run_for_area  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
+def todays_shard(areas: list[str], shards: int) -> list[str]:
+    """1/`shards` of the areas, rotating by day so the whole set is covered every
+    `shards` days. A full 55-area × 2-portal sweep can't finish inside CI's budget
+    (and would burn the private-repo Actions quota), so each run does a small slice
+    and commits it; over a cycle every area is refreshed. shards<=1 → everything.
+    """
+    if shards <= 1:
+        return areas
+    idx = date.today().toordinal() % shards
+    return areas[idx::shards]
+
+
 def main() -> None:
-    """Scrape EVERY configured area, one at a time (polite), on a single node.
+    """Scrape a (rotating slice of) configured areas, one at a time (polite), on a single
+    node.
 
     Iterates over ``search.municipality`` + ``search.areas`` via ``run_for_area``, which
     scopes retirement per area so one area's run never retires another's listings. Each
     area is fail-soft: a blocked/empty area logs and the rest still run. For horizontal
     scale-out across multiple IPs, use the ``enqueue`` + ``worker`` queue instead.
     """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--shards",
+        type=int,
+        default=1,
+        help="Split areas into N day-rotated groups and scrape only today's group "
+        "(full coverage every N days). Default 1 = every area.",
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    areas = load_strategy().search.all_areas()
+    areas = todays_shard(load_strategy().search.all_areas(), args.shards)
     totals: dict[str, int] = {}
     for area in areas:
         try:
