@@ -63,5 +63,15 @@ jobs:
             echo "DB unchanged — nothing to commit"
           else
             git commit -m "data: daily refresh $(date -u +%F)"
-            git push
+            # A ~45-min run can finish after the branch moved on (another push during the
+            # run). A plain push then rejects and the fresh scrape is LOST. Reconcile first,
+            # always keeping OUR freshly-scraped DB on any conflict, and retry.
+            branch="${GITHUB_REF_NAME}"
+            for i in 1 2 3 4; do
+              git push origin "HEAD:${branch}" && { echo "pushed"; break; }
+              echo "push rejected — reconciling (attempt $i)"
+              git fetch origin "${branch}"
+              git merge -X ours --no-edit "origin/${branch}" || true
+              sleep $((2 ** i))
+            done
           fi
