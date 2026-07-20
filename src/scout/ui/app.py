@@ -1656,7 +1656,16 @@ def page_debug() -> None:
         ac[3].metric("Eligible", a.get("total", len(active)))
         fields = a.get("fields") or {}
         if fields:
-            st.caption(" · ".join(f"{k}: {v * 100:.0f}%" for k, v in fields.items()))
+
+            def _fld(k: str, v: float) -> str:
+                # "real_rent" is the share with the listing's OWN scraped rent; the rest use an
+                # area-comp ESTIMATE. Show it to 0.1% (a ~0.3% share must not read as "0%") and
+                # spell out the estimated majority so the yield isn't mistaken for measured.
+                if k == "real_rent":
+                    return f"real rent (own): {v * 100:.1f}% · {(1 - v) * 100:.0f}% estimated (area comp)"
+                return f"{k}: {v * 100:.0f}%"
+
+            st.caption(" · ".join(_fld(k, v) for k, v in fields.items()))
     except Exception as exc:  # never break the debug page on an audit hiccup
         st.caption(f"_audit unavailable: {exc}_")
 

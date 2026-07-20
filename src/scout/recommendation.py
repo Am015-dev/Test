@@ -82,7 +82,7 @@ def recommend(d: dict) -> Recommendation:
     if gap and gap >= 0.10:
         rationale.append(f"priced {gap * 100:.0f}% below the model's fair value (beyond its ±band)")
     if ny is not None and ny >= 0.045 and not rent_est:
-        rationale.append(f"strong {_fmt_pct(ny)} net yield on a real rent comp")
+        rationale.append(f"strong {_fmt_pct(ny)} net yield on the listing's own stated rent")
         play = "Cashflow buy-to-let"
     elif ny is not None and ny >= 0.035:
         rationale.append(f"{_fmt_pct(ny)} net yield")

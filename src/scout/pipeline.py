@@ -145,17 +145,14 @@ def run(
         prelim_stats = compute_market_stats(listings)
         for lst in listings:
             try:
-                # Prefer the real rental-market median for this neighbourhood/area. Track
-                # whether the rent is a genuine local comp (so yield counts as a real
-                # signal) or the flat baseline (an estimate that must not be scored).
+                # Prefer the real rental-market median for this neighbourhood/area so the
+                # rent ESTIMATE tracks the local market (not a flat guess). It is still an
+                # estimate for this listing — honesty is set from its own listed_rent only.
                 median_rent = rent_comps_for(rent_comps, lst.neighborhood)
-                rent_is_comp = median_rent is not None
                 if not median_rent:
                     n_stats = prelim_stats.by_neighborhood.get(lst.neighborhood or "")
                     median_rent = n_stats.median_rent_per_m2 if n_stats else None
-                    rent_is_comp = median_rent is not None
-                # Fall back to the configured baseline so yield is always computable
-                # (marked as an estimate via rent_is_comp=False).
+                # Fall back to the configured baseline so yield is always computable.
                 if not median_rent:
                     median_rent = strategy.search.est_rent_eur_per_m2
                 # SAVEPOINT per listing: enrich_listing writes the geocode cache via
@@ -168,7 +165,6 @@ def run(
                         median_rent_per_m2=median_rent,
                         session=session,
                         use_network=use_network,
-                        rent_is_comp=rent_is_comp,
                     )
                 enriched.append(result)
             except Exception as exc:
@@ -339,16 +335,18 @@ def rescore_all(strategy: Strategy | None = None, chunk: int = 2000) -> int:
         for i, (row, lst) in enumerate(zip(rows, listings, strict=True), 1):
             hist = histories.get(row.id, [])
             first_price = hist[0][1] if hist else None
-            # Apply a REAL local rent comp when we have one (neighbourhood, else area-wide):
-            # the yield stops being an imputed inverse of €/m² and becomes a real signal.
+            # Apply a local rent comp when we have one (neighbourhood, else area-wide) so the
+            # yield tracks the local rental market instead of a flat €/m² guess. This is still
+            # an ESTIMATE for this listing (it has no own rent), so rent_estimated stays True —
+            # only a listing's own listed_rent counts as a real, measured rent.
             area_comps = rent_store.get(lst.search_area or "")
             if area_comps and lst.area_m2 and not lst.listed_rent:
                 ppm = area_comps.get(lst.neighborhood) or area_comps.get(OVERALL_KEY)
                 if ppm:
                     lst.est_monthly_rent = int(round(ppm * lst.area_m2))
-                    lst.rent_estimated = False
+                    lst.rent_estimated = True
                     row.est_monthly_rent = lst.est_monthly_rent
-                    row.rent_estimated = False
+                    row.rent_estimated = True
                     row.gross_yield = lst.gross_yield = _gross_yield(
                         lst.est_monthly_rent, lst.price
                     )
