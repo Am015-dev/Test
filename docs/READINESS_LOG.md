@@ -54,8 +54,21 @@ the product":
 Remaining binding gate: **G2 — "fair value" is asking-vs-asking** (±44% band). Honest
 labelling mitigates but cannot clear it. This is BLOCKED ON OWNER (needs sold-price data).
 
-## In progress
-- Fresh scrape run (proves green-acres fix advances last_seen; clears G5 on the live app).
+## 2026-07-20 (converged) · merged to main + G5 cleared
+- **All of the above merged to main (PR #24)** — the DEPLOYED app now reflects it.
+- **Staleness proven fixed end to end**: daily-refresh run #7 on main advanced `last_seen`
+  to today for 2,929 listings (commit b78fc31) — the first successful auto-refresh after
+  the green-acres scoping fix + the reconcile-push fix. The "data is N days old" banner now
+  reads fresh; the pipeline refreshes a rotating slice daily going forward, so the
+  price-history moat finally starts accumulating. [G5 CLEARED]
+- Deployed DB verified honest: real-rent share 0.2%, not 99.9%.
+
+**Honest state: ~mid-40s, up from 30.** Every gate code can clear is cleared (G1/G3/G4/G5/G6);
+**G2 (asking-not-sold "fair value") is the binding structural cap and needs owner-sourced
+sold-price data.** Code ceiling ≈ mid-50s (a credible €19–29/mo regulatory screener). The
+€1M ambition = revenue + the moat accumulating + the three owner decisions above (paid
+sold-price feed, hosted multi-portal, time). Next high-leverage move is the owner's call on
+a sold-price source — the build is ready the moment one is chosen.
 
 ## Buildable next (no owner/data needed)
 - Tighten the BUY bar — 2,096 "BUY" is still too loose for a credible shortlist. [G1]
