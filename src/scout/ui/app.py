@@ -1087,7 +1087,11 @@ def page_opportunities(listings: list[dict]) -> None:
         reverse=True,
     )
 
-    st.markdown(f"**{len(rows)}** opportunities match your filters (of {len(eligible)} eligible)")
+    n_buys = sum(1 for d in rows if d.get("rec_verdict") == "BUY")
+    st.markdown(
+        f"**{len(rows)}** listings match your filters (of {len(eligible)} tracked) · "
+        f"**{n_buys}** on the BUY shortlist"
+    )
     if rows:
         # Cap the card grid to the top N by score — rendering all ~9k cards ships a
         # multi-megabyte DOM that janks the browser. The full set stays in the table/CSV.
