@@ -36,9 +36,26 @@ Golden-Visa, energy-subsidy; (b) the longitudinal DOM/discount history that comp
   shows "XE" with real share, not phantom multi-source [G4].
 - **honest-buyer-score skill** — hard-gated, un-gameable scorecard driving this loop.
 
+## 2026-07-20 (later) · Buyer re-score 35/100 (was 30) — independent, hard-gated
+The regulatory differentiator, de-inflated header, tightened BUY (471 = 2.7%), honest
+source and data-guard demotion all verified real. Score still limited by dimension sum,
+not gate caps. Then shipped, same loop, the fixes the re-score said were "in code, not in
+the product":
+- **Data-quality guards** — whole-building/future-year/implausible listings demoted &
+  badged, excluded from BUY (the old garbage #1 now bottom 3%).
+- **BUY tightened** 2,103 (12%) → 471 (2.7%): requires value-gap AND solid yield to agree.
+- **Rent honesty re-enriched into the served DB** — real-rent share now reads 0.2% (was
+  99.9%); every yield labelled (est.). [G3 cleared on the live product]
+- **Regulatory filters** (short-let / energy-subsidy) — the differentiator made actionable.
+- **Page-body + Today honesty** — no more "87% are opportunities"; empty 24h feed explained.
+- **Staleness**: root cause fixed (green-acres scoping); a fresh scrape on the current tip
+  is running to advance last_seen and clear the "data is N days old" banner. [G5 closing]
+
+Remaining binding gate: **G2 — "fair value" is asking-vs-asking** (±44% band). Honest
+labelling mitigates but cannot clear it. This is BLOCKED ON OWNER (needs sold-price data).
+
 ## In progress
-- Data-quality guards: stop whole-building-as-flat / future-year / implausible-yield
-  listings from topping the ranking (the #1 credibility killer).
+- Fresh scrape run (proves green-acres fix advances last_seen; clears G5 on the live app).
 
 ## Buildable next (no owner/data needed)
 - Tighten the BUY bar — 2,096 "BUY" is still too loose for a credible shortlist. [G1]
