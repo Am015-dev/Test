@@ -46,6 +46,10 @@ def badges(row: dict) -> list[str]:
     arch = _ARCHETYPE_BADGE.get(row.get("archetype", ""))
     if arch:
         out.append(arch)
+    # Data-quality suspect (whole building priced as a flat, future year, off-by-10x €/m²).
+    # Lead with it so the table makes plain why the ranking demoted this row.
+    if row.get("is_suspect"):
+        out.append("⚠️ DATA?")
     if (row.get("negotiation_score") or 0) >= 45:
         out.append("🤝 NEGOTIABLE")
     if row.get("is_new"):

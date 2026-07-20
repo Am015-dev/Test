@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from ..consistency import consistency_flags as _consistency_flags
 from ..data_quality import listing_confidence
+from ..data_quality_guards import clean_future_years, data_quality_flags
 from ..db import session_scope
 from ..deal import advise as _advise_deal
 from ..investment import deal_grade as _deal_grade
@@ -168,6 +169,16 @@ def _row_to_dict(
         "first_seen": row.first_seen,
         "last_seen": row.last_seen,
     }
+    # Data-quality guards: flag DATA ERRORS (whole building priced as a flat, future year,
+    # off-by-10x €/m²/yield) BEFORE nulling the future years below, so the future-year guard
+    # can still see them. is_suspect demotes the listing in ranking and shows a badge — it is
+    # never deleted (a human verifies on the portal).
+    d["data_quality_flags"] = data_quality_flags(d)
+    d["is_suspect"] = bool(d["data_quality_flags"])
+    # Null any future build/reno year so the card/table never SHOW it and the recommendation
+    # doesn't trust it. (Ingest guards new data at the source in normalize.py; this handles
+    # rows already stored with a future year.)
+    d["year_built"], d["renovated_year"] = clean_future_years(row.year_built, row.renovated_year)
     d["strategy_tags"] = _strategy_tags(d)
     rec = _recommend(d)
     d["rec_verdict"] = rec.verdict

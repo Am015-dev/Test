@@ -150,7 +150,11 @@ def recommend(d: dict) -> Recommendation:
     #   • too little verified data to underwrite (card-only listing missing the essentials).
     inconsistent = bool(d.get("consistency_flags"))
     thin_data = len(d.get("data_missing") or []) >= 2
-    buy_ok = not inconsistent and not thin_data
+    # A data-quality-suspect listing (whole building priced as a flat, future year, off-by-10x
+    # €/m²/yield) must never clear the BUY bar — its headline numbers are artifacts. It still
+    # shows (as WATCH/PASS, badged and demoted), so the buyer sees WHY, never a silent drop.
+    suspect = bool(d.get("is_suspect"))
+    buy_ok = not inconsistent and not thin_data and not suspect
 
     if strong >= 2 and not (rent_est and gap is None) and buy_ok:
         verdict = "BUY"

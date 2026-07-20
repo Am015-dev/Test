@@ -1053,7 +1053,13 @@ def page_opportunities(listings: list[dict]) -> None:
     inner = sort_opts[sort_by]
     rows = sorted(
         [d for d in eligible if keep(d) and (not buys_only or d.get("rec_verdict") == "BUY")],
-        key=lambda d: (_verdict_rank.get(d.get("rec_verdict"), 0), inner(d)),
+        # Data-quality suspects (whole building priced as a flat, future year, off-by-10x
+        # €/m²) sink below every clean listing regardless of score — they can't top the rank.
+        key=lambda d: (
+            not d.get("is_suspect"),
+            _verdict_rank.get(d.get("rec_verdict"), 0),
+            inner(d),
+        ),
         reverse=True,
     )
 
