@@ -974,6 +974,19 @@ def page_opportunities(listings: list[dict]) -> None:
             if present_strats
             else []
         )
+        # Regulatory filters — the differentiator, made actionable. No portal lets you screen
+        # "only listings I can legally short-let" or "energy-subsidy candidates".
+        short_let_filter = st.selectbox(
+            "🏠 Short-let (Airbnb)",
+            ["Any", "Short-let allowed", "Frozen (long-let only)"],
+            index=0,
+            help="Frozen = a buyer cannot get a new Airbnb licence (2026 Athens district freeze).",
+        )
+        subsidy_only = st.checkbox(
+            "🔧 Energy-subsidy candidates only",
+            value=False,
+            help="EPC class C or lower — eligible for the Exoikonomo 2026 renovation subsidy.",
+        )
         areas = [d["area_m2"] for d in eligible]
         amin, amax = int(min(areas)), int(max(areas)) + 1
         area_range = (
@@ -1005,6 +1018,17 @@ def page_opportunities(listings: list[dict]) -> None:
         if max_afford is not None and d["price"] > max_afford:
             return False
         if strat_filter and not (set(strat_filter) & set(d.get("strategy_tags") or [])):
+            return False
+        if short_let_filter != "Any":
+            status = str_legality(_area_key(d)).status
+            if short_let_filter == "Short-let allowed" and status == "FROZEN":
+                return False
+            if short_let_filter == "Frozen (long-let only)" and status != "FROZEN":
+                return False
+        if (
+            subsidy_only
+            and not renovation_subsidy(d.get("energy_class"), d.get("year_built")).candidate
+        ):
             return False
         if not (area_range[0] <= d["area_m2"] <= area_range[1]):
             return False
