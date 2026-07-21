@@ -98,13 +98,16 @@ def _card_html(d: dict, metric: str = "score") -> str:
     if en_pill:
         specs.append(en_pill)
 
-    # Signal row: value gap (only when the model actually priced it), net yield, DOM, metro.
+    # Signal row: honest market-position rank (cheaper than X% of comparable active
+    # listings — covers ~all listings, no pseudo-precise sold-price claim), net yield,
+    # DOM, metro. The hedonic model gap is demoted to the detail page as a secondary estimate.
     signals = []
-    gap = d.get("value_gap_pct")
-    if gap is not None:
-        gcls = "pos" if gap > 0.02 else ("neg" if gap < -0.02 else "neutral")
+    vp = d.get("value_percentile")
+    if vp is not None:
+        vcls = "pos" if vp > 0.55 else ("neg" if vp < 0.45 else "neutral")
         signals.append(
-            f'<div class="ph-sig ph-sig-{gcls}"><b>{gap * 100:+.0f}%</b><span>vs model value</span></div>'
+            f'<div class="ph-sig ph-sig-{vcls}"><b>{vp * 100:.0f}%</b>'
+            f"<span>cheaper than peers</span></div>"
         )
     # Prefer NET yield (the honest after-cost return); fall back to gross. Rent is imputed
     # for most card-only listings, so mark those "est." rather than implying a real comp.

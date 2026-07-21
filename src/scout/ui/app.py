@@ -46,6 +46,7 @@ from scout.regulatory import (  # noqa: E402
     renovation_subsidy,
     str_legality,
 )
+from scout.relative_value import annotate_relative_value, relative_value  # noqa: E402
 from scout.scoring import (
     energy_class_score,
     energy_liability_multiplier,
@@ -78,7 +79,11 @@ inject_css()
 
 @st.cache_resource(ttl=300)
 def get_listings() -> list[dict]:
-    return queries.load_listings(include_excluded=True, only_active=True)
+    rows = queries.load_listings(include_excluded=True, only_active=True)
+    # Annotate each listing's honest market-position rank (cheaper per m² than X% of
+    # comparable active listings) — needs the whole pool, so do it once here.
+    annotate_relative_value(rows)
+    return rows
 
 
 @st.cache_data(ttl=300)
@@ -211,6 +216,10 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
             "Value gap": (
                 (d.get("value_gap_pct") * 100) if d.get("value_gap_pct") is not None else None
             ),
+            # Honest market-position rank: cheaper per m² than N% of comparable active listings.
+            "vs market": (
+                d["value_percentile"] * 100 if d.get("value_percentile") is not None else None
+            ),
             "€/m²": d["price_per_m2"],
             "Area": d["area_m2"],
             "Floor": d["floor"],
@@ -250,6 +259,12 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
             help="+ = priced below the model's estimate of typical asking. An indicative "
             "screen, not a proven discount.",
             format="%+.0f%%",
+        ),
+        "vs market": st.column_config.NumberColumn(
+            "vs market",
+            help="Cheaper per m² than this % of comparable active listings (same area, ±30% "
+            "size). A true market-position rank — no sold-price data, no pseudo-precision.",
+            format="%.0f%%",
         ),
         "Short-let": st.column_config.TextColumn(
             "Short-let", help="Can a buyer legally run a NEW Airbnb here? (2026 Athens freeze)"
@@ -993,6 +1008,15 @@ def page_opportunities(listings: list[dict]) -> None:
             st.slider("Area (m²)", amin, amax, (amin, amax)) if amin < amax else (amin, amax)
         )
         min_yield = st.slider("Min gross yield (%)", 0.0, 12.0, 0.0, step=0.5) / 100
+        min_vs_market = st.slider(
+            "Cheaper than … % of comparable listings",
+            0,
+            95,
+            0,
+            step=5,
+            help="Market-position rank vs comparable active listings (same area, ±30% size). "
+            "0 = off. An honest relative-value screen — no sold-price data needed.",
+        )
         min_value_gap = st.slider(
             "Min value gap (% below fair value)",
             0,
@@ -1034,6 +1058,10 @@ def page_opportunities(listings: list[dict]) -> None:
             return False
         if (d["gross_yield"] or 0) < min_yield:
             return False
+        if min_vs_market > 0:
+            vp = d.get("value_percentile")
+            if vp is None or vp * 100 < min_vs_market:
+                return False
         if min_value_gap > 0:
             gap = d.get("value_gap_pct")
             if gap is None or gap * 100 < min_value_gap:
@@ -1440,11 +1468,14 @@ def page_detail(listings: list[dict]) -> None:
     vc[0].metric("Deal grade", d.get("deal_grade") or "—")
     vc[1].metric("Scorecard", f"{vic.get(sc['verdict'], '')} {sc['verdict']}")
     vc[2].metric("Net yield", fmt.pct(d["net_yield"]) if d.get("net_yield") is not None else "—")
-    gap = d.get("value_gap_pct")
+    # Honest headline value signal: market-position rank among comparable ACTIVE listings
+    # (no sold-price data, no pseudo-precise ±44% "discount"). The hedonic model gap is kept
+    # below as a secondary, clearly-labelled estimate.
+    rv = relative_value(d)
     vc[3].metric(
-        "Vs model value",
-        f"{gap * 100:+.0f}%" if gap is not None else "—",
-        help="Only shown when the price clears the model's ±band (else it's noise).",
+        "vs market",
+        f"cheaper than {rv.percentile * 100:.0f}%" if rv else "—",
+        help="Share of comparable active listings (same area, ±30% size) priced higher per m².",
     )
     if d.get("strategy_tags"):
         st.write(" ".join(f"`{t}`" for t in d["strategy_tags"]))
