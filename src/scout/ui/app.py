@@ -52,6 +52,7 @@ from scout.scoring import (
     energy_liability_multiplier,
     newness_score,
 )  # noqa: E402
+from scout.strategy_fit import strategy_tags  # noqa: E402
 from scout.ui import (
     components,  # noqa: E402
     queries,  # noqa: E402
@@ -81,8 +82,12 @@ inject_css()
 def get_listings() -> list[dict]:
     rows = queries.load_listings(include_excluded=True, only_active=True)
     # Annotate each listing's honest market-position rank (cheaper per m² than X% of
-    # comparable active listings) — needs the whole pool, so do it once here.
+    # comparable active listings) — needs the whole pool, so do it once here. Then recompute
+    # strategy tags: the "Underpriced" tag now keys off this percentile, which only exists
+    # after annotation (queries.py computed tags per-row before the pool was known).
     annotate_relative_value(rows)
+    for d in rows:
+        d["strategy_tags"] = strategy_tags(d)
     return rows
 
 
@@ -1017,14 +1022,6 @@ def page_opportunities(listings: list[dict]) -> None:
             help="Market-position rank vs comparable active listings (same area, ±30% size). "
             "0 = off. An honest relative-value screen — no sold-price data needed.",
         )
-        min_value_gap = st.slider(
-            "Min value gap (% below fair value)",
-            0,
-            40,
-            0,
-            step=5,
-            help="Only flats the hedonic model prices at least this far below fair value.",
-        )
         min_year = st.slider("Built/renovated after", 1950, 2025, 1950, step=5)
         new_only = st.checkbox("New builds only (≥ 2010)", value=False)
         include_unknown_year = st.checkbox("Include unknown build year", value=True)
@@ -1062,10 +1059,6 @@ def page_opportunities(listings: list[dict]) -> None:
             vp = d.get("value_percentile")
             if vp is None or vp * 100 < min_vs_market:
                 return False
-        if min_value_gap > 0:
-            gap = d.get("value_gap_pct")
-            if gap is None or gap * 100 < min_value_gap:
-                return False
         yr = _built_year(d)
         effective_min = max(min_year, 2010) if new_only else min_year
         if yr is None:
@@ -1091,7 +1084,7 @@ def page_opportunities(listings: list[dict]) -> None:
     _verdict_rank = {"BUY": 2, "WATCH": 1, "PASS": 0}
     sort_opts = {
         "Best overall (score)": lambda d: (d["score"], d.get("data_complete", False)),
-        "Biggest discount (below model)": lambda d: (d.get("value_gap_pct") or -1),
+        "Cheapest vs comparable listings": lambda d: (d.get("value_percentile") or -1),
         "Most negotiable (days on market)": lambda d: (d.get("days_on_market") or 0),
         "Highest net yield": lambda d: (d.get("net_yield") or -1),
     }
@@ -1194,9 +1187,9 @@ def page_today(listings: list[dict]) -> None:
     # and the highest yield right now — so the landing view is actionable even between runs.
     briefs = [
         (
-            "💰 Biggest discounts (below fair value)",
-            lambda d: d.get("value_gap_pct") or -1,
-            lambda d: (d.get("value_gap_pct") or 0) > 0,
+            "💰 Cheapest vs comparable listings",
+            lambda d: d.get("value_percentile") or -1,
+            lambda d: (d.get("value_percentile") or 0) >= 0.90,
         ),
         (
             "⏳ Most negotiable (longest on market)",

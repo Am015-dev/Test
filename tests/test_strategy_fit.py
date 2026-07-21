@@ -12,6 +12,7 @@ def _listing(**overrides) -> dict:
         net_yield=0.03,
         gross_yield=0.04,
         value_gap_pct=None,
+        value_percentile=None,
         energy_class="B",
         year_built=2010,
         renovated_year=None,
@@ -54,9 +55,14 @@ def test_renovated_old_flat_is_not_value_add():
     assert "Value-add" not in tags
 
 
-def test_significant_value_gap_is_underpriced():
-    assert "Underpriced" in strategy_tags(_listing(value_gap_pct=0.18))
-    assert "Underpriced" not in strategy_tags(_listing(value_gap_pct=0.05))
+def test_cheaper_than_most_peers_is_underpriced():
+    # Underpriced is now an honest market-position rank (cheaper per m² than ≥80% of
+    # comparable active listings), not an asking-vs-model "below fair value" claim.
+    assert "Underpriced" in strategy_tags(_listing(value_percentile=0.92))
+    assert "Underpriced" not in strategy_tags(_listing(value_percentile=0.85))
+    assert "Underpriced" not in strategy_tags(_listing(value_percentile=0.50))
+    # A big asking-vs-model gap no longer earns the tag on its own.
+    assert "Underpriced" not in strategy_tags(_listing(value_gap_pct=0.18))
 
 
 def test_motivated_by_negotiation_score():
@@ -81,7 +87,7 @@ def test_multiple_tags_are_ordered_and_deduped():
     tags = strategy_tags(
         _listing(
             net_yield=0.06,
-            value_gap_pct=0.20,
+            value_percentile=0.90,
             negotiation_score=50,
             metro_distance_m=200,
         )
