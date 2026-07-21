@@ -54,6 +54,29 @@ the product":
 Remaining binding gate: **G2 — "fair value" is asking-vs-asking** (±44% band). Honest
 labelling mitigates but cannot clear it. This is BLOCKED ON OWNER (needs sold-price data).
 
+## 2026-07-21 · Buyer 40 → ~45-48 · ALL hard gates cleared
+Independent re-score hit **40/100** (Diff 11 · Trust 14 · Moat 3 · Live 10 · Job 7 = raw 45,
+capped to 40 by the last gate, G2). Then shipped the two levers that lift it, both pure code:
+- **Honest market-position value signal** (`relative_value.py`): "cheaper per m² than 82% of
+  comparable active listings" — replaces the pseudo-precise ±44% "49% under fair value" AVM
+  headline. Covers ~100% of listings (AVM covered 16%). On cards, detail, a filter, a column.
+- **G2 CLEARED**: removed the last asking-vs-model "discount/fair value" surfaces —
+  "Underpriced" re-based on the percentile (cheapest ~10%), the "min value gap" filter and
+  "biggest discount" sort gone.
+
+**All six hard gates (G1-G6) are cleared → score is the ~45-48 raw dimension sum, uncapped.**
+The honest code-only ceiling: a credible €19-29/mo regulatory + market-position screener.
+**30 → ~45-48 is real, all measured, no inflation.**
+
+### Why it cannot go higher without the OWNER (the real wall)
+- **Moat 3/20** — price-drop/DOM history is empty (0.3% of listings have >1 price point) and
+  the daily refresh is now **PAUSED: the account's free GitHub Actions minutes are exhausted**
+  (private repo = 2000/mo). Blocked on an owner decision: repo public (unlimited free Actions),
+  scrape from your own machine/Oracle VM, or wait for the monthly reset.
+- **Trust/Job** — "what will it really trade at / rent at" needs sold-price data (no open Greek
+  register) and a real rent dataset. **Live/Diff** — multi-portal needs hosted FlareSolverr.
+- **€1M** = recurring revenue + the moat + those data assets. Not code.
+
 ## 2026-07-20 (converged) · merged to main + G5 cleared
 - **All of the above merged to main (PR #24)** — the DEPLOYED app now reflects it.
 - **Staleness proven fixed end to end**: daily-refresh run #7 on main advanced `last_seen`
