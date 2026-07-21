@@ -18,9 +18,10 @@ from collections.abc import Callable
 
 # Strong NET yield: same bar as metrics.CAP_RATE_GOOD / deal_grade's yield point.
 _CASHFLOW_NET_YIELD = 0.045
-# A value gap only survives into the dict when it already cleared the model's ±band
-# upstream, so any gap this large is beyond-noise (mirrors investment.deal_grade).
-_UNDERPRICED_GAP = 0.10
+# Honest market-position rank (relative_value): "Underpriced" = the cheapest ~10% per m²
+# among comparable active listings. Kept below the 20% deal-label line so it stays a
+# meaningful minority, not an "everything is a deal" tag.
+_UNDERPRICED_PERCENTILE = 0.90  # cheaper per m² than >=90% of comparable listings (top ~10%)
 # Motivation: same negotiation-score bar as deal_grade; stale = 6 months on market.
 _MOTIVATED_NEGOTIATION = 45.0
 _MOTIVATED_DAYS = 180
@@ -37,7 +38,7 @@ _POOR_ENERGY = {"D", "Δ", "E", "Ε", "F", "Ζ", "G", "Η", "H"}
 STRATEGY_DESCRIPTIONS: dict[str, str] = {
     "Cashflow": "Strong real net yield — buy it for the rent it throws off.",
     "Value-add": "Poor energy or old un-renovated stock — renovation upside (EU EPBD).",
-    "Underpriced": "Priced meaningfully below the model's fair value.",
+    "Underpriced": "Cheaper per m² than most comparable active listings for sale.",
     "Motivated seller": "Negotiable seller or long time on market — room to bargain.",
     "Prime location": "Exact address within a short walk of a metro station.",
 }
@@ -75,9 +76,11 @@ def _is_value_add(d: dict) -> bool:
 
 
 def _is_underpriced(d: dict) -> bool:
-    """A significant, already significance-gated value gap vs the hedonic model."""
-    gap = _num(d.get("value_gap_pct"))
-    return gap is not None and gap >= _UNDERPRICED_GAP
+    """Cheaper per m² than most COMPARABLE ACTIVE listings — an honest market-position rank
+    (relative_value.value_percentile), not an asking-vs-asking "below the model's fair value"
+    claim. Falls back to nothing when the percentile is absent (needs the pool to annotate)."""
+    vp = _num(d.get("value_percentile"))
+    return vp is not None and vp >= _UNDERPRICED_PERCENTILE
 
 
 def _is_motivated(d: dict) -> bool:
