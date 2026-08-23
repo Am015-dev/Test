@@ -33,7 +33,10 @@ import streamlit as st  # noqa: E402
 # Guarded: st.secrets raises if no secrets.toml exists at all (e.g. local `streamlit run`).
 try:
     if "DATABASE_URL" in st.secrets:
-        os.environ.setdefault("DATABASE_URL", st.secrets["DATABASE_URL"])
+        # Unconditional overwrite, not setdefault: a stray/stale DATABASE_URL already
+        # present in the container's environment must never silently win over the
+        # secret the user actually configured.
+        os.environ["DATABASE_URL"] = st.secrets["DATABASE_URL"]
 except Exception:
     pass
 
@@ -52,7 +55,7 @@ from scout import (  # noqa: E402
     score_explain,
     sensitivity,
 )
-from scout.config import Strategy, load_strategy, save_strategy  # noqa: E402
+from scout.config import Strategy, get_settings, load_strategy, save_strategy  # noqa: E402
 from scout.regions import REGIONS  # noqa: E402
 from scout.regulatory import (  # noqa: E402
     golden_visa_status,
@@ -1700,6 +1703,23 @@ def page_strategy() -> None:
 def page_debug() -> None:
     st.subheader("🐛 Debug")
     st.caption("Raw data & pipeline diagnostics for troubleshooting.")
+
+    # Which database backend is this process actually connected to? The #1 diagnostic
+    # for "the daily pipeline ran but the site still looks stale" — usually means the
+    # deployed app hasn't picked up a Postgres DATABASE_URL secret (needs a reboot on
+    # Streamlit Cloud after adding/changing a secret) and is still on local SQLite.
+    db_url = get_settings().db_url
+    if db_url.startswith("postgresql"):
+        # Never print the real URL (it carries the password) — just prove it's Postgres
+        # and show which host, which is enough to confirm/deny "using the right DB".
+        host = db_url.split("@", 1)[-1].split("/", 1)[0] if "@" in db_url else "?"
+        st.success(f"🐘 Database backend: **Postgres** ({host})")
+    else:
+        st.warning(
+            "🗄️ Database backend: **local SQLite** — DATABASE_URL is not active in this "
+            "process. If you expect Postgres, the secret may need the app rebooted "
+            "(Streamlit Cloud doesn't always auto-restart on a secret change)."
+        )
 
     rows = get_all_listings_debug()
     if not rows:
