@@ -123,6 +123,17 @@ def _card_html(d: dict, metric: str = "score") -> str:
             signals.append(
                 f'<div class="ph-sig"><b>{gy * 100:.1f}%</b><span>gross yield{est}</span></div>'
             )
+    # A raw yield % means nothing without area context — 5.5% is exceptional in a prime
+    # low-yield neighborhood, mediocre in a peripheral high-yield one. This ranks it
+    # against comparable ACTIVE listings in the SAME area, same treatment as "cheaper
+    # than peers" above, instead of a flat national threshold.
+    yp = d.get("yield_percentile")
+    if yp is not None:
+        ycls = "pos" if yp > 0.55 else ("neg" if yp < 0.45 else "neutral")
+        signals.append(
+            f'<div class="ph-sig ph-sig-{ycls}"><b>{yp * 100:.0f}%</b>'
+            f"<span>higher yield than peers</span></div>"
+        )
     dom = d.get("days_on_market")
     if dom is not None:
         signals.append(f'<div class="ph-sig"><b>{dom}d</b><span>on market</span></div>')

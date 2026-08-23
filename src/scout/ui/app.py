@@ -62,7 +62,11 @@ from scout.regulatory import (  # noqa: E402
     renovation_subsidy,
     str_legality,
 )
-from scout.relative_value import annotate_relative_value, relative_value  # noqa: E402
+from scout.relative_value import (  # noqa: E402
+    annotate_relative_value,
+    relative_value,
+    relative_yield,
+)
 from scout.scoring import (
     energy_class_score,
     energy_liability_multiplier,
@@ -1479,7 +1483,7 @@ def page_detail(listings: list[dict]) -> None:
     # Verdict up front — the answer before any deep dive.
     sc = deal_scorecard.scorecard(d)
     vic = {"Strong": "🟢", "Fair": "🟡", "Pass": "🔴"}
-    vc = st.columns(4)
+    vc = st.columns(5)
     vc[0].metric("Deal grade", d.get("deal_grade") or "—")
     vc[1].metric("Scorecard", f"{vic.get(sc['verdict'], '')} {sc['verdict']}")
     vc[2].metric("Net yield", fmt.pct(d["net_yield"]) if d.get("net_yield") is not None else "—")
@@ -1491,6 +1495,15 @@ def page_detail(listings: list[dict]) -> None:
         "vs market",
         f"cheaper than {rv.percentile * 100:.0f}%" if rv else "—",
         help="Share of comparable active listings (same area, ±30% size) priced higher per m².",
+    )
+    # A raw yield % means nothing without area context — 5.5% is exceptional in a prime
+    # low-yield neighborhood, mediocre in a peripheral high-yield one. This ranks the yield
+    # against comparable ACTIVE listings in the SAME area, instead of a flat national band.
+    ry = relative_yield(d)
+    vc[4].metric(
+        "yield vs area",
+        f"better than {ry.percentile * 100:.0f}%" if ry else "—",
+        help="Share of comparable active listings (same area, ±30% size) with a lower yield.",
     )
     if d.get("strategy_tags"):
         st.write(" ".join(f"`{t}`" for t in d["strategy_tags"]))
