@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, "src")
 
-from sqlalchemy import MetaData, create_engine, insert, select  # noqa: E402
+from sqlalchemy import MetaData, String, create_engine, insert, select  # noqa: E402
 
 from scout.models import Base  # noqa: E402
 
@@ -59,15 +59,37 @@ def _fill_none_with_orm_defaults(row: dict, dst_table) -> None:
             row[col.name] = arg(None) if callable(arg) else arg
 
 
+def _truncate_oversize_strings(row: dict, dst_table, table_name: str) -> None:
+    """SQLite has no real length enforcement, so a scraper/parser quirk can leave a
+    String(N) column carrying far more than N characters in the historical DB (found: 3
+    `heating` values up to 397 chars — a whole scraped feature blob instead of a heating
+    type, an upstream data-quality issue, not something this migration should try to fix).
+    Truncate to fit rather than losing the whole row/table over a handful of legacy
+    values — but always print what was truncated, so it stays visible and auditable."""
+    for col in dst_table.columns:
+        if not isinstance(col.type, String) or col.type.length is None:
+            continue
+        val = row.get(col.name)
+        if isinstance(val, str) and len(val) > col.type.length:
+            print(
+                f"  TRUNCATED {table_name}.{col.name} id={row.get('id')}: "
+                f"{len(val)} -> {col.type.length} chars",
+                flush=True,
+            )
+            row[col.name] = val[: col.type.length]
+
+
 with src_engine.connect() as sconn, dst_engine.begin() as dconn:
     for table in tables:
         rows = [dict(r._mapping) for r in sconn.execute(select(table))]
         # Insert against the ORM-DECLARED table (Base.metadata), not the SQLite-reflected
         # one — it's what create_all() actually built on Postgres, and it's the only place
-        # nullable/default info (needed above) lives; a bare SQLite reflection has neither.
+        # nullable/default/length info (needed above) lives; a bare SQLite reflection has
+        # none of that.
         dst_table = Base.metadata.tables[table.name]
         for row in rows:
             _fill_none_with_orm_defaults(row, dst_table)
+            _truncate_oversize_strings(row, dst_table, table.name)
         dconn.execute(dst_table.delete())
         if rows:
             dconn.execute(insert(dst_table), rows)
