@@ -7,6 +7,8 @@ path where every listing is excluded but data must still show.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 streamlit_testing = pytest.importorskip("streamlit.testing.v1")
@@ -17,7 +19,9 @@ from scout.scoring import compute_market_stats, score  # noqa: E402
 
 from .conftest import make_listing  # noqa: E402
 
-APP = "src/scout/ui/app.py"
+# Absolute path: newer Streamlit resolves a relative AppTest path against THIS test file's
+# directory (→ tests/src/...), not the repo root, so anchor it explicitly.
+APP = str(Path(__file__).resolve().parents[1] / "src" / "scout" / "ui" / "app.py")
 
 
 def _seed_db(db_path, *, exclude_all: bool) -> None:
@@ -73,8 +77,9 @@ def test_app_renders_with_opportunities(_db):
     # inflated "every eligible listing is an opportunity" — so assert the tracked-count and
     # the regulatory differentiator metrics render.
     labels = {m.label for m in at.metric}
-    assert "Listings tracked" in labels
-    assert any("Short-let" in x for x in labels)  # the regulatory differentiator is surfaced
+    assert "Listings" in labels
+    # the regulatory differentiator (short-let) is surfaced in the compact header
+    assert any("short-let" in x.lower() for x in labels)
     assert len(at.dataframe) >= 1
 
 

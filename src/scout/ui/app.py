@@ -309,24 +309,22 @@ def _kpi_header(listings: list[dict]) -> None:
         if renovation_subsidy(d.get("energy_class"), d.get("year_built")).candidate
     )
 
-    c = st.columns(5)
-    c[0].metric("Listings tracked", len(eligible), help="Active listings after hard filters")
+    # Four short-labelled metrics (was five with long labels that truncated to "LISTINGS T…").
+    # Energy-subsidy drops off the headline — it stays a sidebar filter and a per-card badge.
+    _ = reno  # still computed for parity / possible reuse; not shown in the compact header
+    c = st.columns(4)
+    c[0].metric("Listings", len(eligible), help="Active listings after your filters")
     c[1].metric(
-        "🟢 BUY shortlist",
+        "🟢 BUY picks",
         buys,
-        help="Listings that clear the verified BUY bar — the curated picks, not all inventory",
+        help="Listings that clear the verified BUY bar — the curated shortlist, not all inventory",
     )
     c[2].metric(
-        "🚫 Short-let frozen",
+        "🚫 No short-let",
         str_frozen,
         help="In Athens districts where a buyer cannot get a new Airbnb licence (2026 freeze)",
     )
-    c[3].metric(
-        "🔧 Energy-subsidy",
-        reno,
-        help="EPC class C or lower — candidates for the Exoikonomo 2026 renovation subsidy",
-    )
-    c[4].metric("Median net yield (est.)", fmt.pct(median_ny) if median_ny is not None else "—")
+    c[3].metric("Median yield", fmt.pct(median_ny) if median_ny is not None else "—")
 
 
 def _area_key(d: dict) -> str | None:
@@ -951,18 +949,13 @@ def page_opportunities(listings: list[dict]) -> None:
     # Sidebar filters — defaults include everything so nothing hides silently.
     with st.sidebar:
         st.subheader("Filters")
-        # Region filter — the classic Attica grouping (Κέντρο / Βόρεια / Νότια / Δυτικά /
-        # Πειραιάς). Default = all regions present, so nothing hides until the user picks.
+        # Keep the everyday filters visible; tuck the rest into an expander so the sidebar
+        # isn't a wall of ~15 controls (the #1 "hard to use" complaint).
         present_regions = [r for r in REGIONS if any(d.get("region") == r for d in eligible)]
         chosen_regions = (
-            st.multiselect("Περιοχή / Region", present_regions, default=present_regions)
+            st.multiselect("Region", present_regions, default=present_regions)
             if present_regions
             else []
-        )
-        near_metro_only = st.checkbox(
-            "🚇 Μόνο κοντά σε μετρό / Near metro only",
-            value=False,
-            help="Keep only listings within the metro distance below (Line 2/3).",
         )
         prices = [d["price"] for d in eligible]
         pmin, pmax = min(prices), max(prices)
@@ -971,62 +964,67 @@ def page_opportunities(listings: list[dict]) -> None:
             if pmin < pmax
             else (pmin, pmax)
         )
-        income = st.number_input(
-            "Monthly net income (€) — 0 = off",
-            min_value=0,
-            value=0,
-            step=100,
-            help="Filters to homes a 25-yr mortgage at ~30% down supports on this income.",
+        min_vs_market = st.slider(
+            "Only good value — cheaper than …% of similar",
+            0,
+            95,
+            0,
+            step=5,
+            help="Market-position rank vs comparable active listings (same area, ±30% size). "
+            "0 = show all. An honest relative-value screen — no sold-price data needed.",
         )
-        max_afford = _max_affordable_price(income)
-        if max_afford:
-            st.caption(
-                f"≈ affordable up to **{fmt.euro(max_afford)}** (35% of income, ~4.5%, 25 yr)."
-            )
-        present_strats = sorted({t for d in eligible for t in (d.get("strategy_tags") or [])})
-        strat_filter = (
-            st.multiselect(
-                "Strategy",
-                present_strats,
-                default=[],
-                help="Cashflow · Value-add · Underpriced · Motivated seller · Prime location",
-            )
-            if present_strats
-            else []
-        )
-        # Regulatory filters — the differentiator, made actionable. No portal lets you screen
-        # "only listings I can legally short-let" or "energy-subsidy candidates".
         short_let_filter = st.selectbox(
             "🏠 Short-let (Airbnb)",
             ["Any", "Short-let allowed", "Frozen (long-let only)"],
             index=0,
             help="Frozen = a buyer cannot get a new Airbnb licence (2026 Athens district freeze).",
         )
-        subsidy_only = st.checkbox(
-            "🔧 Energy-subsidy candidates only",
-            value=False,
-            help="EPC class C or lower — eligible for the Exoikonomo 2026 renovation subsidy.",
-        )
-        areas = [d["area_m2"] for d in eligible]
-        amin, amax = int(min(areas)), int(max(areas)) + 1
-        area_range = (
-            st.slider("Area (m²)", amin, amax, (amin, amax)) if amin < amax else (amin, amax)
-        )
-        min_yield = st.slider("Min gross yield (%)", 0.0, 12.0, 0.0, step=0.5) / 100
-        min_vs_market = st.slider(
-            "Cheaper than … % of comparable listings",
-            0,
-            95,
-            0,
-            step=5,
-            help="Market-position rank vs comparable active listings (same area, ±30% size). "
-            "0 = off. An honest relative-value screen — no sold-price data needed.",
-        )
-        min_year = st.slider("Built/renovated after", 1950, 2025, 1950, step=5)
-        new_only = st.checkbox("New builds only (≥ 2010)", value=False)
-        include_unknown_year = st.checkbox("Include unknown build year", value=True)
-        max_metro = st.slider("Max metro distance (m)", 0, 5000, 5000, step=50)
-        include_unknown_metro = st.checkbox("Include unknown metro distance", value=True)
+
+        with st.expander("⚙️ More filters"):
+            near_metro_only = st.checkbox(
+                "🚇 Near a metro station only",
+                value=False,
+                help="Keep only listings within the metro distance below (Line 2/3).",
+            )
+            income = st.number_input(
+                "Your monthly net income (€) — 0 = off",
+                min_value=0,
+                value=0,
+                step=100,
+                help="Filters to homes a 25-yr mortgage at ~30% down supports on this income.",
+            )
+            max_afford = _max_affordable_price(income)
+            if max_afford:
+                st.caption(
+                    f"≈ affordable up to **{fmt.euro(max_afford)}** (35% of income, ~4.5%, 25 yr)."
+                )
+            present_strats = sorted({t for d in eligible for t in (d.get("strategy_tags") or [])})
+            strat_filter = (
+                st.multiselect(
+                    "Strategy",
+                    present_strats,
+                    default=[],
+                    help="Cashflow · Value-add · Underpriced · Motivated seller · Prime location",
+                )
+                if present_strats
+                else []
+            )
+            subsidy_only = st.checkbox(
+                "🔧 Energy-subsidy candidates only",
+                value=False,
+                help="EPC class C or lower — eligible for the Exoikonomo 2026 renovation subsidy.",
+            )
+            areas = [d["area_m2"] for d in eligible]
+            amin, amax = int(min(areas)), int(max(areas)) + 1
+            area_range = (
+                st.slider("Area (m²)", amin, amax, (amin, amax)) if amin < amax else (amin, amax)
+            )
+            min_yield = st.slider("Min gross yield (%)", 0.0, 12.0, 0.0, step=0.5) / 100
+            min_year = st.slider("Built/renovated after", 1950, 2025, 1950, step=5)
+            new_only = st.checkbox("New builds only (≥ 2010)", value=False)
+            include_unknown_year = st.checkbox("Include unknown build year", value=True)
+            max_metro = st.slider("Max metro distance (m)", 0, 5000, 5000, step=50)
+            include_unknown_metro = st.checkbox("Include unknown metro distance", value=True)
 
     def _built_year(d: dict) -> int | None:
         return d.get("renovated_year") or d.get("year_built")
@@ -2077,16 +2075,18 @@ def page_compare(listings: list[dict]) -> None:
     st.caption("Higher score/net yield/cap rate & lower GRM/days-on-market is better.")
 
 
+# Everyday pages first, secondary tools after — so the nav reads top-to-bottom by how
+# often it's used, instead of an 11-item jumble.
 PAGES = {
     "Opportunities": page_opportunities,
-    "Deals": page_deals,
-    "Saved searches": page_saved_searches,
     "Today": page_today,
     "Map": page_map,
     "Neighborhoods": page_neighborhoods,
     "Listing detail": page_detail,
+    "Deals": page_deals,
     "Compare": page_compare,
     "Watchlist": page_watchlist,
+    "Saved searches": page_saved_searches,
 }
 
 
