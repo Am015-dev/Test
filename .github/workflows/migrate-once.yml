@@ -1,0 +1,32 @@
+# ONE-OFF: copy the historical SQLite snapshot into Postgres (DATABASE_URL secret).
+# Manual trigger only. Delete this file + scripts/_migrate_once.py after a successful run —
+# it exists purely to move the last committed data/listings.db into the new Postgres store.
+name: migrate-once
+on:
+  workflow_dispatch: {}
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: code
+      - uses: actions/checkout@v4
+        with:
+          ref: 2546468355c1d426267f5eb8791b1930cec02ede
+          path: old_data
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        working-directory: code
+        run: pip install -e ".[postgres]"
+      - name: Migrate
+        working-directory: code
+        env:
+          OLD_SQLITE_PATH: ${{ github.workspace }}/old_data/data/listings.db
+        run: python scripts/_migrate_once.py

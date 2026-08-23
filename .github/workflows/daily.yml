@@ -1,31 +1,19 @@
 # Daily data refresh — the "cron" of the completely-free deployment.
 #
-# Each run scrapes ONE rotating 1/5 slice of areas (full coverage every 5 days),
-# rescores the whole panel from the DB, and commits data/listings.db back to main;
-# Streamlit Community Cloud auto-redeploys on push.
+# Data now lives in a free-tier Postgres (DATABASE_URL secret), not a committed SQLite
+# file — the repo is public (for unlimited free Actions minutes), and a public repo
+# cannot hold private data. Scrape + rescore write DIRECTLY to Postgres; there is no
+# git-commit step anymore, which also removes the old "push rejected mid-run" class of
+# bug entirely (nothing to push).
 #
-# Why a slice, not all 55 areas: a full two-portal sweep runs >5h — it can't finish
-# inside a sane CI window, and on a PRIVATE repo (2000 free Actions min/month) daily
-# 5h runs blow the quota in under a week. A ~20-min slice keeps us well inside both.
-#
-# Structure matters: collect is best-effort and time-boxed, but rescore + commit run
-# with `if: always()` so even a blocked or half-finished scrape still ships whatever
-# fresh data we got. (The old job-level timeout cancelled the whole run, so the commit
-# step was skipped and NOTHING was ever pushed — the bug that left data 5 days stale.)
-#
-# Actions-minute budget (private repo = 2000 min/month): with the green-acres scoping fix
-# a run is ~15-20 min, and the collect step is hard-capped at 25 min → worst case ~30 min
-# × 30 days ≈ 900 min/month, comfortably inside 2000. The bot's data commit changes only
-# data/listings.db, which ci.yml ignores, so it never triggers a CI run. Do NOT restore
-# per-branch CI or a 45-min cap — that is exactly what exhausted the budget before.
+# Each run scrapes ONE rotating 1/5 slice of areas (full coverage every 5 days), then
+# rescores the whole panel. Why a slice, not all 55 areas: a full two-portal sweep runs
+# >5h — it can't finish inside a sane CI window.
 name: daily-refresh
 on:
   schedule:
     - cron: "0 4 * * *"   # 04:00 UTC = 07:00 Athens, before the workday
   workflow_dispatch: {}    # manual "Run workflow" button
-
-permissions:
-  contents: write
 
 concurrency:
   group: daily-refresh
@@ -34,9 +22,9 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    # Backstop ONLY — must stay ABOVE the sum of step caps (25 collect + 15 rescore + install
-    # ≈ 42) or it would cancel the commit step and revive the "nothing ever pushed" bug.
-    timeout-minutes: 55
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -45,11 +33,11 @@ jobs:
           cache: "pip"
           cache-dependency-path: pyproject.toml
       - name: Install
-        run: pip install -e .
+        run: pip install -e ".[postgres]"
 
       - name: Collect today's area slice (best-effort, time-boxed)
         timeout-minutes: 25          # cap the ONE slow step; the job is never cancelled
-        continue-on-error: true      # a block/timeout must not lose the rescore + commit
+        continue-on-error: true      # a block/timeout must not lose the rescore
         env:
           SCRAPE_DETAIL_PAGES: "false"
           SCRAPE_REQUEST_MIN_S: "4"
@@ -63,26 +51,3 @@ jobs:
           python -c "import sys; sys.path.insert(0, 'src'); \
           from scout.config import load_strategy; from scout.pipeline import rescore_all; \
           print('rescored', rescore_all(load_strategy()), 'listings')"
-
-      - name: Commit refreshed DB
-        if: always()
-        run: |
-          git config user.name "daily-refresh-bot"
-          git config user.email "actions@github.com"
-          git add -f data/listings.db
-          if git diff --cached --quiet; then
-            echo "DB unchanged — nothing to commit"
-          else
-            git commit -m "data: daily refresh $(date -u +%F)"
-            # A ~45-min run can finish after the branch moved on (another push during the
-            # run). A plain push then rejects and the fresh scrape is LOST. Reconcile first,
-            # always keeping OUR freshly-scraped DB on any conflict, and retry.
-            branch="${GITHUB_REF_NAME}"
-            for i in 1 2 3 4; do
-              git push origin "HEAD:${branch}" && { echo "pushed"; break; }
-              echo "push rejected — reconciling (attempt $i)"
-              git fetch origin "${branch}"
-              git merge -X ours --no-edit "origin/${branch}" || true
-              sleep $((2 ** i))
-            done
-          fi
