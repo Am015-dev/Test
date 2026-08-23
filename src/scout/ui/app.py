@@ -89,9 +89,17 @@ inject_css()
 # Cloud's ~1 GB limit and the app OOM-restarted (dropped websocket, "lost" sidebar).
 # cache_resource shares ONE object across sessions; pages treat these as READ-ONLY —
 # never mutate a dict from these caches (copy first).
+#
+# TTL=3h on the expensive loaders below (was 5-10min): materializing ~23k ORM rows from
+# the DB takes ~4-5s, and at a 5-min TTL EVERY visitor after a 5-min gap paid that cost —
+# the dominant cause of the app "feeling frozen". The underlying data only changes once a
+# day (the scheduled daily-refresh workflow), so a short TTL bought near-zero freshness
+# for a real, frequent latency hit. The "Refresh now" button clears both cache_data AND
+# cache_resource explicitly, so anyone who needs it fresher NOW still gets that instantly —
+# this TTL only controls the passive/background refresh cadence.
 
 
-@st.cache_resource(ttl=300)
+@st.cache_resource(ttl=10800, show_spinner="Loading listings and computing market rankings…")
 def get_listings() -> list[dict]:
     rows = queries.load_listings(include_excluded=True, only_active=True)
     # Annotate each listing's honest market-position rank (cheaper per m² than X% of
@@ -104,12 +112,12 @@ def get_listings() -> list[dict]:
     return rows
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=10800)
 def get_strategy() -> Strategy:
     return load_strategy()
 
 
-@st.cache_resource(ttl=600)
+@st.cache_resource(ttl=10800)
 def get_all_listings_debug() -> list[dict]:
     """Everything, including excluded and inactive (gone) listings — for the Debug page."""
     return queries.load_listings(
@@ -122,7 +130,7 @@ def get_history(listing_id: int):
     return queries.load_price_history(listing_id)
 
 
-@st.cache_resource(ttl=600)
+@st.cache_resource(ttl=10800)
 def get_all_price_history() -> list[dict]:
     return queries.load_all_price_history()
 
@@ -132,7 +140,7 @@ def get_recent_health() -> list[dict]:
     return queries.load_recent_health(10)
 
 
-@st.cache_resource(ttl=300)
+@st.cache_resource(ttl=10800)
 def get_valuation_summary() -> dict:
     return queries.load_valuation_summary()
 

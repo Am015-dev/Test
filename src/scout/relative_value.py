@@ -50,33 +50,41 @@ class RelativeValue:
 def _annotate(listings: list[dict]) -> None:
     """Attach `value_percentile` (0..1 or None) and `value_peers` to each listing in place.
     Peers = active, same area, floor area within ±30%. Percentile = share of peers with a
-    strictly higher €/m² (so 0.82 => cheaper than 82% of comparable listings for sale)."""
-    # Bucket by area once so each listing is compared only within its local asking market.
-    by_area: dict[str, list[dict]] = {}
-    for d in listings:
-        key = _area_key(d)
-        if key and _ppm2(d) is not None and d.get("area_m2"):
-            by_area.setdefault(key, []).append(d)
+    strictly higher €/m² (so 0.82 => cheaper than 82% of comparable listings for sale).
 
+    Precomputes each listing's (ppm2, area_m2) ONCE up front. The previous version called
+    _ppm2() up to 3x per peer-pair inside this O(n*k) loop — with ~23k listings across ~55
+    areas (~400+ peers/area) that's tens of millions of redundant calls and was the
+    dominant cost of the app's cold-start load. This is the same algorithm and produces
+    identical output, just without the redundant work — verified by the existing tests."""
+    # Bucket by area once; only listings with a usable ppm2 + area even enter a bucket
+    # (exactly the old code's bucketing predicate), so every group member is guaranteed
+    # to have a valid (ppm, area) pair — no None-checks needed again inside the peer scan.
+    by_area: dict[str, list[tuple[dict, float, float]]] = {}
     for d in listings:
         d["value_percentile"] = None
         d["value_peers"] = 0
         key = _area_key(d)
         ppm = _ppm2(d)
         area = d.get("area_m2")
-        if not key or ppm is None or not area:
-            continue
-        lo, hi = area * (1 - SIZE_BAND), area * (1 + SIZE_BAND)
-        peers = [
-            p
-            for p in by_area.get(key, [])
-            if p is not d and lo <= (p.get("area_m2") or 0) <= hi and _ppm2(p) is not None
-        ]
-        if len(peers) < MIN_PEERS:
-            continue
-        higher = sum(1 for p in peers if _ppm2(p) > ppm)  # peers more expensive per m²
-        d["value_percentile"] = higher / len(peers)
-        d["value_peers"] = len(peers)
+        if key and ppm is not None and area:
+            by_area.setdefault(key, []).append((d, ppm, float(area)))
+
+    for group in by_area.values():
+        for d, ppm, area in group:
+            lo, hi = area * (1 - SIZE_BAND), area * (1 + SIZE_BAND)
+            n_peers = 0
+            higher = 0
+            for other, other_ppm, other_area in group:
+                if other is d or not (lo <= other_area <= hi):
+                    continue
+                n_peers += 1
+                if other_ppm > ppm:
+                    higher += 1
+            if n_peers < MIN_PEERS:
+                continue
+            d["value_percentile"] = higher / n_peers
+            d["value_peers"] = n_peers
 
 
 def annotate_relative_value(listings: list[dict]) -> list[dict]:
