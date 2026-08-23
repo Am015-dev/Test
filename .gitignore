@@ -1,6 +1,8 @@
 # Data store & scraped artifacts
-# data/listings.db is COMMITTED — it is the deploy artifact
-!data/listings.db
+# data/listings.db is a LOCAL-DEV-ONLY fallback (used when DATABASE_URL is unset).
+# The repo is public and data now lives in Postgres (DATABASE_URL secret) — never
+# commit this file again; a public repo cannot hold the product's data.
+data/listings.db
 data/listings.db-*
 data/raw/
 

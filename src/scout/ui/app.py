@@ -21,8 +21,21 @@ from pathlib import Path
 # Allow running via `streamlit run src/scout/ui/app.py` without installing.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import os  # noqa: E402
+
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
+
+# Streamlit Cloud's Secrets manager populates st.secrets, NOT the process environment —
+# but Settings (config.py) is a pydantic-settings BaseSettings that only reads env vars /
+# .env. Bridge DATABASE_URL across so the deployed app reaches the same Postgres the daily
+# workflow writes to, instead of silently falling back to a local (empty) SQLite file.
+# Guarded: st.secrets raises if no secrets.toml exists at all (e.g. local `streamlit run`).
+try:
+    if "DATABASE_URL" in st.secrets:
+        os.environ.setdefault("DATABASE_URL", st.secrets["DATABASE_URL"])
+except Exception:
+    pass
 
 from scout import (  # noqa: E402
     acquisition,

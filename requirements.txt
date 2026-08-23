@@ -1,3 +1,5 @@
 # Streamlit Community Cloud entrypoint requirements: install the app itself
-# (pyproject.toml carries the real dependency list).
-.
+# (pyproject.toml carries the real dependency list). The postgres extra is required —
+# the app reads its data from a Postgres DATABASE_URL (see app.py's secrets bridge),
+# not a committed SQLite file.
+.[postgres]
