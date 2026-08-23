@@ -76,12 +76,23 @@ def _yield_row(d: dict) -> Row:
         )
     if net is not None:
         pct = round(net * 100, 1)
-        effect = "positive" if net >= _REF.net_yield_floor else "negative"
-        return _row(
-            f"{pct}% net yield",
-            effect,
-            "Net of Greek acquisition/holding costs and vacancy — the honest headline return.",
-        )
+        # yield_percentile (set by relative_value.annotate_relative_value, when the pool
+        # was annotated) is area-relative and mirrors what _yield_signal now scores on —
+        # prefer it over the flat national floor so the explanation never contradicts the
+        # score. Falls back to the flat floor when there aren't enough local peers to rank.
+        local_pct = d.get("yield_percentile")
+        if local_pct is not None:
+            effect = "positive" if local_pct >= 0.5 else "negative"
+            detail = (
+                f"Net of Greek acquisition/holding costs and vacancy — better than "
+                f"{round(local_pct * 100)}% of comparable listings in this area."
+            )
+        else:
+            effect = "positive" if net >= _REF.net_yield_floor else "negative"
+            detail = (
+                "Net of Greek acquisition/holding costs and vacancy — the honest headline return."
+            )
+        return _row(f"{pct}% net yield", effect, detail)
     if gross:
         pct = round(gross * 100, 1)
         effect = "positive" if gross >= _REF.yield_floor else "negative"

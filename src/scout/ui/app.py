@@ -63,7 +63,6 @@ from scout.regulatory import (  # noqa: E402
     str_legality,
 )
 from scout.relative_value import (  # noqa: E402
-    annotate_relative_value,
     relative_value,
     relative_yield,
 )
@@ -72,7 +71,6 @@ from scout.scoring import (
     energy_liability_multiplier,
     newness_score,
 )  # noqa: E402
-from scout.strategy_fit import strategy_tags  # noqa: E402
 from scout.ui import (
     components,  # noqa: E402
     queries,  # noqa: E402
@@ -108,15 +106,11 @@ inject_css()
 
 @st.cache_resource(ttl=10800, show_spinner="Loading listings and computing market rankings…")
 def get_listings() -> list[dict]:
-    rows = queries.load_listings(include_excluded=True, only_active=True)
-    # Annotate each listing's honest market-position rank (cheaper per m² than X% of
-    # comparable active listings) — needs the whole pool, so do it once here. Then recompute
-    # strategy tags: the "Underpriced" tag now keys off this percentile, which only exists
-    # after annotation (queries.py computed tags per-row before the pool was known).
-    annotate_relative_value(rows)
-    for d in rows:
-        d["strategy_tags"] = strategy_tags(d)
-    return rows
+    # Market-position annotation (price/yield percentile vs comparable active listings),
+    # strategy tags and the BUY/WATCH/PASS recommendation are all computed inside
+    # load_listings() itself now — every caller (this page, the digest, health/data-quality
+    # checks) needs the same honest, area-relative numbers, not just the UI.
+    return queries.load_listings(include_excluded=True, only_active=True)
 
 
 @st.cache_data(ttl=10800)

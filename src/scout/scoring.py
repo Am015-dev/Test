@@ -29,6 +29,8 @@ class NeighborhoodStats:
     median_price_per_m2: float | None = None
     median_rent_per_m2: float | None = None
     price_sample_count: int = 0
+    median_net_yield: float | None = None
+    net_yield_sample_count: int = 0
 
 
 @dataclass
@@ -63,6 +65,31 @@ class MarketStats:
                 return a.median_price_per_m2
         return None
 
+    def net_yield_median_for(
+        self, neighborhood: str | None, search_area: str | None = None
+    ) -> float | None:
+        """Local (neighbourhood, else municipality) median NET yield — mirrors
+        ``price_per_m2_median_for``'s two-tier fallback and honesty gate, so yield scoring
+        can be judged against local peers instead of one flat national band. A flat 5.5% net
+        yield reads as identical everywhere, when it's exceptional in a prime low-yield area
+        and mediocre in a peripheral high-yield one. Returns None below the sample floor —
+        ``_yield_signal`` then falls back to the flat national band, never disqualifying a
+        listing for lack of local data."""
+        if neighborhood and neighborhood in self.by_neighborhood:
+            ns = self.by_neighborhood[neighborhood]
+            if ns.median_net_yield is not None and (
+                ns.net_yield_sample_count >= _MIN_NEIGHBORHOOD_SAMPLES
+            ):
+                return ns.median_net_yield
+        if search_area and search_area in self.by_area:
+            a = self.by_area[search_area]
+            if (
+                a.median_net_yield is not None
+                and a.net_yield_sample_count >= _MIN_NEIGHBORHOOD_SAMPLES
+            ):
+                return a.median_net_yield
+        return None
+
 
 def _clamp01(x: float) -> float:
     return max(0.0, min(1.0, x))
@@ -78,6 +105,8 @@ def compute_market_stats(listings: Iterable[Listing]) -> MarketStats:
     buckets: dict[str, list[float]] = {}
     area_buckets: dict[str, list[float]] = {}
     rent_buckets: dict[str, list[float]] = {}
+    yield_buckets: dict[str, list[float]] = {}
+    yield_area_buckets: dict[str, list[float]] = {}
     all_ppm2: list[float] = []
 
     for lst in listings:
@@ -97,6 +126,15 @@ def compute_market_stats(listings: Iterable[Listing]) -> MarketStats:
         if rent and lst.area_m2 and lst.neighborhood:
             rent_buckets.setdefault(lst.neighborhood, []).append(rent / lst.area_m2)
 
+        # Yield comps: same rule — a net_yield derived from the imputed baseline rent is a
+        # deterministic inverse of €/m², not a genuine local data point, and would make the
+        # local median self-referential. Only rent-estimated=False listings contribute.
+        if not lst.rent_estimated and lst.net_yield is not None:
+            if lst.neighborhood:
+                yield_buckets.setdefault(lst.neighborhood, []).append(lst.net_yield)
+            if lst.search_area:
+                yield_area_buckets.setdefault(lst.search_area, []).append(lst.net_yield)
+
     by_n: dict[str, NeighborhoodStats] = {}
     for n, vals in buckets.items():
         by_n[n] = NeighborhoodStats(
@@ -104,6 +142,10 @@ def compute_market_stats(listings: Iterable[Listing]) -> MarketStats:
         )
     for n, vals in rent_buckets.items():
         by_n.setdefault(n, NeighborhoodStats()).median_rent_per_m2 = statistics.median(vals)
+    for n, vals in yield_buckets.items():
+        ns = by_n.setdefault(n, NeighborhoodStats())
+        ns.median_net_yield = statistics.median(vals)
+        ns.net_yield_sample_count = len(vals)
 
     by_a: dict[str, NeighborhoodStats] = {
         a: NeighborhoodStats(
@@ -111,6 +153,10 @@ def compute_market_stats(listings: Iterable[Listing]) -> MarketStats:
         )
         for a, vals in area_buckets.items()
     }
+    for a, vals in yield_area_buckets.items():
+        na = by_a.setdefault(a, NeighborhoodStats())
+        na.median_net_yield = statistics.median(vals)
+        na.net_yield_sample_count = len(vals)
 
     overall = statistics.median(all_ppm2) if all_ppm2 else None
     return MarketStats(by_neighborhood=by_n, by_area=by_a, overall_median_price_per_m2=overall)
@@ -151,16 +197,25 @@ def _non_dwelling_reason(listing: Listing) -> str | None:
     return None
 
 
-def _yield_signal(listing: Listing, strategy: Strategy) -> float:
+def _yield_signal(listing: Listing, strategy: Strategy, market: MarketStats) -> float:
     """Reward realistic rental return. Prefers NET yield (after Greek acquisition/holding
     costs and vacancy — what the investor actually keeps) scored against its own,
     lower net band; falls back to gross yield only when net couldn't be computed. Scoring
     on gross overstates returns, which is exactly the "unreliable core claim" a buyer
-    would call out — net is the honest headline."""
+    would call out — net is the honest headline.
+
+    The net-yield band is area-relative when there's a local median to judge against: the
+    SAME-WIDTH band is recentred on the local (neighbourhood, else municipality) median net
+    yield instead of the flat national floor/ceiling — a flat band treats 5.5% as identical
+    everywhere, when it's the ceiling in a prime low-yield area and the floor in a peripheral
+    high-yield one. Falls back to the flat national band when local samples are too thin
+    (mirrors ``_undervaluation_signal``'s median-or-flat-fallback pattern)."""
     ref = strategy.scoring_reference
     if listing.net_yield is not None:
         span = max(ref.net_yield_ceiling - ref.net_yield_floor, 1e-9)
-        return _clamp01((listing.net_yield - ref.net_yield_floor) / span)
+        local_median = market.net_yield_median_for(listing.neighborhood, listing.search_area)
+        floor = local_median - span / 2 if local_median is not None else ref.net_yield_floor
+        return _clamp01((listing.net_yield - floor) / span)
     if not listing.gross_yield:
         return 0.0
     span = max(ref.yield_ceiling - ref.yield_floor, 1e-9)
@@ -373,7 +428,7 @@ def score(
     # evaluable (absence = 0), so they stay in the denominator.
     contributions = {
         "undervaluation": (uv_value, w.undervaluation, uv_known),
-        "gross_yield": (_yield_signal(listing, strategy), w.gross_yield, yield_known),
+        "gross_yield": (_yield_signal(listing, strategy, market_stats), w.gross_yield, yield_known),
         "newness": (_newness_signal(listing, strategy), w.newness, year_known),
         "energy_class": (_energy_signal(listing), w.energy_class, energy_known),
         "metro_proximity": (

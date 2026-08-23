@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import metrics as _metrics
+from .relative_value import relative_yield
 
 
 @dataclass
@@ -166,7 +167,20 @@ def recommend(d: dict) -> Recommendation:
     # data — does a listing earn the green light. This is deliberately a few-hundred set, not
     # a tenth of inventory; if the data only supports WATCH, WATCH is the honest verdict.
     BUY_GAP, BUY_YIELD = 0.15, 0.055
-    would_buy = (gap is not None and gap >= BUY_GAP) and (ny is not None and ny >= BUY_YIELD)
+    # The flat national BUY_YIELD floor alone misses the failure case relative_value.py's
+    # tests demonstrate: 5.5% net yield clears it everywhere, even in a peripheral
+    # high-yield area where 5.5% is actually the WORST yield among comparable local
+    # listings (peers there run 7-11%) — a false-positive BUY on a locally-mediocre deal.
+    # When there are enough local peers to judge (BUY_YIELD_LOCAL_PCT gate), also require
+    # the yield to rank at/above the local median — never BELOW where the flat floor alone
+    # would have said yes. Too few local peers (relative_yield returns None) → unchanged,
+    # flat-floor-only behavior, so a listing is never blocked from BUY for lack of data.
+    BUY_YIELD_LOCAL_PCT = 0.5
+    ry = relative_yield(d)
+    yield_ok = (
+        ny is not None and ny >= BUY_YIELD and (ry is None or ry.percentile >= BUY_YIELD_LOCAL_PCT)
+    )
+    would_buy = (gap is not None and gap >= BUY_GAP) and yield_ok
 
     if would_buy and buy_ok:
         verdict = "BUY"

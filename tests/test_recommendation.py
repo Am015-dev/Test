@@ -40,6 +40,53 @@ def test_genuinely_undervalued_high_yield_is_buy():
     assert "offer" in r.headline.lower() or "buy" in r.headline.lower()
 
 
+def test_buy_blocked_when_yield_is_worst_in_area_despite_flat_bar_cleared():
+    # 5.5% net yield clears the flat BUY_YIELD bar, but yield_percentile=0.0 (set by
+    # relative_value.annotate_relative_value on the whole pool) says it's the WORST yield
+    # among 9 comparable local listings — a peripheral high-yield area where 5.5% is
+    # actually mediocre. The area-relative gate must hold this at WATCH, not BUY.
+    r = recommend(
+        _base(
+            value_gap_pct=0.20,
+            net_yield=0.055,
+            days_on_market=300,
+            yield_percentile=0.0,
+            yield_peers=9,
+        )
+    )
+    assert r.verdict == "WATCH"
+
+
+def test_buy_allowed_when_yield_is_best_in_area():
+    # Same 5.5% net yield, but the best available among 9 local peers (a low-yield prime
+    # area) — clears both the flat bar and the local-rank gate, so BUY still fires.
+    r = recommend(
+        _base(
+            value_gap_pct=0.20,
+            net_yield=0.055,
+            days_on_market=300,
+            yield_percentile=1.0,
+            yield_peers=9,
+        )
+    )
+    assert r.verdict == "BUY"
+
+
+def test_buy_gate_falls_back_to_flat_bar_with_too_few_local_peers():
+    # Below MIN_PEERS, relative_yield returns None — the local-rank gate must never block
+    # (or require) a BUY for lack of data; flat-bar-only behavior, unchanged.
+    r = recommend(
+        _base(
+            value_gap_pct=0.20,
+            net_yield=0.06,
+            days_on_market=300,
+            yield_percentile=0.0,  # would fail the local-rank gate if it were consulted
+            yield_peers=3,  # below MIN_PEERS=8
+        )
+    )
+    assert r.verdict == "BUY"
+
+
 def test_soft_gap_plus_imputed_yield_is_watch_not_buy():
     # Was BUY under the old strong>=2 bar (gap>=.10 + yield>=.045). Both signals are soft
     # (asking-based gap, area-imputed yield) and neither clears the wider BUY bar, so the

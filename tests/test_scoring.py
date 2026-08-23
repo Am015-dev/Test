@@ -105,6 +105,43 @@ def test_net_yield_falls_back_to_gross_when_absent(strategy):
     assert s.signals["gross_yield"] > 0.9  # gross at the ceiling → near-full signal
 
 
+def test_yield_signal_recentred_on_local_median(strategy):
+    """A flat national net-yield band treats 3.5% as identical everywhere. With enough
+    local (real-rent) peers, the SAME-WIDTH band recentres on the local median instead —
+    so 3.5% is a top score in a low-yield prime area and the worst possible score in a
+    high-yield peripheral one, mirroring relative_value.relative_yield's UI signal."""
+    prime = MarketStats(
+        by_neighborhood={
+            "Kolonaki": NeighborhoodStats(median_net_yield=0.01, net_yield_sample_count=5)
+        }
+    )
+    peripheral = MarketStats(
+        by_neighborhood={
+            "Nikaia": NeighborhoodStats(median_net_yield=0.06, net_yield_sample_count=5)
+        }
+    )
+    in_prime = score(make_listing(neighborhood="Kolonaki", net_yield=0.035), prime, strategy)
+    in_peripheral = score(
+        make_listing(neighborhood="Nikaia", net_yield=0.035), peripheral, strategy
+    )
+    assert in_prime.signals["gross_yield"] == 1.0  # at/above the local ceiling
+    assert in_peripheral.signals["gross_yield"] == 0.0  # at/below the local floor
+    assert in_prime.signals["gross_yield"] > in_peripheral.signals["gross_yield"]
+
+
+def test_yield_signal_falls_back_to_flat_band_without_enough_local_samples(strategy):
+    """Below the neighbourhood sample floor, the flat national band still applies — a thin
+    local sample must never silently reward or penalize a listing."""
+    thin = MarketStats(
+        by_neighborhood={
+            "Ano Cholargos": NeighborhoodStats(median_net_yield=0.06, net_yield_sample_count=2)
+        }
+    )
+    result = score(make_listing(net_yield=0.035), thin, strategy)
+    # Flat band: (0.035 - net_yield_floor 0.015) / (0.055 - 0.015) span = 0.5.
+    assert round(result.signals["gross_yield"], 4) == 0.5
+
+
 def test_unknown_attributes_are_not_penalised_by_renormalization(strategy):
     """A listing missing energy/year must not be scored like the worst-energy/oldest flat.
 
@@ -269,3 +306,26 @@ def test_compute_market_stats_medians():
     stats = compute_market_stats(listings)
     assert stats.by_neighborhood["Ano Cholargos"].median_price_per_m2 == 3000
     assert stats.overall_median_price_per_m2 == 3000
+
+
+def test_compute_market_stats_net_yield_median_excludes_estimated_rent():
+    """An imputed baseline rent makes net_yield a deterministic inverse of €/m² — including
+    those listings would make the local yield median self-referential, the same trap the
+    codebase already guards against for the rent-per-m² median."""
+    listings = [
+        make_listing(source_id="a", net_yield=0.03, rent_estimated=False),
+        make_listing(source_id="b", net_yield=0.05, rent_estimated=False),
+        make_listing(source_id="c", net_yield=0.07, rent_estimated=False),
+        make_listing(source_id="d", net_yield=0.99, rent_estimated=True),  # must be excluded
+    ]
+    stats = compute_market_stats(listings)
+    assert stats.by_neighborhood["Ano Cholargos"].median_net_yield == 0.05
+    assert stats.by_neighborhood["Ano Cholargos"].net_yield_sample_count == 3
+    assert stats.net_yield_median_for("Ano Cholargos") == 0.05
+
+
+def test_net_yield_median_for_below_sample_floor_returns_none():
+    stats = MarketStats(
+        by_neighborhood={"Rare": NeighborhoodStats(median_net_yield=0.05, net_yield_sample_count=2)}
+    )
+    assert stats.net_yield_median_for("Rare") is None

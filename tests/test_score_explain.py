@@ -59,6 +59,25 @@ def test_real_undervaluation_and_yield_are_positive():
     assert "4.8% net yield" in labels
 
 
+def test_yield_row_prefers_area_percentile_over_flat_floor():
+    # 4.8% clears the flat net_yield_floor (0.015) → positive under the old flat-only logic.
+    # With yield_percentile present (annotate_relative_value ran on the pool) and below 0.5,
+    # it's actually the WORST yield among comparable local listings — the explanation must
+    # say so, or it would contradict what the area-relative score signal now computes on.
+    d = _good_listing()
+    d["yield_percentile"] = 0.2
+    rows = explain_score(d)
+    assert _effect(rows, "net yield") == "negative"
+    details = " | ".join(r["detail"] for r in rows)
+    assert "better than 20% of comparable listings" in details
+
+    # And the reverse: below the flat floor but locally the best available → positive.
+    d2 = _good_listing()
+    d2["net_yield"] = 0.01  # below flat net_yield_floor (0.015)
+    d2["yield_percentile"] = 0.9
+    assert _effect(explain_score(d2), "net yield") == "positive"
+
+
 def test_good_energy_and_modern_build_are_positive():
     rows = explain_score(_good_listing())
     assert _effect(rows, "Energy class B") == "positive"

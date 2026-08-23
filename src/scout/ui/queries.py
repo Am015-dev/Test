@@ -21,6 +21,7 @@ from ..investment import yield_on_offer as _yield_on_offer
 from ..models import HealthReportRow, ListingRow, PriceHistoryRow
 from ..recommendation import recommend as _recommend
 from ..regions import region_of
+from ..relative_value import annotate_relative_value
 from ..scoring import investment_archetype
 from ..strategy_fit import strategy_tags as _strategy_tags
 
@@ -328,6 +329,22 @@ def load_listings(
             out.append(d)
         if collapse_relistings:
             out = _collapse_relistings(out)
+        # Honest market-position ranks (price and yield percentile vs comparable active
+        # listings, same area + size band) need the WHOLE pool, so they're computed once
+        # here rather than per-row above. strategy_tags and the BUY/WATCH/PASS
+        # recommendation both key off yield_percentile (an "Underpriced" tag, and the BUY
+        # yield gate), so both are recomputed after annotation — the per-row versions
+        # computed above (before the pool existed) only stand for listings whose peer
+        # group didn't qualify anyway.
+        annotate_relative_value(out)
+        for d in out:
+            d["strategy_tags"] = _strategy_tags(d)
+            rec = _recommend(d)
+            d["rec_verdict"] = rec.verdict
+            d["rec_headline"] = rec.headline
+            d["rec_play"] = rec.play
+            d["rec_rationale"] = rec.rationale
+            d["rec_risks"] = rec.risks
         return out
 
 
