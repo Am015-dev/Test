@@ -35,7 +35,7 @@ from html import unescape
 from urllib.parse import urlencode
 
 import requests
-from selectolax.parser import HTMLParser
+from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
 from ..config import Strategy, get_settings
 from .base import RAW_HTML_DIR, USER_AGENT, Collector

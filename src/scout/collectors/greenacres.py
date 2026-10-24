@@ -31,7 +31,7 @@ from collections.abc import Iterator
 from html import unescape
 
 import requests
-from selectolax.parser import HTMLParser
+from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
 from ..config import Strategy, get_settings
 from .base import USER_AGENT, Collector

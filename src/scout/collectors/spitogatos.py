@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from urllib.parse import urlencode
 
-from selectolax.parser import HTMLParser
+from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
 from ..config import Strategy, get_settings
 from .base import Collector
