@@ -52,10 +52,16 @@ def main() -> None:
         help="Split areas into N day-rotated groups and scrape only today's group "
         "(full coverage every N days). Default 1 = every area.",
     )
+    parser.add_argument(
+        "--areas",
+        default="",
+        help="Comma-separated areas to scrape instead of today's slice (e.g. 'Cholargos,Chalandri').",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    areas = todays_shard(load_strategy().search.all_areas(), args.shards)
+    picked = [a.strip() for a in args.areas.split(",") if a.strip()]
+    areas = picked or todays_shard(load_strategy().search.all_areas(), args.shards)
     totals: dict[str, int] = {}
     for area in areas:
         try:

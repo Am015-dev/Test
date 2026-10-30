@@ -10,6 +10,7 @@ from __future__ import annotations
 import html
 import re
 import statistics
+from datetime import date
 
 import streamlit as st
 
@@ -35,8 +36,8 @@ SORTS = {
     "Σκορ αγοράς": lambda pct, adv, d: (-adv["score"], d["price"]),
     "Χαμηλότερη τιμή": lambda pct, adv, d: (d["price"], -adv["score"]),
     "Χαμηλότερο €/τ.μ.": lambda pct, adv, d: (d.get("price_per_m2") or 1e9, d["price"]),
-    "Μεγαλύτερη έκπτωση": lambda pct, adv, d: (
-        -(adv["gap"] if adv["gap"] is not None else -1),
+    "Φθηνότερο από την περιοχή": lambda pct, adv, d: (
+        adv["cmp"][0] if adv.get("cmp") else 9,
         d["price"],
     ),
 }
@@ -128,6 +129,24 @@ def _floor(f: float) -> str:
     return "Ισόγειο" if f == 0 else f"{f:g}ος όροφος"
 
 
+def _ppm_medians(pool: list[dict]) -> dict[str, tuple[float, int]]:
+    """Median asking €/m² per municipality (only where at least 5 listings back it)."""
+    by: dict[str, list[float]] = {}
+    for d in pool:
+        if d.get("price_per_m2") and (m := municipality(d)):
+            by.setdefault(m, []).append(d["price_per_m2"])
+    return {m: (statistics.median(v), len(v)) for m, v in by.items() if len(v) >= 5}
+
+
+def _vs_median(d: dict, medians: dict) -> tuple[float, str, int] | None:
+    """(this €/m² vs the municipality median, municipality, how many listings) or None."""
+    m = municipality(d)
+    if not d.get("price_per_m2") or m not in medians:
+        return None
+    med, n = medians[m]
+    return d["price_per_m2"] / med - 1, m, n
+
+
 def _card_html(d: dict, adv: dict) -> str:
     """Title/location, the key facts in a fixed order and coloured badges — one small block."""
     e = html.escape
@@ -151,20 +170,25 @@ def _card_html(d: dict, adv: dict) -> str:
     if d.get("is_unfinished"):
         badges.append(("bad", "Ημιτελές"))
     if age is not None and age >= 40 and not d.get("renovated_year"):
-        badges.append(("warn", f"Παλιό κτίριο — {age} ετών"))
+        badges.append(("bad" if age >= 50 else "warn", f"Παλιό κτίριο — {age} ετών"))
+    if (d.get("year_built") or 0) >= date.today().year:
+        badges.append(("warn", "Νεόδμητο — έλεγξε ότι έχει παραδοθεί"))
     elif age is None:
         badges.append(("muted", "Έτος κατασκευής: δεν δηλώνεται"))
     for flag in advisor.red_flags(d):
         if not flag.startswith(("Κτίριο", "Χωρίς έτος", "Ημιτελές")):
             badges.append(("warn", flag))
-    if adv["gap"] and adv["gap"] > 0:
-        badges.append(("good", f"▼ {adv['gap']:.0%} κάτω από την εκτίμηση"))
+    if cmp := adv.get("cmp"):
+        pct, m, n = cmp
+        tone = "good" if pct <= -0.1 else "bad" if pct >= 0.1 else "muted"
+        word = "κάτω" if pct < 0 else "πάνω"
+        badges.append(
+            (tone, f"€/τ.μ. {abs(pct):.0%} {word} από τη διάμεση τιμή {m} ({n} αγγελίες)")
+        )
     if d.get("price_dropped"):
         badges.append(("drop", "Μειώθηκε η τιμή"))
     if d.get("is_private_seller"):
         badges.append(("priv", "Ιδιώτης"))
-    if d.get("suggested_offer"):
-        badges.append(("offer", f"Προσφορά ~{eur(d['suggested_offer'])}"))
     if d.get("days_on_market"):
         badges.append(("muted", f"{d['days_on_market']} μέρες στην αγορά"))
     out = f'<div class="hg-head"><span class="hg-title">{title}</span>{loc}</div>'
@@ -273,19 +297,75 @@ def _clear_query() -> None:
     for k in ("nl_filters", "nl_text", "nl_error", "q_text"):
         st.session_state.pop(k, None)
     st.session_state["limit"] = PAGE_SIZE
+    st.session_state["f_ver"] = st.session_state.get("f_ver", 0) + 1
 
 
 def _more() -> None:
     st.session_state["limit"] = st.session_state.get("limit", PAGE_SIZE) + PAGE_SIZE
 
 
-def _filter_editor(f: SearchFilters) -> SearchFilters:
-    """The understood filters, editable — so a wrong guess is one click to fix."""
+FLOORS = {"Οποιοσδήποτε": None, "Από 1ο": 1, "Από 2ο": 2, "Από 3ο": 3, "Από 4ο": 4}
+AGES = {
+    "Οποιαδήποτε": None,
+    "Έως 10 ετών": 10,
+    "Έως 20 ετών": 20,
+    "Έως 30 ετών": 30,
+    "Έως 40 ετών": 40,
+}
+DEFAULT_FLOOR = 1  # ground floors and basements are not what this buyer wants
+DEFAULT_AGE = 40  # a 50-60-year-old block is not shown unless asked for
+
+
+def municipality(d: dict) -> str:
+    """'Αργυρούπολη (Κέντρο)' → 'Αργυρούπολη'."""
+    return (d.get("neighborhood") or "").split(" (")[0].strip()
+
+
+def _municipality_counts(pool: list[dict]) -> dict[str, int]:
+    """Listings per municipality, Latin spellings ('Nea Ionia') folded into the Greek name."""
+    raw: dict[str, int] = {}
+    for d in pool:
+        if (m := municipality(d)) and m != "Select":
+            raw[m] = raw.get(m, 0) + 1
+    greek = [m for m in raw if not m.isascii()]
+    counts = {m: raw[m] for m in greek}
+    for m in raw:
+        if m.isascii():
+            g = next((g for g in greek if nl_search.area_matches(m, g)), m)
+            counts[g] = counts.get(g, 0) + raw[m]
+    return counts
+
+
+def _key_of(options: dict, value) -> str:
+    return next((k for k, v in options.items() if v == value), next(iter(options)))
+
+
+def _filter_editor(f: SearchFilters, pool: list[dict]) -> SearchFilters:
+    """Every filter on screen, pre-filled from what the search understood (or the defaults)."""
     ver = st.session_state.get("f_ver", 0)
-    with st.expander("⚙️ Προσαρμογή φίλτρων"):
-        c1, c2, c3 = st.columns(3)
-        pmax = c1.number_input(
-            "Μέγιστη τιμή (€)",
+    year = date.today().year
+    counts = _municipality_counts(pool)
+    options = sorted(counts, key=lambda m: -counts[m])
+    picked: list[str] = []  # "Παπάγος"/"Papagos" from the search → the "Παπάγου" option
+    for a in f.areas:
+        o = next((o for o in options if nl_search.area_matches(a, o)), a)
+        if o not in picked:
+            picked.append(o)
+    options += [a for a in picked if a not in counts]
+    floor = f.floor_min if f.floor_min is not None else DEFAULT_FLOOR
+    age = year - f.year_min if f.year_min else DEFAULT_AGE
+    with st.container(border=True, key="filters"):
+        c1, c2, c3 = st.columns([3, 1, 1])
+        areas = c1.multiselect(
+            "Περιοχή",
+            options,
+            default=picked,
+            format_func=lambda m: f"{m} ({counts[m]})" if m in counts else m,
+            placeholder="Όλες οι περιοχές",
+            key=f"fe_areas_{ver}",
+        )
+        pmax = c2.number_input(
+            "Τιμή έως (€)",
             0,
             5_000_000,
             int(f.price_max or 0),
@@ -293,8 +373,8 @@ def _filter_editor(f: SearchFilters) -> SearchFilters:
             key=f"fe_pmax_{ver}",
             help="0 = χωρίς όριο",
         )
-        amin = c2.number_input(
-            "Ελάχιστα τ.μ.",
+        amin = c3.number_input(
+            "Από τ.μ.",
             0,
             1000,
             int(f.area_min or 0),
@@ -302,57 +382,58 @@ def _filter_editor(f: SearchFilters) -> SearchFilters:
             key=f"fe_amin_{ver}",
             help="0 = χωρίς όριο",
         )
+        c4, c5, c6, c7 = st.columns(4)
         cur = next((n for n, v in BEDROOMS.items() if v == (f.bedrooms_min, f.bedrooms_max)), "Όλα")
-        beds = c3.selectbox(
+        beds = c4.selectbox(
             "Υπνοδωμάτια", list(BEDROOMS), index=list(BEDROOMS).index(cur), key=f"fe_beds_{ver}"
         )
-        areas = st.text_input(
-            "Περιοχές (με κόμμα)",
-            ", ".join(f.areas),
-            key=f"fe_areas_{ver}",
-            help="π.χ. Χολαργός, Cholargos",
+        floor_lbl = c5.selectbox(
+            "Όροφος",
+            list(FLOORS),
+            index=list(FLOORS).index(_key_of(FLOORS, floor)),
+            key=f"fe_floor_{ver}",
+            help="Αγγελίες χωρίς δηλωμένο όροφο (συνήθως ισόγεια) κρύβονται όταν βάλεις όροφο.",
         )
-        c4, c5, c6 = st.columns(3)
-        kinds = c4.multiselect(
+        age_lbl = c6.selectbox(
+            "Ηλικία κτιρίου",
+            list(AGES),
+            index=list(AGES).index(_key_of(AGES, age)),
+            key=f"fe_age_{ver}",
+            help="Από το έτος κατασκευής ή ανακαίνισης. Αγγελίες χωρίς έτος κρύβονται.",
+        )
+        kinds = c7.multiselect(
             "Τύπος",
             list(nl_search.KIND_LABEL),
             default=f.kinds,
             format_func=nl_search.KIND_LABEL.get,
+            placeholder="Όλοι",
             key=f"fe_kinds_{ver}",
         )
-        wants = c5.multiselect(
-            "Θέλω",
+        c8, c9, c10 = st.columns([2, 1, 1], vertical_alignment="bottom")
+        wants = c8.multiselect(
+            "Να έχει",
             list(nl_search.WANT_LABEL),
             default=f.wants,
             format_func=nl_search.WANT_LABEL.get,
+            placeholder="π.χ. ανελκυστήρα, πάρκινγκ",
             key=f"fe_wants_{ver}",
         )
-        priv = c6.checkbox("Μόνο από ιδιώτη", f.private_only, key=f"fe_priv_{ver}")
-        c7, c8 = st.columns(2)
-        ymin = c7.number_input(
-            "Κατασκευή ή ανακαίνιση από (έτος)",
-            0,
-            2030,
-            int(f.year_min or 0),
-            5,
-            key=f"fe_ymin_{ver}",
-            help="0 = οποιοδήποτε. Αγγελίες χωρίς δηλωμένο έτος δεν εμφανίζονται όταν βάλεις έτος.",
-        )
-        unfinished = c8.checkbox(
-            "Να δείχνει και ημιτελή κτίρια", f.include_unfinished, key=f"fe_unf_{ver}"
-        )
+        priv = c9.checkbox("Μόνο από ιδιώτη", f.private_only, key=f"fe_priv_{ver}")
+        unfinished = c10.checkbox("Και ημιτελή κτίρια", f.include_unfinished, key=f"fe_unf_{ver}")
     bmin, bmax = BEDROOMS[beds]
+    max_age = AGES[age_lbl]
     return f.model_copy(
         update={
             "price_max": int(pmax) or None,
             "area_min": float(amin) or None,
             "bedrooms_min": bmin,
             "bedrooms_max": bmax,
-            "areas": [a.strip() for a in areas.split(",") if a.strip()],
+            "areas": areas,
+            "floor_min": FLOORS[floor_lbl],
+            "year_min": year - max_age if max_age else None,
             "kinds": kinds,
             "wants": wants,
             "private_only": priv,
-            "year_min": int(ymin) or None,
             "include_unfinished": unfinished,
         }
     )
@@ -406,35 +487,34 @@ def page_search(listings: list[dict]) -> None:
 
     base = st.session_state.get("nl_filters")
     asked = base is not None
+    stale_ok = st.session_state.get("include_stale", False)
+    pool = nl_search.candidates(listings, include_stale=stale_ok)
     if asked:
         c1, c2 = st.columns([5, 1], vertical_alignment="center")
         understood = c1.empty()
         c2.button("✖ Καθαρισμός", key="clear_q", on_click=_clear_query, width="stretch")
-        f = _filter_editor(base)
-        understood.markdown(_understood_html(f), unsafe_allow_html=True)
-    else:
-        f = SearchFilters()
-
-    stale_ok = st.session_state.get("include_stale", False)
-    pool = nl_search.candidates(listings, include_stale=stale_ok)
-    hits = [(m, d, nl_search.advise(d)) for d in pool if (m := nl_search.match(d, f))]
-    n = f"{len(hits):,}".replace(",", ".")
-    heading = (
-        f"<b>{n}</b> αγγελίες ταιριάζουν"
-        if asked
-        else f"<b>{n}</b> αγγελίες · πρώτα οι πιο αξιόλογες"
-    )
-    top = st.columns([4, 3, 3], vertical_alignment="center")
-    top[0].markdown(f'<div class="hg-count">{heading}</div>', unsafe_allow_html=True)
-    sort = top[1].selectbox("Ταξινόμηση", list(SORTS), key="sort", label_visibility="collapsed")
+    f = _filter_editor(base or SearchFilters(), pool)
     if asked:
-        top[2].button(
-            "🤖 Ο agent να ψάχνει γι' αυτό",
-            key="save_mandate",
-            on_click=_save_mandate,
-            args=(st.session_state.get("nl_text", ""), f),
-            width="stretch",
-        )
+        understood.markdown(_understood_html(f), unsafe_allow_html=True)
+
+    hits = [(m, d, nl_search.advise(d)) for d in pool if (m := nl_search.match(d, f))]
+    medians = _ppm_medians(pool)
+    for _, d, adv in hits:
+        adv["cmp"] = _vs_median(d, medians)
+    n = f"{len(hits):,}".replace(",", ".")
+    top = st.columns([4, 3, 3], vertical_alignment="center")
+    top[0].markdown(
+        f'<div class="hg-count"><b>{n}</b> {"αγγελία" if len(hits) == 1 else "αγγελίες"}</div>',
+        unsafe_allow_html=True,
+    )
+    sort = top[1].selectbox("Ταξινόμηση", list(SORTS), key="sort", label_visibility="collapsed")
+    top[2].button(
+        "🤖 Ο agent να ψάχνει γι' αυτό",
+        key="save_mandate",
+        on_click=_save_mandate,
+        args=(st.session_state.get("nl_text") or nl_search.describe(f), f),
+        width="stretch",
+    )
     stale = sum(1 for d in listings if not d.get("is_fresh", True))
     if stale:
         st.checkbox(
@@ -443,55 +523,69 @@ def page_search(listings: list[dict]) -> None:
             ),
             key="include_stale",
         )
+    named = [a for a in f.areas if not a.isascii()] or f.areas  # "Χολαργός" over "Cholargos"
+    for a in named if not stale_ok else []:
+        if not any(nl_search.area_matches(a, municipality(d)) for d in pool):
+            seen = [
+                d["last_seen"]
+                for d in listings
+                if d.get("last_seen") and nl_search.area_matches(a, municipality(d))
+            ]
+            when = f" (τελευταία ενημέρωση {max(seen):%d/%m})" if seen else ""
+            st.warning(
+                f"Για «{a}» δεν έχω πρόσφατες αγγελίες{when} — ανανεώνεται στο επόμενο "
+                "κατέβασμα δεδομένων. Μέχρι τότε τσέκαρε «Δείξε και παλαιότερες αγγελίες»."
+            )
     if not hits:
-        st.info(
-            "Καμία αγγελία δεν ταιριάζει. Δοκίμασε μεγαλύτερο budget ή λιγότερες απαιτήσεις (⚙️ Προσαρμογή φίλτρων)."
-        )
+        st.info("Καμία αγγελία δεν ταιριάζει. Χαλάρωσε κάποιο φίλτρο (π.χ. τιμή, ηλικία ή όροφο).")
         return
     hits.sort(key=lambda h: SORTS[sort](h[0][0], h[2], h[1]))
 
-    by_area: dict[str, list[float]] = {}
-    for _, d, adv in hits:
-        if adv["gap"] is not None and d.get("neighborhood"):
-            by_area.setdefault(d["neighborhood"], []).append(adv["gap"])
-    by_area = {a: g for a, g in by_area.items() if len(g) >= 3}
-    if asked and by_area:
-        area, gaps = max(by_area.items(), key=lambda kv: statistics.median(kv[1]))
-        st.info(
-            f"💡 Οι πιο υποτιμημένες αγγελίες είναι στο **{area}** "
-            f"(διάμεσα {statistics.median(gaps):.0%} κάτω από την εκτιμώμενη αξία, {len(gaps)} αγγελίες)."
-        )
     verdicts = {}
-    if asked:
-        # One review per search (not per sort/filter tweak — each call takes ~15 s): the 12 best
-        # matches of this search. Tweaks keep the verdicts of listings already reviewed.
-        ver = st.session_state.get("f_ver", 0)
-        store = st.session_state.setdefault("advice_v", {})
-        force = st.session_state.pop("advice_force", False)
-        if ver not in store or force:
-            best = sorted(hits, key=lambda h: SORTS["Καλύτερη αντιστοιχία"](h[0][0], h[2], h[1]))
-            store[ver] = _call_advisor(
-                st.session_state.get("nl_text", ""), f, [h[1] for h in best[:12]]
+    # One review per typed search (not per sort/filter tweak — each call takes ~15 s): the 12 best
+    # matches. Tweaks keep the verdicts of listings already reviewed; the button re-runs it on
+    # what is on screen now. Without a typed search the review runs only on that button.
+    ver = st.session_state.get("f_ver", 0)
+    store = st.session_state.setdefault("advice_v", {})
+    force = st.session_state.pop("advice_force", False)
+    if (asked and ver not in store) or force:
+        best = sorted(hits, key=lambda h: SORTS["Καλύτερη αντιστοιχία"](h[0][0], h[2], h[1]))
+        rows = [
+            (
+                {**d, "area_median_ppm2": round(medians[m][0])}
+                if (m := municipality(d)) in medians
+                else d
             )
-        review = store.get(ver)
-        if review is not None:
-            verdicts = {v.key: v for v in review.verdicts}
-            with st.container(border=True, key="advice-box"):
-                st.markdown("**🤖 Γνώμη συμβούλου**")
-                st.write(review.summary)
-                st.button(
-                    "🔄 Νέα γνώμη για τα τρέχοντα αποτελέσματα",
-                    key="advice_again",
-                    on_click=_advice_again,
+            for _, d, _ in best[:12]
+        ]
+        store[ver] = _call_advisor(
+            st.session_state.get("nl_text") or nl_search.describe(f), f, rows
+        )
+    review = store.get(ver)
+    if review is not None:
+        verdicts = {v.key: v for v in review.verdicts}
+        with st.container(border=True, key="advice-box"):
+            st.markdown("**🤖 Γνώμη συμβούλου**")
+            st.write(review.summary)
+            st.button(
+                "🔄 Νέα γνώμη για τα τρέχοντα αποτελέσματα",
+                key="advice_again",
+                on_click=_advice_again,
+            )
+        if sort == "Καλύτερη αντιστοιχία":
+            hits.sort(
+                key=lambda h: ADVICE_RANK.get(
+                    getattr(verdicts.get(shortlist.lkey(h[1])), "label", ""), 3
                 )
-            if sort == "Καλύτερη αντιστοιχία":
-                hits.sort(
-                    key=lambda h: ADVICE_RANK.get(
-                        getattr(verdicts.get(shortlist.lkey(h[1])), "label", ""), 3
-                    )
-                )
-        elif st.session_state.get("advice_err"):
+            )
+    else:
+        if st.session_state.get("advice_err"):
             st.caption(f"🤖 {st.session_state['advice_err']}")
+        st.button(
+            "🤖 Γνώμη AI για τις 12 καλύτερες",
+            key="advice_again",
+            on_click=_advice_again,
+        )
     if st.toggle("🗺 Χάρτης αποτελεσμάτων", key="show_map"):
         from scout.ui import components
 
