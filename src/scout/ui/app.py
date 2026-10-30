@@ -57,10 +57,10 @@ from scout import (  # noqa: E402
     investment,
     liquidity,
     listing_report,
-    nl_search,
     projection,
     score_explain,
     sensitivity,
+    shortlist,
 )
 from scout.config import Strategy, get_settings, load_strategy, save_strategy  # noqa: E402
 from scout.regions import REGIONS  # noqa: E402
@@ -79,6 +79,7 @@ from scout.scoring import (
     newness_score,
 )  # noqa: E402
 from scout.ui import (
+    buyer,  # noqa: E402
     components,  # noqa: E402
     queries,  # noqa: E402
 )
@@ -331,41 +332,18 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
 
 def _kpi_header(listings: list[dict]) -> None:
     eligible = _eligible(listings)
-    nys = [d["net_yield"] for d in eligible if d.get("net_yield") is not None]
-    median_ny = statistics.median(nys) if nys else None
-    # Lead with what's REAL and differentiated, not with "every eligible listing = an
-    # opportunity" (which flagged 82% of inventory and sorted nothing). Two honest headline
-    # counts: the curated BUY verdicts (the actual shortlist), and the regulatory signal no
-    # portal offers — how many listings a buyer cannot legally short-let, and how many clear
-    # the Golden-Visa bar. These are computed from data we already hold, no history needed.
     buys = sum(1 for d in eligible if d.get("rec_verdict") == "BUY")
-    str_frozen = sum(1 for d in eligible if str_legality(_area_key(d)).status == "FROZEN")
-    # Golden Visa is intentionally NOT a headline here: this suburban inventory is almost
-    # entirely below the €800k Attica threshold, so the count is ~0 — useless as a KPI (it
-    # still shows per-listing on the detail page for the rare qualifier). The energy-subsidy
-    # candidate count IS real and populated (74% of listings carry an EPC class).
-    reno = sum(
-        1
-        for d in eligible
-        if renovation_subsidy(d.get("energy_class"), d.get("year_built")).candidate
-    )
-
-    # Four short-labelled metrics (was five with long labels that truncated to "LISTINGS T…").
-    # Energy-subsidy drops off the headline — it stays a sidebar filter and a per-card badge.
-    _ = reno  # still computed for parity / possible reuse; not shown in the compact header
+    ppm = [d["price_per_m2"] for d in eligible if d.get("price_per_m2")]
+    drops = sum(1 for d in eligible if d.get("price_dropped"))
     c = st.columns(4)
-    c[0].metric("Listings", len(eligible), help="Active listings after your filters")
+    c[0].metric("Αγγελίες", len(eligible), help="Ενεργές αγγελίες που περνούν τα φίλτρα")
     c[1].metric(
-        "🟢 BUY picks",
+        "🟢 Προτάσεις BUY",
         buys,
-        help="Listings that clear the verified BUY bar — the curated shortlist, not all inventory",
+        help="Αγγελίες που περνούν το αυστηρό κριτήριο BUY — η επιλεγμένη λίστα, όχι όλο το απόθεμα",
     )
-    c[2].metric(
-        "🚫 No short-let",
-        str_frozen,
-        help="In Athens districts where a buyer cannot get a new Airbnb licence (2026 freeze)",
-    )
-    c[3].metric("Median yield", fmt.pct(median_ny) if median_ny is not None else "—")
+    c[2].metric("Διάμεσο €/τ.μ.", fmt.euro_per_m2(statistics.median(ppm)) if ppm else "—")
+    c[3].metric("📉 Μειώσεις τιμής", drops)
 
 
 def _area_key(d: dict) -> str | None:
@@ -1471,13 +1449,27 @@ def _risk_and_context(d: dict, listings: list[dict]) -> None:
 
 def page_detail(listings: list[dict]) -> None:
     st.subheader("Listing detail")
-    options = {f"[{d['score']:.0f}] {d['title'] or d['source_id']}": d["id"] for d in listings}
+    wanted = st.session_state.get("detail_id")
+    ranked = sorted(listings, key=lambda x: -(x.get("score") or 0))
+    # A selectbox of all ~23k listings is unusably heavy: offer the top 400 plus the one a card
+    # linked to and the starred ones.
+    starred = buyer.watch_keys()
+    chosen = {x["id"]: x for x in ranked[:400]}
+    for x in listings:
+        if x["id"] == wanted or shortlist.lkey(x) in starred:
+            chosen[x["id"]] = x
+    options = {
+        f"[{x['score']:.0f}] {x['title'] or x['source_id']} · {x['id']}": x["id"]
+        for x in chosen.values()
+    }
     if not options:
-        st.info("No listings.")
+        st.info("Δεν υπάρχουν αγγελίες.")
         return
-    choice = st.selectbox("Listing", list(options.keys()))
+    labels = list(options)
+    index = next((i for i, lab in enumerate(labels) if options[lab] == wanted), 0)
+    choice = st.selectbox("Αγγελία", labels, index=index, key=f"detail_pick_{wanted}")
     lid = options[choice]
-    d = next(x for x in listings if x["id"] == lid)
+    d = chosen[lid]
 
     # --- top metrics row ---
     fp = d.get("first_price")
@@ -1629,41 +1621,14 @@ def page_detail(listings: list[dict]) -> None:
             use_container_width=True,
             help="A printable one-pager to hand a client — the agent deliverable.",
         )
-    watched = st.checkbox("On watchlist", value=d["is_watched"], key=f"watch-{lid}")
-    if watched != d["is_watched"]:
-        queries.set_watched(lid, watched)
-        st.cache_data.clear()
-        st.cache_resource.clear()
-        st.rerun()
-
-
-def page_watchlist(listings: list[dict]) -> None:
-    st.subheader("⭐ Watchlist")
-    watched = [d for d in listings if d["is_watched"]]
-    if not watched:
-        st.info("Pin listings from the **Listing detail** page to watch them here.")
-        return
-
-    # Portfolio summary across the shortlist — the "if I bought all of these" snapshot.
-    prices = [d["price"] for d in watched if d.get("price")]
-    nys = [d["net_yield"] for d in watched if d.get("net_yield") is not None]
-    doms = [d["days_on_market"] for d in watched if d.get("days_on_market") is not None]
-    c = st.columns(4)
-    c[0].metric("Watched", len(watched))
-    c[1].metric("Total asking", fmt.euro(sum(prices)) if prices else "—")
-    c[2].metric("Median net yield", fmt.pct(statistics.median(nys)) if nys else "—")
-    c[3].metric("Median days on market", f"{int(statistics.median(doms))}d" if doms else "—")
-
-    for d in watched:
-        if d["price_dropped"]:
-            st.success(
-                f"📉 {d['title']} dropped to {fmt.euro(d['price'])} "
-                f"(from {fmt.euro(d['first_price'])})"
-            )
-
-    components.listing_grid(sorted(watched, key=lambda d: d["score"], reverse=True))
-    with st.expander("Table view (sort / export)"):
-        _table(sorted(watched, key=lambda d: d["score"], reverse=True))
+    skey = shortlist.lkey(d)
+    st.checkbox(
+        "⭐ Στα αγαπημένα",
+        value=skey in buyer.watch_keys(),
+        key=f"watch-{lid}",
+        on_change=buyer.toggle_watch,
+        args=(skey,),
+    )
 
 
 def page_strategy() -> None:
@@ -2142,218 +2107,66 @@ def page_compare(listings: list[dict]) -> None:
     st.caption("Higher score/net yield/cap rate & lower GRM/days-on-market is better.")
 
 
-MAX_SEARCHES = 20  # per Streamlit session — bounds API cost
-
-
-def _db_reason(e: Exception) -> str:
-    """First line of the underlying storage error (no SQL, parameters or credentials)."""
-    return str(getattr(e, "orig", e)).strip().splitlines()[0][:300]
-
-
-def page_search(listings: list[dict]) -> None:
-    st.subheader("🔎 Γράψε τι σπίτι ψάχνεις")
-    text = st.text_area(
-        "Με δικά σου λόγια",
-        max_chars=nl_search.MAX_CHARS,
-        placeholder=(
-            "δυάρι στον Χολαργό έως 180.000€, από 60 τ.μ., με ανελκυστήρα, μόνο από ιδιώτη"
-        ),
-    )
-    used = st.session_state.get("nl_calls", 0)
-    if st.button("Αναζήτηση", disabled=not text.strip() or used >= MAX_SEARCHES):
-        try:
-            st.session_state["nl_filters"] = nl_search.parse_query(text)
-            st.session_state["nl_calls"] = used + 1
-        except nl_search.SearchParseError as e:
-            st.session_state.pop("nl_filters", None)
-            st.error(str(e))
-    if used >= MAX_SEARCHES:
-        st.warning("Έφτασες το όριο αναζητήσεων για αυτή τη συνεδρία — κάνε refresh σελίδας.")
-    f = st.session_state.get("nl_filters")
-    if f is None:
-        return
-    st.caption("Κατάλαβα: " + nl_search.describe(f))
-    if st.button("🤖 Ο agent να ψάχνει καθημερινά γι' αυτό"):
-        from scout import shortlist
-
-        try:
-            shortlist.save_mandate(text.strip(), f)
-            st.success("Αποθηκεύτηκε — δες τις προτάσεις στη σελίδα Shortlist.")
-        except Exception as e:
-            st.error(f"Δεν αποθηκεύτηκε: {type(e).__name__}: {_db_reason(e)}")
-    hits = [(m, d, nl_search.advise(d)) for d in listings if (m := nl_search.match(d, f))]
-    hits.sort(key=lambda h: (-h[0][0], -h[2]["score"], h[1]["price"]))
-    st.write(f"**{len(hits)}** αγγελίες ταιριάζουν")
-    if not hits:
-        return
-    by_area: dict[str, list[float]] = {}
-    for _, d, adv in hits:
-        if adv["gap"] is not None and d.get("neighborhood"):
-            by_area.setdefault(d["neighborhood"], []).append(adv["gap"])
-    if by_area:
-        area, gaps = max(by_area.items(), key=lambda kv: statistics.median(kv[1]))
-        st.info(
-            f"💡 Πού: οι πιο υποτιμημένες αγγελίες είναι στο **{area}** "
-            f"(διάμεσα {statistics.median(gaps):.0%} κάτω από την εκτιμώμενη αξία, "
-            f"{len(gaps)} αγγελίες). Top επιλογή: **{hits[0][1]['price']:,} €**."
-        )
-    for (pct, reasons), d, adv in hits[:50]:
-        with st.container(border=True):
-            st.markdown(
-                f"**Σκορ {adv['score']}** · ταίριασμα {pct}% · "
-                f"[{d.get('title') or d['source_id']}]({d['url']}) — "
-                f"{d['price']:,} € · {d.get('area_m2') or '?'} τ.μ. · "
-                f"{d.get('price_per_m2') or 0:,.0f} €/τ.μ. · {d['source'].upper()}"
-            )
-            gap = adv["gap"]
-            offer = d.get("suggested_offer")
-            st.caption(
-                "Αξία: "
-                + (f"{gap:.0%} κάτω από την εκτιμώμενη αξία" if gap and gap > 0 else "—")
-                + (" · 📉 μειώθηκε η τιμή" if d.get("price_dropped") else "")
-                + (f" · {d['days_on_market']} μέρες στην αγορά" if d.get("days_on_market") else "")
-                + (f" · Προσφορά: {offer:,.0f} €" if offer else "")
-                + f" · Βαθμός: {d.get('deal_grade') or '—'}"
-            )
-            if reasons:
-                st.caption("Γιατί ταιριάζει: " + ", ".join(reasons))
-
-
-def page_shortlist(listings: list[dict]) -> None:
-    from scout import shortlist
-
-    st.subheader("🤖 Shortlist του agent")
-    st.caption(
-        "Ο agent διαλέγει τις καλύτερες αγγελίες για κάθε εντολή σου. Εσύ εγκρίνεις/απορρίπτεις."
-    )
-    try:
-        mandates = shortlist.list_mandates()
-    except Exception as e:  # DB trouble must show a readable reason, not a redacted crash
-        st.error(f"Δεν μπόρεσα να διαβάσω τις εντολές: {type(e).__name__}: {_db_reason(e)}")
-        return
-    if not mandates:
-        st.info(
-            "Καμία εντολή ακόμα — γράψε μια αναζήτηση στη σελίδα Search και πάτα το κουμπί του agent."
-        )
-    for m in mandates:
-        with st.expander(
-            f"**{m.text}** — ✅ {len(m.approved)} · ❌ {len(m.rejected)}", expanded=True
-        ):
-            if st.button("🗑 Διαγραφή εντολής", key=f"del{m.id}"):
-                shortlist.delete_mandate(m.id)
-                st.rerun()
-            picks = shortlist.pick(m.filters, listings, m.approved | m.rejected)
-            if not picks:
-                st.write("Καμία νέα πρόταση αυτή τη στιγμή.")
-            for d, adv, reasons in picks:
-                with st.container(border=True):
-                    st.markdown(
-                        f"**Σκορ {adv['score']}** · [{d.get('title') or d['source_id']}]({d['url']}) — "
-                        f"{d['price']:,} € · {d.get('area_m2') or '?'} τ.μ."
-                    )
-                    if reasons:
-                        st.caption(", ".join(reasons))
-                    a, r = st.columns(2)
-                    if a.button("✅ Έγκριση (στο Watchlist)", key=f"ok{m.id}-{d['id']}"):
-                        shortlist.decide(m.id, d["id"], True)
-                        st.cache_data.clear()
-                        st.cache_resource.clear()  # get_listings() is a cache_resource
-                        st.rerun()
-                    if r.button("❌ Απόρριψη", key=f"no{m.id}-{d['id']}"):
-                        shortlist.decide(m.id, d["id"], False)
-                        st.rerun()
-
-
-# Everyday pages first, secondary tools after — so the nav reads top-to-bottom by how
-# often it's used, instead of an 11-item jumble.
-PAGES = {
-    "Opportunities": page_opportunities,
-    "Search": page_search,
-    "Shortlist": page_shortlist,
-    "Today": page_today,
-    "Map": page_map,
-    "Neighborhoods": page_neighborhoods,
-    "Listing detail": page_detail,
-    "Deals": page_deals,
-    "Compare": page_compare,
-    "Watchlist": page_watchlist,
-    "Saved searches": page_saved_searches,
+# Buyer pages first, then the analyst tools. Labels are what the sidebar shows.
+NAV = {
+    "🔎 Αναζήτηση": buyer.page_search,
+    "🤖 Shortlist": buyer.page_shortlist,
+    "⭐ Αγαπημένα": buyer.page_watchlist,
+    "🗺 Χάρτης": page_map,
+    buyer.NAV_DETAIL: page_detail,
+    "📊 Αγορά": page_neighborhoods,
+    "🏆 Ευκαιρίες": page_opportunities,
+    "📰 Σήμερα": page_today,
+    "💼 Deals": page_deals,
+    "⚖️ Σύγκριση": page_compare,
 }
+ADMIN_NAV = {"⚙️ Strategy": page_strategy, "🛠 Debug": page_debug}  # open with ?admin=1
+
+
+def _data_status(listings: list[dict]) -> str:
+    last_up = _last_updated(listings)
+    if last_up is None:
+        return "Δεν υπάρχουν δεδομένα ακόμα."
+    days = (datetime.utcnow() - last_up).days
+    when = "σήμερα" if days <= 0 else f"πριν {days} μέρες"
+    flag = "⚠️ " if days >= 3 else ""
+    return f"{flag}Δεδομένα: {last_up:%d/%m/%Y} ({when}) · {len(listings):,} αγγελίες".replace(
+        ",", "."
+    )
+
+
+def _refresh_data() -> None:
+    """Fetch the latest published data and drop every cache."""
+    from scout import remote_db
+
+    st.session_state.pop("watch", None)
+    remote_db.ensure_local_db(max_age_s=0)
+    st.cache_data.clear()
+    st.cache_resource.clear()
 
 
 def main() -> None:
-    st.title("🏠 Holargos Property Scout")
-
+    admin = bool(st.query_params.get("admin"))
+    pages = {**NAV, **(ADMIN_NAV if admin else {})}
     with st.sidebar:
-        if st.button("🔄 Refresh now (run pipeline)", use_container_width=True):
-            with st.spinner("Running pipeline…"):
-                from scout.pipeline import run
-
-                summary = run()
-            st.cache_data.clear()
-            st.cache_resource.clear()
-            st.success(f"Done: {summary}")
-        page = st.radio("Page", [*PAGES.keys(), "Strategy", "Debug"])
-
-    listings = get_listings()
-
-    last_up = _last_updated(listings)
-    if last_up is not None:
-        # Honest source label: name the dominant source with its real share rather than
-        # listing every source equally (99.7% XE + a handful of green-acres read as
-        # "multi-source" when it isn't). Shows the true mix.
-        counts: dict[str, int] = {}
-        for d in listings:
-            if d.get("source"):
-                counts[d["source"]] = counts.get(d["source"], 0) + 1
-        total = sum(counts.values())
-        if counts:
-            top, top_n = max(counts.items(), key=lambda kv: kv[1])
-            share = top_n / total if total else 0
-            src_label = (
-                top.upper()
-                if share >= 0.98
-                else " + ".join(
-                    f"{s.upper()} {n/total:.0%}"
-                    for s, n in sorted(counts.items(), key=lambda kv: -kv[1])
-                )
-            )
-        else:
-            src_label = "—"
-        st.caption(
-            f"🕒 Data last updated **{last_up:%Y-%m-%d %H:%M} UTC** · "
-            f"{len(listings)} active listings · source: {src_label}"
+        st.markdown("### 🏠 Property Scout")
+        page = st.radio("Σελίδα", list(pages), key="page", label_visibility="collapsed")
+        st.button(
+            "🔄 Φρέσκα δεδομένα", key="refresh", on_click=_refresh_data, use_container_width=True
         )
-        # Freshness doctor: the whole product's premise is a daily-refreshed feed. If the
-        # pipeline hasn't run in days the "opportunities" are stale — say so loudly rather
-        # than let a buyer act on old prices.
-        stale_days = (datetime.utcnow() - last_up).days
-        if stale_days >= 3:
-            st.warning(
-                f"⚠️ Data is **{stale_days} days old** — the daily pipeline may not be running. "
-                "Prices, new listings and price-drops won't be current until it runs again "
-                "(**Refresh now**, or check the scheduled job)."
-            )
-        if len(counts) <= 1 or (total and max(counts.values()) / total >= 0.98):
-            st.caption(
-                "ℹ️ Coverage is currently a single portal (XE.gr) — a slice of the market, "
-                "not every listing. Additional portals (Spitogatos, Indomio) are supported "
-                "and can be enabled to broaden coverage."
-            )
-    else:
-        st.caption("🕒 No data yet — press **Refresh now** or wait for the daily run.")
+    listings = get_listings()
+    with st.sidebar:
+        st.caption(_data_status(listings))
+        st.caption("Πηγή: XE.gr (+ Green-Acres). Μέρος της αγοράς, όχι κάθε αγγελία.")
 
-    # KPI header on the data-centric pages.
-    if page in ("Opportunities", "Today"):
+    if pages[page] in (page_opportunities, page_today):
+        st.markdown(f"## {page}")
         _kpi_header(listings)
         st.divider()
-
-    if page == "Strategy":
-        page_strategy()
-    elif page == "Debug":
-        page_debug()
+    if pages[page] in (page_strategy, page_debug):
+        pages[page]()
     else:
-        PAGES[page](listings)
+        pages[page](listings)
 
 
 main()

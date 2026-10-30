@@ -7,6 +7,8 @@ from scout.shortlist import Mandate, digest, pick
 def L(i, price, score=50, **kw):
     return {
         "id": i,
+        "source": "xe",
+        "source_id": f"s{i}",
         "price": price,
         "score": score,
         "neighborhood": "Χολαργός",
@@ -20,7 +22,7 @@ def test_pick_ranks_filters_and_skips():
     ls = [L(1, 100_000, 40), L(2, 120_000, 70), L(3, 300_000, 99), L(4, 90_000, 80, excluded=True)]
     f = SearchFilters(price_max=200_000)
     assert [d["id"] for d, _, _ in pick(f, ls, set())] == [2, 1]
-    assert [d["id"] for d, _, _ in pick(f, ls, {2})] == [1]
+    assert [d["id"] for d, _, _ in pick(f, ls, {"xe:s2"})] == [1]
     assert len(pick(f, ls, set(), n=1)) == 1
 
 
@@ -31,7 +33,7 @@ def test_digest_lists_picks():
 
 
 def test_seen_covers_sent_approved_rejected():
-    assert Mandate(1, "x", SearchFilters(), {1}, {2}, {3}).seen == {1, 2, 3}
+    assert Mandate(1, "x", SearchFilters(), {"a"}, {"b"}, {"c"}).seen == {"a", "b", "c"}
 
 
 class FakeGist:
@@ -76,12 +78,12 @@ def test_mandates_round_trip_through_gist(monkeypatch):
     assert sl.list_mandates() == []
     a = sl.save_mandate("δυάρι", SearchFilters(price_max=180_000, wants=["parking"]))
     b = sl.save_mandate("τριάρι", SearchFilters())
-    sl._add_ids(a, "sent", {5})
-    sl._add_ids(a, "sent", {7})
-    sl._add_ids(a, "rejected", {9})
+    sl._add_ids(a, "sent", {"xe:5"})
+    sl._add_ids(a, "sent", {"xe:7"})
+    sl._add_ids(a, "rejected", {"xe:9"})
     m = {x.id: x for x in sl.list_mandates()}
     assert m[a].filters.price_max == 180_000 and m[a].filters.wants == ["parking"]
-    assert m[a].sent == {5, 7} and m[a].rejected == {9} and m[b].seen == set()
+    assert m[a].sent == {"xe:5", "xe:7"} and m[a].rejected == {"xe:9"} and m[b].seen == set()
     assert list(fake.gists) == ["g1"] and fake.gists["g1"]["public"] is False
     sl.delete_mandate(a)
     assert [x.id for x in sl.list_mandates()] == [b]
@@ -120,7 +122,7 @@ def test_reads_right_after_a_write_use_the_written_state(monkeypatch):
         return r
 
     monkeypatch.setattr(requests, "request", stale_get)
-    sl._add_ids(a, "approved", {1})
-    sl._add_ids(a, "rejected", {2})
+    sl._add_ids(a, "approved", {"xe:1"})
+    sl._add_ids(a, "rejected", {"xe:2"})
     m = sl.list_mandates()[0]
-    assert m.approved == {1} and m.rejected == {2}
+    assert m.approved == {"xe:1"} and m.rejected == {"xe:2"}

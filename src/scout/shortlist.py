@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import copy
 import json
-import logging
 import time
 from dataclasses import dataclass, field
 
@@ -22,23 +21,28 @@ class Mandate:
     id: int
     text: str
     filters: SearchFilters
-    sent: set[int] = field(default_factory=set)
-    approved: set[int] = field(default_factory=set)
-    rejected: set[int] = field(default_factory=set)
+    sent: set[str] = field(default_factory=set)
+    approved: set[str] = field(default_factory=set)
+    rejected: set[str] = field(default_factory=set)
 
     @property
-    def seen(self) -> set[int]:
+    def seen(self) -> set[str]:
         return self.sent | self.approved | self.rejected
 
 
+def lkey(d: dict) -> str:
+    """Stable id of a listing across DB rebuilds (row ids are not)."""
+    return f"{d['source']}:{d['source_id']}"
+
+
 def pick(
-    filters: SearchFilters, listings: list[dict], skip: set[int], n: int = TOP_N
+    filters: SearchFilters, listings: list[dict], skip: set[str], n: int = TOP_N
 ) -> list[tuple[dict, dict, list[str]]]:
     """Top ``n`` live listings for the mandate as (listing, advice, reasons), best score first.
     Listings in ``skip`` (already sent / reviewed) and excluded ones never appear."""
     hits = []
     for d in listings:
-        if d.get("excluded") or d["id"] in skip:
+        if d.get("excluded") or d.get("is_suspect") or lkey(d) in skip:
             continue
         m = match(d, filters)
         if m is not None:
@@ -93,21 +97,28 @@ def _find_or_create_gist() -> str:
     return _gist_id
 
 
-_recent: tuple[float, list[dict]] | None = None
+_recent: tuple[float, dict] | None = None
 _FRESH_S = 60  # GitHub can serve the pre-write gist for a few seconds after a PATCH
 
 
-def _read() -> list[dict]:
+def _read_all() -> dict:
+    """The whole stored document: {"mandates": [...], "watch": [...]} (old files were a bare
+    list of mandates)."""
     if _recent and time.monotonic() - _recent[0] < _FRESH_S:
         return copy.deepcopy(_recent[1])
-    return json.loads(_gh("GET", f"/gists/{_find_or_create_gist()}")["files"][GIST_FILE]["content"])
+    data = json.loads(_gh("GET", f"/gists/{_find_or_create_gist()}")["files"][GIST_FILE]["content"])
+    if isinstance(data, list):
+        data = {"mandates": data}
+    data.setdefault("mandates", [])
+    data.setdefault("watch", [])
+    return data
 
 
-def _write(rows: list[dict]) -> None:
+def _write_all(data: dict) -> None:
     global _recent
-    body = {"files": {GIST_FILE: {"content": json.dumps(rows, ensure_ascii=False)}}}
+    body = {"files": {GIST_FILE: {"content": json.dumps(data, ensure_ascii=False)}}}
     _gh("PATCH", f"/gists/{_find_or_create_gist()}", json=body)
-    _recent = (time.monotonic(), copy.deepcopy(rows))
+    _recent = (time.monotonic(), copy.deepcopy(data))
 
 
 def _to_mandate(row: dict) -> Mandate:
@@ -122,39 +133,51 @@ def _to_mandate(row: dict) -> Mandate:
 
 
 def save_mandate(text: str, filters: SearchFilters) -> int:
-    rows = _read()
-    new_id = max((r["id"] for r in rows), default=0) + 1
-    rows.append({"id": new_id, "text": text, "filters": filters.model_dump(mode="json")})
-    _write(rows)
+    data = _read_all()
+    new_id = max((r["id"] for r in data["mandates"]), default=0) + 1
+    data["mandates"].append(
+        {"id": new_id, "text": text, "filters": filters.model_dump(mode="json")}
+    )
+    _write_all(data)
     return new_id
 
 
 def list_mandates() -> list[Mandate]:
-    return [_to_mandate(r) for r in _read()]
+    return [_to_mandate(r) for r in _read_all()["mandates"]]
 
 
 def delete_mandate(mandate_id: int) -> None:
-    _write([r for r in _read() if r["id"] != mandate_id])
+    data = _read_all()
+    data["mandates"] = [r for r in data["mandates"] if r["id"] != mandate_id]
+    _write_all(data)
 
 
-def _add_ids(mandate_id: int, key: str, ids: set[int]) -> None:
-    rows = _read()
-    for r in rows:
+def _add_ids(mandate_id: int, key: str, ids: set[str]) -> None:
+    data = _read_all()
+    for r in data["mandates"]:
         if r["id"] == mandate_id:
             r[key] = sorted(set(r.get(key, [])) | ids)
-    _write(rows)
+    _write_all(data)
 
 
-def decide(mandate_id: int, listing_id: int, approve: bool) -> None:
-    """Record the owner's review; approving also adds the listing to the watchlist."""
-    _add_ids(mandate_id, "approved" if approve else "rejected", {listing_id})
+def watch_set() -> set[str]:
+    """Listing keys the owner has starred (the watchlist)."""
+    return set(_read_all()["watch"])
+
+
+def set_watch(listing_key: str, on: bool) -> None:
+    data = _read_all()
+    keys = set(data["watch"])
+    keys.add(listing_key) if on else keys.discard(listing_key)
+    data["watch"] = sorted(keys)
+    _write_all(data)
+
+
+def decide(mandate_id: int, listing_key: str, approve: bool) -> None:
+    """Record the owner's review; approving also stars the listing."""
+    _add_ids(mandate_id, "approved" if approve else "rejected", {listing_key})
     if approve:
-        from .ui.queries import set_watched
-
-        try:
-            set_watched(listing_id, True)
-        except Exception:  # approval is already saved; a DB hiccup must not lose it
-            logging.getLogger(__name__).exception("could not add %s to the watchlist", listing_id)
+        set_watch(listing_key, True)
 
 
 def digest(m: Mandate, picks: list[tuple[dict, dict, list[str]]]) -> str:
@@ -188,6 +211,6 @@ def run_shortlists(settings=None) -> int:
         if picks and send_alert(
             digest(m, picks), subject="Holargos — shortlist", settings=settings
         ):
-            _add_ids(m.id, "sent", {d["id"] for d, _, _ in picks})
+            _add_ids(m.id, "sent", {lkey(d) for d, _, _ in picks})
             sent += 1
     return sent

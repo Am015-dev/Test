@@ -11,6 +11,17 @@ from scout.config import get_settings
 from scout.finance import acquisition_costs
 
 Want = Literal["elevator", "parking", "balcony", "renovated"]
+Kind = Literal["apartment", "maisonette", "house"]
+
+# Listing kind from the title (the only place it is stated). Whole buildings, complexes, air
+# rights and land are never a home to buy, so they never match.
+KIND_WORDS: dict[str, tuple[str, ...]] = {
+    "apartment": ("διαμερισμα", "apartment", "studio", "γκαρσονιερα", "loft", "flat"),
+    "maisonette": ("μεζονετα", "maisonette"),
+    "house": ("μονοκατοικια", "house", "βιλα", "villa"),
+}
+KIND_LABEL = {"apartment": "διαμέρισμα", "maisonette": "μεζονέτα", "house": "μονοκατοικία"}
+NOT_A_HOME = ("πολυκατοικια", "συγκροτημα", "αερα", "οικοπεδο", "κτιριο", "μπλοκ")
 
 # The listing dict has no feature columns, so wants are matched on title/location text.
 WANT_WORDS: dict[str, tuple[str, ...]] = {
@@ -41,6 +52,11 @@ class SearchFilters(BaseModel):
     bedrooms_max: int | None = None
     floor_min: float | None = None
     private_only: bool = False
+    kinds: list[Kind] = Field(
+        default_factory=list,
+        description="Only when the user names a kind: 'διαμέρισμα'/'δυάρι'/'τριάρι'/'γκαρσονιέρα' "
+        "= apartment, 'μεζονέτα' = maisonette, 'μονοκατοικία'/'βίλα' = house.",
+    )
     budget: int | None = Field(
         None,
         description="Total capital the user wants to invest, EUR, when stated as an amount to "
@@ -65,6 +81,8 @@ def describe(f: SearchFilters) -> str:
         parts.append(f"υπνοδωμάτια: {lo if lo == hi else f'{lo}–{hi}'}")
     if f.floor_min is not None:
         parts.append(f"όροφος ≥ {f.floor_min:g}")
+    if f.kinds:
+        parts.append("τύπος: " + "/".join(KIND_LABEL[k] for k in f.kinds))
     if f.private_only:
         parts.append("μόνο ιδιώτης")
     parts += [WANT_LABEL[w] for w in f.wants]
@@ -102,6 +120,11 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
             return None
         if lo is not None or hi is not None:
             reasons.append(f"{label}: {v:g}")
+    title = _norm(d.get("title") or "")
+    if title.startswith(NOT_A_HOME):
+        return None
+    if f.kinds and not any(title.startswith(w) for k in f.kinds for w in KIND_WORDS[k]):
+        return None
     if f.private_only and d.get("is_private_seller") is False:
         return None
     if f.budget and d.get("price"):
