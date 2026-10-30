@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 
 from scout.config import get_settings
 from scout.finance import acquisition_costs
-from scout.investment import payback_years
 
 Want = Literal["elevator", "parking", "balcony", "renovated"]
 
@@ -100,25 +99,21 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
 
 
 def advise(d: dict) -> dict:
-    """Investor view of one listing: expected rent, net yield, payback and a 0-100 score.
+    """Buyer view of one listing: a 0-100 score plus the facts behind it.
 
-    Score = 60% the thesis score already on the listing + 40% net yield (7% net = full marks);
-    with no rent estimate it is the thesis score alone. Rent is a model estimate unless listed.
+    Score = 60% the thesis score already on the listing + 40% buy-value: how far the price
+    sits under the model value (20% under = full marks), seller motivation and a price drop.
+    Without a confident model value it is the thesis score alone.
     """
-    rent = d.get("listed_rent") or d.get("est_monthly_rent")
-    ny = d.get("net_yield")
     base = d.get("score") or 0
-    score = base if ny is None else 0.6 * base + 0.4 * 100 * min(max(ny / 0.07, 0), 1)
-    private = bool(d.get("is_private_seller"))
-    return {
-        "score": round(score),
-        "monthly_rent": rent,
-        "rent_estimated": not d.get("listed_rent"),
-        "net_yield": ny,
-        "payback_years": (
-            payback_years(d["price"], rent * 12, d.get("area_m2"), private) if rent else None
-        ),
-    }
+    gap = d.get("value_gap_pct") if d.get("value_confident") else None
+    if gap is None:
+        score = base
+    else:
+        value = min(max(gap / 0.20, 0), 1) * 70 + min(d.get("negotiation_score") or 0, 100) * 0.2
+        value += 10 if d.get("price_dropped") else 0
+        score = 0.6 * base + 0.4 * value
+    return {"score": round(score), "gap": gap}
 
 
 MAX_CHARS = 500

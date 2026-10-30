@@ -114,10 +114,10 @@ def test_budget_is_total_cash_including_buying_costs():
     assert match(BASE, SearchFilters(budget=175_000)) is None
 
 
-def test_advise_blends_score_and_yield():
+def test_advise_rewards_discount_to_model_value():
     from scout.nl_search import advise
 
-    d = {**BASE, "score": 50, "net_yield": 0.07, "est_monthly_rent": 700}
-    a = advise(d)
-    assert a["score"] == 70 and a["rent_estimated"] and a["payback_years"]
-    assert advise({**BASE, "score": 50})["score"] == 50
+    d = {**BASE, "score": 50, "value_gap_pct": 0.20, "value_confident": True}
+    assert advise(d)["score"] == 58  # 0.6*50 + 0.4*70
+    assert advise({**d, "value_confident": False})["score"] == 50
+    assert advise({**d, "price_dropped": True})["score"] == 62

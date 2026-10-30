@@ -2158,18 +2158,16 @@ def page_search(listings: list[dict]) -> None:
     st.write(f"**{len(hits)}** αγγελίες ταιριάζουν")
     if not hits:
         return
-    best = hits[0]
     by_area: dict[str, list[float]] = {}
     for _, d, adv in hits:
-        if adv["net_yield"] is not None and d.get("neighborhood"):
-            by_area.setdefault(d["neighborhood"], []).append(adv["net_yield"])
+        if adv["gap"] is not None and d.get("neighborhood"):
+            by_area.setdefault(d["neighborhood"], []).append(adv["gap"])
     if by_area:
-        area, ys = max(by_area.items(), key=lambda kv: statistics.median(kv[1]))
+        area, gaps = max(by_area.items(), key=lambda kv: statistics.median(kv[1]))
         st.info(
-            f"💡 Πού: καλύτερη καθαρή απόδοση στο **{area}** "
-            f"(διάμεσος {statistics.median(ys):.1%}, {len(ys)} αγγελίες). "
-            f"Top επιλογή: **{best[1]['price']:,} €**, ενοίκιο ~"
-            f"{best[2]['monthly_rent'] or 0:,.0f} €/μήνα."
+            f"💡 Πού: οι πιο υποτιμημένες αγγελίες είναι στο **{area}** "
+            f"(διάμεσα {statistics.median(gaps):+.0%} κάτω από την εκτίμηση αξίας, "
+            f"{len(gaps)} αγγελίες). Top επιλογή: **{hits[0][1]['price']:,} €**."
         )
     for (pct, reasons), d, adv in hits[:50]:
         with st.container(border=True):
@@ -2179,18 +2177,14 @@ def page_search(listings: list[dict]) -> None:
                 f"{d['price']:,} € · {d.get('area_m2') or '?'} τ.μ. · "
                 f"{d.get('price_per_m2') or 0:,.0f} €/τ.μ. · {d['source'].upper()}"
             )
-            rent = adv["monthly_rent"]
+            gap = adv["gap"]
+            offer = d.get("suggested_offer")
             st.caption(
-                "Ενοίκιο: "
-                + (
-                    f"{rent:,.0f} €/μήνα{' (εκτίμηση)' if adv['rent_estimated'] else ''}"
-                    if rent
-                    else "—"
-                )
-                + " · Καθαρή απόδοση: "
-                + (f"{adv['net_yield']:.1%}" if adv["net_yield"] is not None else "—")
-                + " · Απόσβεση: "
-                + (f"{adv['payback_years']:g} έτη" if adv["payback_years"] else "—")
+                "Αξία: "
+                + (f"{gap:+.0%} κάτω από εκτίμηση" if gap and gap > 0 else "—")
+                + (" · 📉 μειώθηκε η τιμή" if d.get("price_dropped") else "")
+                + (f" · {d['days_on_market']} μέρες στην αγορά" if d.get("days_on_market") else "")
+                + (f" · Προσφορά: {offer:,.0f} €" if offer else "")
                 + f" · Βαθμός: {d.get('deal_grade') or '—'}"
             )
             if reasons:
