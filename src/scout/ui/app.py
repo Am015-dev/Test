@@ -13,6 +13,7 @@ Run:  streamlit run src/scout/ui/app.py
 
 from __future__ import annotations
 
+import os
 import statistics
 import sys
 from collections import Counter
@@ -23,25 +24,30 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
+def _source_stamp() -> float:
+    """Newest modification time across the scout package's source files."""
+    return max(f.stat().st_mtime for f in Path(__file__).resolve().parents[1].rglob("*.py"))
+
+
 def _drop_stale_scout_modules() -> None:
     """Streamlit Cloud pulls new code into the RUNNING process and re-runs this script, but the
     scout modules imported on an earlier run stay cached in sys.modules — new app.py + old
-    helpers = AttributeError. If any scout source file changed since they were loaded, forget
-    them all so this run imports the code on disk."""
+    helpers = AttributeError. Unless the loaded package carries the current source stamp,
+    forget every scout module so this run imports the code on disk."""
     pkg = sys.modules.get("scout")
-    loaded_at = getattr(pkg, "_loaded_at", None)
-    if loaded_at is None:
+    if pkg is None or getattr(pkg, "_source_stamp", None) == _SOURCE_STAMP:
         return
-    names = [n for n in sys.modules if n == "scout" or n.startswith("scout.")]
-    files = [getattr(sys.modules[n], "__file__", None) for n in names]
-    if any(f and Path(f).exists() and Path(f).stat().st_mtime > loaded_at for f in files):
-        for n in names:
+    try:  # only code pulled AFTER this process started can be stale in memory
+        started = Path(f"/proc/{os.getpid()}").stat().st_ctime
+    except OSError:
+        return
+    if _SOURCE_STAMP > started:
+        for n in [n for n in sys.modules if n == "scout" or n.startswith("scout.")]:
             del sys.modules[n]
 
 
+_SOURCE_STAMP = _source_stamp()
 _drop_stale_scout_modules()
-
-import os  # noqa: E402
 
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
@@ -106,10 +112,7 @@ from scout.ui import (  # noqa: E402
 )
 from scout.ui import format as fmt  # noqa: E402
 
-if not hasattr(sys.modules["scout"], "_loaded_at"):
-    import time as _time
-
-    sys.modules["scout"]._loaded_at = _time.time()
+sys.modules["scout"]._source_stamp = _SOURCE_STAMP
 from scout.ui.theme import inject_css  # noqa: E402
 
 st.set_page_config(
