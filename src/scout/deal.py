@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .ui.format import euro
+
 # Motivation-driven room below asking. A maximally motivated seller (negotiation score
 # ~100, sat long, already cutting) is modelled as good for ~8% off asking on evidence
 # alone; explicit hard tells (a real cut, a long sit) nudge it a little further, capped
@@ -88,22 +90,24 @@ def advise(
     # 3. Drivers — the evidence behind the number, most persuasive first.
     drivers: list[str] = []
     if days_on_market and days_on_market >= 45:
-        drivers.append(f"on market {days_on_market} days")
+        drivers.append(f"{days_on_market} μέρες στην αγορά")
     if num_cuts >= 1:
         times = f" ({num_cuts}×)" if num_cuts > 1 else ""
-        drivers.append(f"seller already cut the price{times}")
+        drivers.append(f"ο πωλητής έχει ήδη μειώσει την τιμή{times}")
     if overpriced_vs_fair:
         over = (asking - predicted_price) / asking
-        drivers.append(f"asking ~{over * 100:.0f}% over modelled fair value")
+        drivers.append(f"ζητά ~{over * 100:.0f}% πάνω από την εκτιμώμενη αξία")
     if net_yield is not None:
-        drivers.append(f"~{net_yield * 100:.1f}% net yield")
+        drivers.append(f"~{net_yield * 100:.1f}% καθαρή απόδοση")
 
     # 4. Thesis — one actionable line.
-    head = f"Offer €{offer:,} (~{discount_pct * 100:.0f}% below asking)"
+    head = f"Προσφορά {euro(offer)} (~{discount_pct * 100:.0f}% κάτω από τη ζητούμενη)"
     if drivers:
         thesis = f"{head}: " + ", ".join(drivers) + "."
     else:
-        thesis = f"{head}: priced in line with the market — limited room, offer near asking."
+        thesis = (
+            f"{head}: τιμή στα επίπεδα της αγοράς — λίγο περιθώριο, προσφορά κοντά στη ζητούμενη."
+        )
     return DealAdvice(
         suggested_offer=offer,
         discount_pct=round(discount_pct, 4),

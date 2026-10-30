@@ -62,7 +62,7 @@ def test_price_percentile_needs_enough_comps():
 
 def test_leverage_oneliner_formats_cash_on_cash():
     line = leverage_oneliner(200_000, annual_rent=12_000, area_m2=80.0, is_private_seller=False)
-    assert line is not None and "cash-on-cash" in line and "down" in line
+    assert line is not None and "απόδοση ιδίων κεφαλαίων" in line and "προκαταβολή" in line
 
 
 def test_leverage_oneliner_none_without_rent():

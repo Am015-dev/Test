@@ -15,7 +15,7 @@ def test_fresh_fair_listing_offers_near_asking():
     assert d is not None
     # No motivation, no cuts → the offer barely moves off asking.
     assert d.discount_pct < 0.02
-    assert "near asking" in d.thesis
+    assert "κοντά στη ζητούμενη" in d.thesis
 
 
 def test_motivated_stale_listing_gets_a_real_discount():
@@ -28,8 +28,8 @@ def test_motivated_stale_listing_gets_a_real_discount():
     assert d is not None
     assert d.suggested_offer < 300_000
     assert d.discount_pct > 0.05  # meaningful room
-    assert any("on market" in x for x in d.drivers)
-    assert any("cut" in x for x in d.drivers)
+    assert any("μέρες στην αγορά" in x for x in d.drivers)
+    assert any("μειώσει την τιμή" in x for x in d.drivers)
 
 
 def test_confident_fair_value_caps_the_offer():
@@ -43,7 +43,7 @@ def test_confident_fair_value_caps_the_offer():
     )
     assert d is not None
     assert d.suggested_offer <= 250_000
-    assert any("over modelled fair value" in x for x in d.drivers)
+    assert any("πάνω από την εκτιμώμενη αξία" in x for x in d.drivers)
 
 
 def test_low_confidence_fair_value_is_ignored_for_the_number():
@@ -57,7 +57,7 @@ def test_low_confidence_fair_value_is_ignored_for_the_number():
     )
     assert d is not None
     assert d.suggested_offer > 250_000  # not anchored to the untrusted fair value
-    assert not any("fair value" in x for x in d.drivers)
+    assert not any("εκτιμώμενη αξία" in x for x in d.drivers)
 
 
 def test_offer_is_rounded():

@@ -129,7 +129,6 @@ hr, [data-testid="stDivider"] {{
     transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
 }}
 [data-testid="stVerticalBlockBorderWrapper"]:hover {{
-    transform: translateY(-3px);
     box-shadow: var(--hg-shadow-h);
     border-color: #CBD5E1;
 }}
@@ -155,22 +154,34 @@ hr, [data-testid="stDivider"] {{
     box-shadow: var(--hg-shadow-h);
     transform: translateY(-1px);
 }}
+/* No text-transform: uppercase — on a lang="en" page Chrome keeps the Greek accents
+ * ("ΑΓΑΠΗΜΈΝΑ"), which is wrong Greek typography. */
 [data-testid="stMetricLabel"] {{
-    font-size: .70rem !important;
+    font-size: .78rem !important;
     font-weight: 600;
-    letter-spacing: .06em;
-    text-transform: uppercase;
     color: var(--hg-muted);
 }}
 [data-testid="stMetricLabel"] p {{ color: var(--hg-muted); }}
 [data-testid="stMetricValue"] {{
-    font-size: 1.7rem;
+    font-size: 1.35rem;
     font-weight: 700;
     letter-spacing: -0.02em;
     color: var(--hg-ink);
     line-height: 1.15;
 }}
 [data-testid="stMetricDelta"] {{ font-size: .8rem; font-weight: 600; }}
+/* Wrap long values ("cheaper than area") instead of truncating them to "chea…". */
+[data-testid="stMetric"] {{ min-width: 0; }}
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] * {{
+    white-space: normal !important; text-overflow: clip !important;
+    overflow-wrap: normal !important; word-break: normal !important; hyphens: none;
+    min-width: 0; max-width: 100%;
+}}
+/* Same for labels: Greek labels are long ("Μέρες στην αγορά"); wrap, never "Μέρες στην αγ…". */
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * {{
+    white-space: normal !important; text-overflow: clip !important;
+    overflow: visible !important; word-break: normal !important;
+}}
 /* Metrics that live inside a card shouldn't double up borders/shadows. */
 [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {{
     border: none;
@@ -252,7 +263,7 @@ a:hover {{ color: var(--hg-accent-2); }}
     font-size: .74rem;
     font-weight: 600;
     letter-spacing: .04em;
-    text-transform: uppercase;
+   
     border-bottom: 1px solid var(--hg-line);
     padding: .55rem .75rem;
 }}
@@ -284,13 +295,25 @@ a:hover {{ color: var(--hg-accent-2); }}
     border-radius: 9px;
 }}
 
-/* Hide ALL default Streamlit chrome for a clean, product-like frame. */
+/* Hide the default Streamlit chrome for a clean, product-like frame — but KEEP the header
+ * itself: it holds the "open sidebar" button, the only way to reach the menu on a phone
+ * (the sidebar starts collapsed there) or after collapsing it on desktop. */
 #MainMenu, [data-testid="stDecoration"], [data-testid="stStatusWidget"] {{ display: none !important; }}
-[data-testid="stToolbar"], [data-testid="stToolbarActions"] {{ display: none !important; }}
-[data-testid="stAppDeployButton"], .stDeployButton, [data-testid="stHeader"] {{ display: none !important; }}
-header[data-testid="stHeader"] {{ display: none !important; }}
+[data-testid="stToolbarActions"], [data-testid="stMainMenu"] {{ display: none !important; }}
+[data-testid="stAppDeployButton"], .stDeployButton {{ display: none !important; }}
+header[data-testid="stHeader"] {{
+    background: transparent; height: auto; min-height: 0; pointer-events: none;
+}}
+header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {{
+    pointer-events: auto; background: var(--hg-surface); border: 1px solid var(--hg-line);
+    border-radius: 10px; box-shadow: var(--hg-shadow); margin: 8px 0 0 4px;
+    color: var(--hg-ink);
+}}
 footer {{ visibility: hidden; height: 0; }}
 [data-testid="stMainBlockContainer"] {{ padding-top: 2.2rem; }}
+@media (max-width: 640px) {{
+    [data-testid="stMainBlockContainer"] {{ padding: 3.1rem 1rem 2rem; }}
+}}
 
 /* ------------------------------------------------------------------ *
  * Listing card grid — the product view (replaces the raw dataframe).
@@ -340,13 +363,13 @@ footer {{ visibility: hidden; height: 0; }}
     border: 1px solid hsl(var(--hue), 55%, 84%);
 }}
 .ph-score span {{ font-size: 1.25rem; font-weight: 750; line-height: 1; }}
-.ph-score small {{ font-size: .56rem; text-transform: uppercase; letter-spacing: .06em; opacity: .8; }}
+.ph-score small {{ font-size: .56rem; letter-spacing: .06em; opacity: .8; }}
 .ph-price-wrap {{ flex: 1 1 auto; min-width: 0; }}
 .ph-price {{ font-size: 1.5rem; font-weight: 750; color: var(--hg-ink); line-height: 1.1; }}
 .ph-ppm2 {{ font-size: .82rem; color: var(--hg-muted); margin-top: 2px; }}
 .ph-arch {{
     flex: 0 0 auto; font-size: .68rem; font-weight: 650; padding: 4px 9px; border-radius: 999px;
-    text-transform: uppercase; letter-spacing: .03em; white-space: nowrap;
+    letter-spacing: .03em; white-space: nowrap;
 }}
 .ph-arch-new {{ background: #DCFCE7; color: #15803D; }}
 .ph-arch-reno {{ background: #DBEAFE; color: #1D4ED8; }}
@@ -368,7 +391,7 @@ footer {{ visibility: hidden; height: 0; }}
     border-bottom: 1px solid var(--hg-line-2); padding: 10px 0; }}
 .ph-sig {{ flex: 1; display: flex; flex-direction: column; gap: 1px; }}
 .ph-sig b {{ font-size: 1rem; font-weight: 700; color: var(--hg-ink); }}
-.ph-sig span {{ font-size: .66rem; color: var(--hg-muted); text-transform: uppercase; letter-spacing: .03em; }}
+.ph-sig span {{ font-size: .66rem; color: var(--hg-muted); letter-spacing: .03em; }}
 .ph-sig-pos b {{ color: #15803D; }}
 .ph-sig-neg b {{ color: #B91C1C; }}
 .ph-grade {{ font-size: 1rem; font-weight: 800; color: #fff; border-radius: 8px;
@@ -379,7 +402,7 @@ footer {{ visibility: hidden; height: 0; }}
 .ph-grade-D {{ background: #9CA3AF; }}
 .ph-conf {{ display: flex; flex-direction: column; align-items: center; font-size: .8rem;
     font-weight: 700; color: var(--hg-muted); align-self: center; line-height: 1; }}
-.ph-conf small {{ font-size: .55rem; text-transform: uppercase; letter-spacing: .03em; }}
+.ph-conf small {{ font-size: .55rem; letter-spacing: .03em; }}
 .ph-thesis {{ font-size: .8rem; line-height: 1.35; color: var(--hg-ink);
     background: #FFF7ED; border: 1px solid #FED7AA; border-radius: 9px;
     padding: 8px 10px; margin: 2px 0; }}
@@ -426,13 +449,142 @@ footer {{ visibility: hidden; height: 0; }}
     transition: background .12s ease, color .12s ease;
 }}
 [data-testid="stSidebar"] [role="radiogroup"] label:hover {{ background: #E7EDF4; }}
-/* hide the radio dot itself */
-[data-testid="stSidebar"] [role="radiogroup"] label > div:first-child {{ display: none; }}
+/* hide the radio dot itself (label > [hidden input span] + div > [dot div, text div]) */
+[data-testid="stSidebar"] [role="radiogroup"] label > div:first-child,
+[data-testid="stSidebar"] [data-testid="stRadioOption"] > div > div:first-child:not(:has(p)) {{
+    display: none;
+}}
 /* selected item — teal pill */
 [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {{
     background: var(--hg-accent); color: #fff;
 }}
 [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {{ color: #fff; font-weight: 650; }}
+
+/* ------------------------------------------------------------------ *
+ * Metric rows on phones: two tiles per row instead of one tall stack.
+ * ------------------------------------------------------------------ */
+@media (max-width: 640px) {{
+    [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stMetric"]) {{
+        flex-direction: row !important; flex-wrap: wrap !important; gap: .6rem !important;
+    }}
+    [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stMetric"])
+        > [data-testid="stColumn"] {{
+        flex: 1 1 calc(50% - .6rem) !important; min-width: calc(50% - .6rem) !important;
+        width: auto !important;
+    }}
+    [data-testid="stMetricValue"] {{ font-size: 1.2rem; }}
+    [data-testid="stMetric"] {{ padding: .7rem .8rem; }}
+}}
+
+/* ------------------------------------------------------------------ *
+ * Buyer pages (buyer.py): search hero, example chips, result cards.
+ * ------------------------------------------------------------------ */
+.st-key-hero {{
+    background: linear-gradient(180deg, #FFFFFF 0%, #F2FBF9 100%);
+    border: 1px solid var(--hg-line); border-radius: 18px; box-shadow: var(--hg-shadow);
+    padding: 1.6rem 1.8rem 1.3rem; margin-bottom: .6rem; gap: .7rem;
+}}
+.st-key-hero [data-testid="stCaptionContainer"] {{ margin-top: -.55rem; }}
+.st-key-hero h2 {{ font-size: 1.75rem; font-weight: 750; letter-spacing: -0.02em;
+    margin: 0 0 .1rem; padding: 0; }}
+.st-key-hero [data-baseweb="input"] {{ background: #fff; border: 1.5px solid #CBD5E1;
+    border-radius: 12px; }}
+.st-key-hero [data-baseweb="input"]:focus-within {{ border-color: var(--hg-accent); }}
+.st-key-hero [data-baseweb="input"] input {{ font-size: 1rem; padding: .7rem .8rem;
+    background: #fff; }}
+.st-key-hero [data-testid="stFormSubmitButton"] button {{ min-height: 2.9rem;
+    border-radius: 12px; font-size: 1rem; }}
+.st-key-examples {{ align-items: center; row-gap: .45rem; }}
+.hg-try {{ font-size: .8rem; color: var(--hg-muted); font-weight: 600; }}
+.st-key-examples button {{
+    border-radius: 999px !important; min-height: 0 !important; padding: .25rem .75rem !important;
+    background: #fff; border: 1px solid #CCE7E2 !important; color: var(--hg-accent) !important;
+}}
+.st-key-examples button p {{ font-size: .82rem !important; font-weight: 600; }}
+.st-key-examples button:hover {{ background: #ECFDF8; border-color: var(--hg-accent) !important; }}
+
+/* "Κατάλαβα:" — the parsed filters as chips. */
+.hg-understood {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    font-size: .88rem; }}
+.hg-understood b {{ color: var(--hg-ink); margin-right: 2px; }}
+.hg-understood span {{ background: #E6F4F1; color: #115E59; border-radius: 999px;
+    padding: 3px 10px; font-weight: 550; }}
+.hg-count {{ font-size: .95rem; color: var(--hg-muted); }}
+.hg-count b {{ color: var(--hg-ink); font-size: 1.05rem; }}
+
+/* Result card: a keyed bordered container, so the styling stays scoped to it. */
+[class*="st-key-card-"] {{ padding: 1rem 1.15rem .9rem !important; gap: .45rem !important;
+    border-radius: 14px !important; }}
+/* Streamlit gives markdown a -1rem bottom margin to cancel the last <p>'s margin; our blocks
+   are divs/headings, so that would make the next row overlap them. */
+[class*="st-key-card-"] [data-testid="stMarkdownContainer"],
+.st-key-hero [data-testid="stMarkdownContainer"], .st-key-examples [data-testid="stMarkdownContainer"],
+[data-testid="stMarkdownContainer"]:has(> .hg-understood, > .hg-count) {{ margin-bottom: 0; }}
+[class*="st-key-card-"] [data-testid="stMarkdownContainer"] p:last-child,
+.st-key-examples [data-testid="stMarkdownContainer"] p:last-child {{ margin-bottom: 0; }}
+[class*="st-key-card-"] h3 {{ font-size: 1.55rem; font-weight: 750; letter-spacing: -0.02em;
+    margin: 0; padding: 0; line-height: 1.15; }}
+.hg-photo {{ display: block; width: 100%; height: 180px; object-fit: cover;
+    border-radius: 10px; background: var(--hg-line-2); }}
+.hg-head {{ display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px;
+    line-height: 1.35; }}
+.hg-title {{ font-size: .98rem; font-weight: 600; color: var(--hg-ink); }}
+.hg-loc {{ font-size: .86rem; color: var(--hg-muted); }}
+.hg-facts {{ display: flex; flex-wrap: wrap; gap: 0; margin-top: 6px; font-size: .88rem;
+    color: var(--hg-ink-soft); }}
+.hg-facts span {{ white-space: nowrap; }}
+.hg-facts span + span::before {{ content: "·"; color: var(--hg-faint); margin: 0 8px; }}
+.hg-facts b {{ font-weight: 700; color: var(--hg-ink); }}
+.hg-badges {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
+.hg-b {{ font-size: .76rem; font-weight: 600; border-radius: 6px; padding: 3px 8px;
+    line-height: 1.3; white-space: nowrap; }}
+.hg-b-good {{ background: #DCFCE7; color: #166534; }}
+.hg-b-drop {{ background: #FFEDD5; color: #9A3412; }}
+.hg-b-priv {{ background: #EDE9FE; color: #5B21B6; }}
+.hg-b-offer {{ background: #E0F2FE; color: #075985; }}
+.hg-b-muted {{ background: #F1F5F9; color: #475569; }}
+.hg-score {{ display: inline-flex; align-items: baseline; gap: 5px; border-radius: 10px;
+    padding: 5px 10px; border: 1px solid; white-space: nowrap; cursor: help; }}
+.hg-score small {{ font-size: .7rem; font-weight: 600; opacity: .85; }}
+.hg-score b {{ font-size: 1.2rem; font-weight: 800; line-height: 1; }}
+.hg-score i {{ font-style: normal; font-size: .72rem; font-weight: 700; opacity: .8;
+    border-left: 1px solid currentColor; padding-left: 5px; }}
+.hg-score-hi {{ background: #ECFDF5; color: #047857; border-color: #A7F3D0; }}
+.hg-score-mid {{ background: #FFFBEB; color: #92400E; border-color: #FDE68A; }}
+.hg-score-lo {{ background: #F8FAFC; color: #475569; border-color: var(--hg-line); }}
+[class*="st-key-card-"] [data-testid="stCaptionContainer"] {{ font-size: .8rem; }}
+
+/* Card actions: compact, equal buttons; the active "★" star is amber, not teal. */
+[class*="st-key-act-"] {{ margin-top: .25rem; }}
+[class*="st-key-act-"] button, [class*="st-key-act-"] a {{
+    min-height: 2.25rem !important; padding: .25rem .6rem !important;
+}}
+[class*="st-key-act-"] button p, [class*="st-key-act-"] a p {{ font-size: .86rem !important; }}
+[class*="st-key-act-"] [data-testid="stBaseButton-primary"] {{
+    background: #FEF3C7; border-color: #FCD34D; color: #92400E;
+}}
+[class*="st-key-act-"] [data-testid="stBaseButton-primary"]:hover {{
+    background: #FDE68A; border-color: #F59E0B; color: #78350F;
+}}
+
+@media (max-width: 640px) {{
+    .st-key-hero {{ padding: 1.1rem 1rem 1rem; border-radius: 14px; }}
+    .st-key-hero h2 {{ font-size: 1.4rem; }}
+    [class*="st-key-card-"] {{ padding: .85rem .9rem .8rem !important; }}
+    [class*="st-key-card-"] h3 {{ font-size: 1.35rem; }}
+    .hg-photo {{ height: 150px; }}
+    /* actions: a 2-up grid instead of a tall stack; a lone first button (3 total) spans. */
+    [class*="st-key-act-"] [data-testid="stHorizontalBlock"] {{
+        flex-direction: row !important; flex-wrap: wrap !important; gap: .45rem !important;
+    }}
+    [class*="st-key-act-"] [data-testid="stColumn"] {{
+        flex: 1 1 calc(50% - .45rem) !important; min-width: calc(50% - .45rem) !important;
+        width: auto !important;
+    }}
+    [class*="st-key-act-"] [data-testid="stColumn"]:first-child:nth-last-child(3) {{
+        flex-basis: 100% !important; min-width: 100% !important;
+    }}
+}}
 </style>
 """
 

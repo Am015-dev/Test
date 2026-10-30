@@ -30,14 +30,14 @@ def test_weak_dscr_is_pass_with_honest_reason():
     # tiny rent → mortgage not covered → PASS, and the reason is stated
     r = recommend(_base(price=400_000, est_monthly_rent=500, net_yield=0.01))
     assert r.verdict == "PASS"
-    assert any("mortgage" in x or "yield" in x for x in r.risks)
+    assert any("δόσης" in x or "απόδοση" in x for x in r.risks)
 
 
 def test_genuinely_undervalued_high_yield_is_buy():
     # Deep, significance-gated gap AND a solid net yield both past the raised bars → BUY.
     r = recommend(_base(value_gap_pct=0.20, net_yield=0.06, days_on_market=300))
     assert r.verdict == "BUY"
-    assert "offer" in r.headline.lower() or "buy" in r.headline.lower()
+    assert "προσφορά" in r.headline.lower() or "αγορά" in r.headline.lower()
 
 
 def test_buy_blocked_when_yield_is_worst_in_area_despite_flat_bar_cleared():
@@ -122,18 +122,18 @@ def test_buy_bar_listing_held_at_watch_when_data_suspect():
         )
     )
     assert r.verdict == "WATCH"
-    assert "verify" in r.headline.lower()
+    assert "έλεγξε πρώτα" in r.headline.lower()
 
 
 def test_value_add_play_on_poor_energy():
     r = recommend(_base(energy_class="F", strategy_tags=["Value-add"], net_yield=0.04))
-    assert "renovate" in r.play.lower() or "value-add" in r.play.lower()
-    assert any("EPBD" in x or "renovation" in x for x in r.risks + r.rationale)
+    assert "ανακαίνιση" in r.play.lower() or "αναβάθμιση αξίας" in r.play.lower()
+    assert any("EPBD" in x or "ανακαίνιση" in x for x in r.risks + r.rationale)
 
 
 def test_imputed_rent_is_flagged_as_risk():
     r = recommend(_base(rent_estimated=True))
-    assert any("estimate" in x for x in r.risks)
+    assert any("εκτίμηση" in x for x in r.risks)
 
 
 def test_never_raises_on_empty():

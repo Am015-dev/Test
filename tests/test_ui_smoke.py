@@ -24,6 +24,15 @@ from .conftest import make_listing  # noqa: E402
 APP = str(Path(__file__).resolve().parents[1] / "src" / "scout" / "ui" / "app.py")
 
 
+def _open(at, label: str):
+    """Switch the sidebar page (the home page is now Αναζήτηση, not Opportunities)."""
+    at.radio(key="page").set_value(label).run()
+    return at
+
+
+OPPS = "🏆 Ευκαιρίες"
+
+
 def _seed_db(db_path, *, exclude_all: bool) -> None:
     import scout.db as dbmod
 
@@ -71,27 +80,26 @@ def _db(tmp_path, monkeypatch):
 
 def test_app_renders_with_opportunities(_db):
     _db(exclude_all=False)
-    at = AppTest.from_file(APP, default_timeout=30).run()
+    at = _open(AppTest.from_file(APP, default_timeout=30).run(), OPPS)
     assert not at.exception
     # KPI header + ranked table present. The header leads with honest counts, not the
     # inflated "every eligible listing is an opportunity" — so assert the tracked-count and
     # the regulatory differentiator metrics render.
     labels = {m.label for m in at.metric}
-    assert "Listings" in labels
-    # the regulatory differentiator (short-let) is surfaced in the compact header
-    assert any("short-let" in x.lower() for x in labels)
+    assert "Αγγελίες" in labels
+    assert "Διάμεσο €/τ.μ." in labels
     assert len(at.dataframe) >= 1
 
 
 def test_app_never_blank_when_all_excluded(_db):
     """All listings filtered out -> still render them with a reason, no crash."""
     _db(exclude_all=True)
-    at = AppTest.from_file(APP, default_timeout=30).run()
+    at = _open(AppTest.from_file(APP, default_timeout=30).run(), OPPS)
     assert not at.exception
     assert len(at.warning) >= 1  # the "showing all with reasons" banner
     df = at.dataframe[0].value
     assert df.shape[0] == 2
-    assert "Filtered out" in list(df.columns)
+    assert "Λόγος αποκλεισμού" in list(df.columns)
 
 
 def _seed_valued_db(tmp_path) -> None:
@@ -149,16 +157,17 @@ def test_app_renders_fair_value_views(tmp_path, monkeypatch):
     st.cache_resource.clear()  # get_listings is cache_resource — shared across AppTests
     _seed_valued_db(tmp_path)
 
-    at = AppTest.from_file(APP, default_timeout=30).run()
+    at = _open(AppTest.from_file(APP, default_timeout=30).run(), OPPS)
     assert not at.exception
     # The confidence banner is a success or warning box (fitted path), not the info stub.
     banner_text = " ".join(b.value for b in [*at.success, *at.warning])
-    assert "Fair-value model" in banner_text
+    assert "Μοντέλο εκτιμώμενης αξίας" in banner_text
     # The product listing-card grid renders (custom HTML, not a bare dataframe).
     md = " ".join(m.value for m in at.markdown)
     assert "ph-grid" in md and "ph-card" in md
     # The table view is still available (inside the expander) with the model columns.
     # (Search all dataframes — the coverage panel also renders one.)
     assert any(
-        "Fair value" in df.value.columns and "Value gap" in df.value.columns for df in at.dataframe
+        "Εκτιμώμενη αξία" in df.value.columns and "Απόκλιση αξίας" in df.value.columns
+        for df in at.dataframe
     )

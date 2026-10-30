@@ -46,11 +46,11 @@ def _data_completeness(row: ListingRow) -> list[str]:
     # every listing and mean nothing.
     missing: list[str] = []
     if not (row.energy_class or "").strip():
-        missing.append("energy")
+        missing.append("ενεργειακή κλάση")
     if not (row.year_built or row.renovated_year):
-        missing.append("year")
+        missing.append("έτος κατασκευής")
     if row.location_precision != "exact":
-        missing.append("exact location")
+        missing.append("ακριβής τοποθεσία")
     return missing
 
 
