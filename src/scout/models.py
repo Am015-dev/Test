@@ -21,7 +21,6 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
-    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -300,22 +299,6 @@ class SavedSearchRow(Base):
     max_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
     min_net_yield: Mapped[float | None] = mapped_column(Float, nullable=True)
     min_grade: Mapped[str | None] = mapped_column(String(2), nullable=True)  # "A"/"B"/"C"
-    created_at: Mapped[datetime] = mapped_column(DateTime)
-
-
-class MandateRow(Base):
-    """A plain-language buying mandate the agent shortlists for daily. ``filters`` is the
-    parsed ``SearchFilters`` JSON; the id lists record what was already sent / reviewed so a
-    re-run never repeats a pick and a rejected listing never returns."""
-
-    __tablename__ = "mandate"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    text: Mapped[str] = mapped_column(String(512))
-    filters: Mapped[str] = mapped_column(Text)
-    sent_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list of listing ids
-    approved_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
-    rejected_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
