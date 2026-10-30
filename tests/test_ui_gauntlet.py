@@ -398,3 +398,13 @@ def test_floor_and_age_filters_are_on_screen_without_a_search(env):
     at.selectbox(key="fe_age_0").set_value("Έως 10 ετών").run()
     ok(at, "new builds")
     assert all(y >= date.today().year - 10 for y in years())
+
+
+def test_type_and_must_have_filters_accept_any_selection(env):
+    at = fresh(SEARCH)
+    for label in ("Τύπος", "Να έχει"):
+        ms = next(m for m in at.multiselect if m.label == label)
+        ms.set_value(list(ms.options)[:3]).run()
+        ok(at, label)
+        next(m for m in at.multiselect if m.label == label).set_value([]).run()
+        ok(at, label)
