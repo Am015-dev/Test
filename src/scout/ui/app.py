@@ -39,8 +39,10 @@ try:
         os.environ["DATABASE_URL"] = st.secrets["DATABASE_URL"]
     if "ANTHROPIC_API_KEY" in st.secrets:
         os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
-    if "GITHUB_TOKEN" in st.secrets:
-        os.environ["GITHUB_TOKEN"] = st.secrets["GITHUB_TOKEN"]
+    for _name in ("GITHUB_TOKEN", "GITHUB"):  # accept either secret name
+        if _name in st.secrets:
+            os.environ["GITHUB_TOKEN"] = st.secrets[_name]
+            break
 except Exception:
     pass
 
