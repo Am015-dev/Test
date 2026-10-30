@@ -10,7 +10,9 @@ classes); this module only builds the markup from listing dicts.
 from __future__ import annotations
 
 import html as _html
+import math as _math
 import re as _re
+import zlib as _zlib
 
 import streamlit as st
 
@@ -302,3 +304,160 @@ def listing_grid(rows: list[dict], metric: str = "score") -> None:
     # Removing inter-tag whitespace makes that impossible.
     cards = _re.sub(r">\s+<", "><", cards)
     st.markdown(f'<div class="ph-grid">{cards}</div>', unsafe_allow_html=True)
+
+
+# ---- results map -------------------------------------------------------------
+
+# Score → colour (absolute score, same scale as the card chip): red weak → green good.
+MAP_SCORE_GOOD, MAP_SCORE_MID = 50, 30
+_MAP_MAX_POINTS = 5000  # beyond this the browser chokes; we keep the best-scored ones
+# Approx ("κέντρο περιοχής") points share one coordinate per area — hundreds stack on one pixel.
+# Spread them deterministically in a ~350 m disc so they stay individually hoverable.
+_JITTER_DEG = 0.0032
+
+
+def score_color(score: float | None) -> list[int]:
+    """Red (weak) → amber → green (good) for an absolute 0–100 score; grey when unknown."""
+    if score is None:
+        return [150, 150, 160]
+    t = max(0.0, min(1.0, score / 60.0))
+    if t < 0.5:
+        u = t / 0.5
+        return [215, int(60 + 130 * u), 55]  # red → amber
+    u = (t - 0.5) / 0.5
+    return [int(215 - 175 * u), int(190 - 20 * u), int(55 + 25 * u)]  # amber → green
+
+
+def map_position(d: dict) -> tuple[float, float]:
+    """(lat, lng) to plot; approx points get a stable jitter keyed on the listing id."""
+    lat, lng = float(d["lat"]), float(d["lng"])
+    if d.get("location_precision") == "exact":
+        return lat, lng
+    h = _zlib.crc32(f"{d.get('source')}:{d.get('source_id')}".encode())
+    angle = (h & 0xFFFF) / 0xFFFF * 2 * _math.pi
+    r = _math.sqrt((h >> 16) / 0xFFFF) * _JITTER_DEG
+    return lat + r * _math.sin(angle), lng + r * _math.cos(angle) / _math.cos(_math.radians(lat))
+
+
+def _map_view(lats: list[float], lngs: list[float]) -> tuple[float, float, float]:
+    """Centre + zoom that frames the bulk (2nd–98th percentile) of the points."""
+    la, lo = sorted(lats), sorted(lngs)
+    n = len(la)
+    i, j = int(n * 0.02), max(int(n * 0.98) - 1, 0)
+    lat0, lat1, lng0, lng1 = la[i], la[j], lo[i], lo[j]
+    span = max((lng1 - lng0) / 2.5, (lat1 - lat0) / 1.3, 1e-4)
+    zoom = max(9.0, min(15.0, _math.log2(360 / span) - 0.3))
+    return (lat0 + lat1) / 2, (lng0 + lng1) / 2, zoom
+
+
+def map_legend() -> None:
+    dots = [
+        (score_color(60), f"σκορ ≥ {MAP_SCORE_GOOD} (καλό)"),
+        (score_color(40), f"{MAP_SCORE_MID}–{MAP_SCORE_GOOD}"),
+        (score_color(10), f"< {MAP_SCORE_MID} (αδύναμο)"),
+        ([30, 90, 255], "σταθμός μετρό"),
+    ]
+    items = "".join(
+        f'<span style="margin-right:14px;white-space:nowrap">'
+        f'<span style="display:inline-block;width:11px;height:11px;border-radius:50%;'
+        f'background:rgb({c[0]},{c[1]},{c[2]});margin-right:5px;vertical-align:middle"></span>'
+        f"{_esc(label)}</span>"
+        for c, label in dots
+    )
+    st.markdown(f'<div style="font-size:0.85rem">{items}</div>', unsafe_allow_html=True)
+
+
+def results_map(
+    rows: list[dict],
+    key: str,
+    height: int = 420,
+    size_by_price: bool = False,
+    show_metro: bool = True,
+) -> None:
+    """Score-coloured, auto-zoomed map of listing dicts with a Greek tooltip.
+
+    Rows without lat/lng are skipped (the caller explains how many). Approx locations are
+    jittered so they don't hide each other and are flagged in the tooltip."""
+    pts = [d for d in rows if d.get("lat") and d.get("lng")]
+    if not pts:
+        st.info("Καμία από αυτές τις αγγελίες δεν έχει θέση στον χάρτη.")
+        return
+    if len(pts) > _MAP_MAX_POINTS:
+        pts = sorted(pts, key=lambda d: d.get("score") or 0, reverse=True)[:_MAP_MAX_POINTS]
+        st.caption(
+            f"Εμφανίζονται οι {fmt._gr_int(_MAP_MAX_POINTS)} με το υψηλότερο σκορ — "
+            "φίλτραρε περιοχή ή τιμή για να δεις όλες."
+        )
+    import pandas as pd
+    import pydeck as pdk
+
+    recs = []
+    for d in pts:
+        lat, lng = map_position(d)
+        score, price, yb = d.get("score"), d.get("price"), d.get("year_built")
+        approx = d.get("location_precision") != "exact"
+        recs.append(
+            {
+                "lat": lat,
+                "lon": lng,
+                "fill": [*score_color(score), 185 if approx else 235],
+                "r": min(max((price or 0) / 60_000, 3), 9) if size_by_price else 4,
+                "title": _esc((d.get("title") or "")[:70]),
+                "price": fmt.euro(price),
+                "ppm2": fmt.euro_per_m2(d.get("price_per_m2")),
+                "score": f"{score:.0f}" if score is not None else "—",
+                "year": str(yb) if yb else "—",
+                "hood": _esc(d.get("neighborhood") or d.get("search_area") or "—"),
+                "prec": "📍 κατά προσέγγιση θέση" if approx else "",
+            }
+        )
+    df = pd.DataFrame(recs)
+    lat_c, lng_c, zoom = _map_view(df["lat"].tolist(), df["lon"].tolist())
+    if sum(1 for d in pts if d.get("location_precision") != "exact") > len(pts) / 2:
+        zoom = min(zoom, 13.5)  # mostly area-centroid points: don't zoom to fake street detail
+    layers = [
+        pdk.Layer(
+            "ScatterplotLayer",
+            data=df,
+            get_position="[lon, lat]",
+            get_fill_color="fill",
+            get_radius="r",
+            radius_units="'pixels'",  # quoted: pydeck evals bare strings
+            stroked=True,
+            get_line_color=[255, 255, 255, 160],
+            line_width_min_pixels=0.5,
+            pickable=True,
+        )
+    ]
+    if show_metro:
+        from ..enrich import METRO_STATIONS
+
+        metro = pd.DataFrame(
+            {"lat": la, "lon": lo, "name": n} for n, (la, lo) in METRO_STATIONS.items()
+        )
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=metro,
+                get_position="[lon, lat]",
+                get_fill_color=[30, 90, 255, 200],
+                get_radius=4,
+                radius_units="'pixels'",  # quoted: pydeck evals bare strings
+            )
+        )
+    tooltip = {
+        "html": "<b>{title}</b><br/>{price} · {ppm2}<br/>Σκορ: <b>{score}</b> · "
+        "Έτος κατασκευής: {year}<br/>{hood}<br/><i>{prec}</i>",
+        "style": {"fontSize": "12px", "maxWidth": "280px"},
+    }
+    st.pydeck_chart(
+        pdk.Deck(
+            map_style="light",  # token-free Carto basemap
+            initial_view_state=pdk.ViewState(latitude=lat_c, longitude=lng_c, zoom=zoom),
+            layers=layers,
+            tooltip=tooltip,
+        ),
+        height=height,
+        key=key,
+    )
+    map_legend()
