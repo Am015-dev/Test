@@ -32,3 +32,18 @@ def test_digest_lists_picks():
 
 def test_seen_covers_sent_approved_rejected():
     assert Mandate(1, "x", SearchFilters(), {1}, {2}, {3}).seen == {1, 2, 3}
+
+
+def test_mandate_table_is_created_on_first_use(tmp_path, monkeypatch):
+    # Simulates the deployed dashboard: DB exists, init_db never ran, no `mandate` table yet.
+    import scout.db as db
+    import scout.shortlist as sl
+    from scout.config import get_settings
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/t.db")
+    get_settings.cache_clear()
+    monkeypatch.setattr(db, "_engine", None)
+    monkeypatch.setattr(sl, "_table_ready", False)
+    assert sl.list_mandates() == []
+    mid = sl.save_mandate("δυάρι", SearchFilters(price_max=1))
+    assert [m.id for m in sl.list_mandates()] == [mid]

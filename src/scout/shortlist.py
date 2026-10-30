@@ -45,6 +45,21 @@ def pick(
     return hits[:n]
 
 
+_table_ready = False
+
+
+def _ensure_table() -> None:
+    """Create the ``mandate`` table if missing. The dashboard never runs ``init_db`` (only the
+    pipeline does), so on an already-deployed DB the first Shortlist visit must make it."""
+    global _table_ready
+    if not _table_ready:
+        from .db import get_engine
+        from .models import MandateRow
+
+        MandateRow.__table__.create(get_engine(), checkfirst=True)
+        _table_ready = True
+
+
 def _ids(raw: str | None) -> set[int]:
     return set(json.loads(raw)) if raw else set()
 
@@ -64,6 +79,7 @@ def save_mandate(text: str, filters: SearchFilters) -> int:
     from .db import session_scope
     from .models import MandateRow
 
+    _ensure_table()
     with session_scope() as session:
         row = MandateRow(text=text, filters=filters.model_dump_json(), created_at=datetime.utcnow())
         session.add(row)
@@ -77,6 +93,7 @@ def list_mandates() -> list[Mandate]:
     from .db import session_scope
     from .models import MandateRow
 
+    _ensure_table()
     with session_scope() as session:
         return [_to_mandate(r) for r in session.scalars(select(MandateRow)).all()]
 
