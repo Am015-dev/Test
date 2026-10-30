@@ -2170,8 +2170,8 @@ def page_search(listings: list[dict]) -> None:
 # Everyday pages first, secondary tools after — so the nav reads top-to-bottom by how
 # often it's used, instead of an 11-item jumble.
 PAGES = {
-    "Search": page_search,
     "Opportunities": page_opportunities,
+    "Search": page_search,
     "Today": page_today,
     "Map": page_map,
     "Neighborhoods": page_neighborhoods,
