@@ -106,3 +106,18 @@ def test_parse_query_empty_or_missing_key(monkeypatch):
     )
     with pytest.raises(SearchParseError):
         parse_query("δυάρι")
+
+
+def test_budget_is_total_cash_including_buying_costs():
+    # 170k + ~7.15% private-seller costs ≈ 182k
+    assert match(BASE, SearchFilters(budget=185_000)) is not None
+    assert match(BASE, SearchFilters(budget=175_000)) is None
+
+
+def test_advise_blends_score_and_yield():
+    from scout.nl_search import advise
+
+    d = {**BASE, "score": 50, "net_yield": 0.07, "est_monthly_rent": 700}
+    a = advise(d)
+    assert a["score"] == 70 and a["rent_estimated"] and a["payback_years"]
+    assert advise({**BASE, "score": 50})["score"] == 50

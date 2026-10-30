@@ -8,6 +8,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from scout.config import get_settings
+from scout.finance import acquisition_costs
+from scout.investment import payback_years
 
 Want = Literal["elevator", "parking", "balcony", "renovated"]
 
@@ -40,6 +42,11 @@ class SearchFilters(BaseModel):
     bedrooms_max: int | None = None
     floor_min: float | None = None
     private_only: bool = False
+    budget: int | None = Field(
+        None,
+        description="Total capital the user wants to invest, EUR, when stated as an amount to "
+        "invest ('έχω 200.000 να επενδύσω'). Not the same as price_max.",
+    )
     wants: list[Want] = Field(default_factory=list)
 
 
@@ -76,6 +83,11 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
             reasons.append(f"{label}: {v:g}")
     if f.private_only and d.get("is_private_seller") is False:
         return None
+    if f.budget and d.get("price"):
+        cash = d["price"] + (acquisition_costs(d["price"], bool(d.get("is_private_seller"))) or 0)
+        if cash > f.budget:
+            return None
+        reasons.append(f"συνολικό κόστος {cash:,.0f} €")
     text = _norm(f"{where} {d.get('title') or ''}")
     confirmed = [
         w
@@ -87,11 +99,35 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
     return pct, reasons
 
 
+def advise(d: dict) -> dict:
+    """Investor view of one listing: expected rent, net yield, payback and a 0-100 score.
+
+    Score = 60% the thesis score already on the listing + 40% net yield (7% net = full marks);
+    with no rent estimate it is the thesis score alone. Rent is a model estimate unless listed.
+    """
+    rent = d.get("listed_rent") or d.get("est_monthly_rent")
+    ny = d.get("net_yield")
+    base = d.get("score") or 0
+    score = base if ny is None else 0.6 * base + 0.4 * 100 * min(max(ny / 0.07, 0), 1)
+    private = bool(d.get("is_private_seller"))
+    return {
+        "score": round(score),
+        "monthly_rent": rent,
+        "rent_estimated": not d.get("listed_rent"),
+        "net_yield": ny,
+        "payback_years": (
+            payback_years(d["price"], rent * 12, d.get("area_m2"), private) if rent else None
+        ),
+    }
+
+
 MAX_CHARS = 500
 MODEL = "claude-haiku-5-5"
 SYSTEM = (
     "Convert a Greek home-BUYING search request into filters by calling set_filters. "
-    "Prices are purchase prices in EUR ('180Χ' = 180000). Only set fields the user stated."
+    "Prices are purchase prices in EUR ('180Χ' = 180000). Only set fields the user stated. "
+    "Area names go in the NOMINATIVE case ('Παπάγος', not 'Παπάγου'), each with its Latin "
+    "transliteration. An amount the user says they want to invest is budget, not price_max."
 )
 
 

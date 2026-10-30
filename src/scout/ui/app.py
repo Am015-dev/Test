@@ -2153,15 +2153,45 @@ def page_search(listings: list[dict]) -> None:
         return
     chips = " · ".join(f"{k}={v}" for k, v in f.model_dump(exclude_defaults=True).items())
     st.caption("Κατάλαβα: " + chips)
-    hits = [(m, d) for d in listings if (m := nl_search.match(d, f)) is not None]
-    hits.sort(key=lambda h: (-h[0][0], h[1]["price"]))
+    hits = [(m, d, nl_search.advise(d)) for d in listings if (m := nl_search.match(d, f))]
+    hits.sort(key=lambda h: (-h[0][0], -h[2]["score"], h[1]["price"]))
     st.write(f"**{len(hits)}** αγγελίες ταιριάζουν")
-    for (pct, reasons), d in hits[:50]:
+    if not hits:
+        return
+    best = hits[0]
+    by_area: dict[str, list[float]] = {}
+    for _, d, adv in hits:
+        if adv["net_yield"] is not None and d.get("neighborhood"):
+            by_area.setdefault(d["neighborhood"], []).append(adv["net_yield"])
+    if by_area:
+        area, ys = max(by_area.items(), key=lambda kv: statistics.median(kv[1]))
+        st.info(
+            f"💡 Πού: καλύτερη καθαρή απόδοση στο **{area}** "
+            f"(διάμεσος {statistics.median(ys):.1%}, {len(ys)} αγγελίες). "
+            f"Top επιλογή: **{best[1]['price']:,} €**, ενοίκιο ~"
+            f"{best[2]['monthly_rent'] or 0:,.0f} €/μήνα."
+        )
+    for (pct, reasons), d, adv in hits[:50]:
         with st.container(border=True):
             st.markdown(
-                f"**{pct}%** · [{d.get('title') or d['source_id']}]({d['url']}) — "
+                f"**Σκορ {adv['score']}** · ταίριασμα {pct}% · "
+                f"[{d.get('title') or d['source_id']}]({d['url']}) — "
                 f"{d['price']:,} € · {d.get('area_m2') or '?'} τ.μ. · "
                 f"{d.get('price_per_m2') or 0:,.0f} €/τ.μ. · {d['source'].upper()}"
+            )
+            rent = adv["monthly_rent"]
+            st.caption(
+                "Ενοίκιο: "
+                + (
+                    f"{rent:,.0f} €/μήνα{' (εκτίμηση)' if adv['rent_estimated'] else ''}"
+                    if rent
+                    else "—"
+                )
+                + " · Καθαρή απόδοση: "
+                + (f"{adv['net_yield']:.1%}" if adv["net_yield"] is not None else "—")
+                + " · Απόσβεση: "
+                + (f"{adv['payback_years']:g} έτη" if adv["payback_years"] else "—")
+                + f" · Βαθμός: {d.get('deal_grade') or '—'}"
             )
             if reasons:
                 st.caption("Γιατί ταιριάζει: " + ", ".join(reasons))
