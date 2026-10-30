@@ -37,6 +37,8 @@ try:
         # present in the container's environment must never silently win over the
         # secret the user actually configured.
         os.environ["DATABASE_URL"] = st.secrets["DATABASE_URL"]
+    if "ANTHROPIC_API_KEY" in st.secrets:
+        os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
 except Exception:
     pass
 
@@ -51,6 +53,7 @@ from scout import (  # noqa: E402
     investment,
     liquidity,
     listing_report,
+    nl_search,
     projection,
     score_explain,
     sensitivity,
@@ -2123,9 +2126,51 @@ def page_compare(listings: list[dict]) -> None:
     st.caption("Higher score/net yield/cap rate & lower GRM/days-on-market is better.")
 
 
+MAX_SEARCHES = 20  # per Streamlit session — bounds API cost
+
+
+def page_search(listings: list[dict]) -> None:
+    st.subheader("🔎 Γράψε τι σπίτι ψάχνεις")
+    text = st.text_area(
+        "Με δικά σου λόγια",
+        max_chars=nl_search.MAX_CHARS,
+        placeholder=(
+            "δυάρι στον Χολαργό έως 180.000€, από 60 τ.μ., με ανελκυστήρα, μόνο από ιδιώτη"
+        ),
+    )
+    used = st.session_state.get("nl_calls", 0)
+    if st.button("Αναζήτηση", disabled=not text.strip() or used >= MAX_SEARCHES):
+        try:
+            st.session_state["nl_filters"] = nl_search.parse_query(text)
+            st.session_state["nl_calls"] = used + 1
+        except nl_search.SearchParseError as e:
+            st.session_state.pop("nl_filters", None)
+            st.error(str(e))
+    if used >= MAX_SEARCHES:
+        st.warning("Έφτασες το όριο αναζητήσεων για αυτή τη συνεδρία — κάνε refresh σελίδας.")
+    f = st.session_state.get("nl_filters")
+    if f is None:
+        return
+    chips = " · ".join(f"{k}={v}" for k, v in f.model_dump(exclude_defaults=True).items())
+    st.caption("Κατάλαβα: " + chips)
+    hits = [(m, d) for d in listings if (m := nl_search.match(d, f)) is not None]
+    hits.sort(key=lambda h: (-h[0][0], h[1]["price"]))
+    st.write(f"**{len(hits)}** αγγελίες ταιριάζουν")
+    for (pct, reasons), d in hits[:50]:
+        with st.container(border=True):
+            st.markdown(
+                f"**{pct}%** · [{d.get('title') or d['source_id']}]({d['url']}) — "
+                f"{d['price']:,} € · {d.get('area_m2') or '?'} τ.μ. · "
+                f"{d.get('price_per_m2') or 0:,.0f} €/τ.μ. · {d['source'].upper()}"
+            )
+            if reasons:
+                st.caption("Γιατί ταιριάζει: " + ", ".join(reasons))
+
+
 # Everyday pages first, secondary tools after — so the nav reads top-to-bottom by how
 # often it's used, instead of an 11-item jumble.
 PAGES = {
+    "Search": page_search,
     "Opportunities": page_opportunities,
     "Today": page_today,
     "Map": page_map,
