@@ -99,7 +99,7 @@ def test_app_never_blank_when_all_excluded(_db):
     assert len(at.warning) >= 1  # the "showing all with reasons" banner
     df = at.dataframe[0].value
     assert df.shape[0] == 2
-    assert "Filtered out" in list(df.columns)
+    assert "Λόγος αποκλεισμού" in list(df.columns)
 
 
 def _seed_valued_db(tmp_path) -> None:
@@ -161,12 +161,13 @@ def test_app_renders_fair_value_views(tmp_path, monkeypatch):
     assert not at.exception
     # The confidence banner is a success or warning box (fitted path), not the info stub.
     banner_text = " ".join(b.value for b in [*at.success, *at.warning])
-    assert "Fair-value model" in banner_text
+    assert "Μοντέλο εκτιμώμενης αξίας" in banner_text
     # The product listing-card grid renders (custom HTML, not a bare dataframe).
     md = " ".join(m.value for m in at.markdown)
     assert "ph-grid" in md and "ph-card" in md
     # The table view is still available (inside the expander) with the model columns.
     # (Search all dataframes — the coverage panel also renders one.)
     assert any(
-        "Fair value" in df.value.columns and "Value gap" in df.value.columns for df in at.dataframe
+        "Εκτιμώμενη αξία" in df.value.columns and "Απόκλιση αξίας" in df.value.columns
+        for df in at.dataframe
     )

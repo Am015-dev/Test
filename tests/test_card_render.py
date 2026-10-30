@@ -34,7 +34,7 @@ def test_card_html_collapses_to_no_blank_lines():
     collapsed = re.sub(r">\s+<", "><", html)
     assert "\n\n" not in collapsed
     # The footer (badges + CTA) must be present and contiguous with the rest.
-    assert "ph-card-foot" in collapsed and "View listing" in collapsed
+    assert "ph-card-foot" in collapsed and "Δες την αγγελία" in collapsed
     # No stray blank line between the signals and the footer.
     assert ">\n\n<" not in collapsed
 
@@ -43,4 +43,4 @@ def test_card_html_with_thesis_and_missing_data():
     html = _card_html(_row(deal_thesis="Offer €190,000", data_missing=["energy", "year"]))
     collapsed = re.sub(r">\s+<", "><", html)
     assert "\n\n" not in collapsed
-    assert "Offer" in collapsed and "Limited data" in collapsed
+    assert "Offer" in collapsed and "Ελλιπή στοιχεία" in collapsed
