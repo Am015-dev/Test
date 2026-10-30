@@ -315,7 +315,6 @@ class XeCollector(Collector):
 
     # Each field has a `data-testid` selector (the markup XE serves now, present in the raw
     # HTML) and the older class selector as a fallback, so either layout parses.
-    _floorless_logged = 0
     SEL_LINK = "a[href*='/property/']"
     SEL_TITLE = "[data-testid='property_ad_title'], .common-property-ad-title"
     SEL_PRICE = "[data-testid='property_ad_price'], .property-ad-price"
@@ -696,11 +695,6 @@ class XeCollector(Collector):
         # an unfinished building is stated ("ημιτελής", "υπό κατασκευή").
         description = text(self.SEL_DESCRIPTION)
         floor = parse_floor(text(self.SEL_FLOOR))
-        if floor is None and XeCollector._floorless_logged < 3:
-            # ponytail: temporary — shows what XE's card carries when no floor parses
-            XeCollector._floorless_logged += 1
-            details = tree.css_first("[data-testid='common_property_ad_details']")
-            logger.info("xe: card without floor: %s", (details.html if details else html)[:2500])
         # Rent/private-seller surface on detail pages.
         rented, listed_rent = parse_rent(title)
         # The card footer says "Αγγελία ιδιώτη" for a private seller (agencies show a logo).
