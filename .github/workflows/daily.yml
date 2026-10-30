@@ -24,7 +24,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 55      # above the sum of the step caps so publish is never cancelled
+    timeout-minutes: 150     # above the sum of the step caps so publish is never cancelled
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,7 +46,8 @@ jobs:
           fi
 
       - name: Collect today's area slice (best-effort, time-boxed)
-        timeout-minutes: 25
+        # ~6 min per area at polite pacing; today's slice is ~11 areas. Public repo: free minutes.
+        timeout-minutes: 110
         continue-on-error: true
         env:
           SCRAPE_DETAIL_PAGES: "false"
