@@ -1,0 +1,54 @@
+name: diag-links
+on:
+  push:
+    branches: [diag/links]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download DB
+        run: curl -sSL -o listings.db https://raw.githubusercontent.com/Am015-dev/Test/data/listings.db && ls -la listings.db
+      - name: Check links
+        shell: python
+        run: |
+          import re, sqlite3, urllib.request, urllib.error, http.cookiejar
+          c = sqlite3.connect("listings.db")
+          print("status counts:", c.execute("select status, count(*) from listing group by 1").fetchall())
+          print("active by month:", c.execute("select substr(last_seen,1,7), count(*) from listing where status='active' group by 1").fetchall())
+          newest = c.execute("select max(last_seen) from listing where source='xe'").fetchone()[0]
+          print("newest last_seen:", newest)
+          fresh = c.execute("select source_id,url,last_seen,price from listing where source='xe' and last_seen >= datetime(?, '-3 days') order by random() limit 5", (newest,)).fetchall()
+          aug = c.execute("select source_id,url,last_seen,price from listing where source='xe' and last_seen like '2026-08%' order by random() limit 5").fetchall()
+          ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+          hdr = {"User-Agent": ua, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "el-GR,el;q=0.9,en;q=0.8", "Referer": "https://www.xe.gr/property/"}
+          opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+          def check(label, sid, url, seen, price):
+              try:
+                  r = opener.open(urllib.request.Request(url, headers=hdr), timeout=30)
+                  code, final, body = r.status, r.geturl(), r.read().decode("utf-8", "replace")
+              except urllib.error.HTTPError as e:
+                  code, final, body = e.code, e.geturl(), e.read().decode("utf-8", "replace")
+              except Exception as e:
+                  print(f"[{label}] {seen} ERR {e} {url}")
+                  return
+              t = re.search(r"<title[^>]*>(.*?)</title>", body, re.S)
+              title = (t.group(1).strip() if t else "")[:120]
+              has_id = sid in body
+              has_ld = "RealEstateListing" in body
+              price_s = f"{price:,}".replace(",", ".")
+              has_price = price_s in body or str(price) in body
+              cards = body.count("common-ad-body")
+              if has_ld or (has_id and has_price and cards < 3):
+                  looks = "LISTING"
+              elif cards >= 3:
+                  looks = "SEARCH"
+              else:
+                  looks = "OTHER/NOTFOUND"
+              print(f"[{label}] seen={seen} status={code} looks={looks} id_in_page={has_id} jsonld={has_ld} price_in_page={has_price} cards={cards} len={len(body)}")
+              print(f"    url  ={url}")
+              print(f"    final={final}")
+              print(f"    title={title!r}")
+          for row in fresh:
+              check("FRESH", *row)
+          for row in aug:
+              check("AUG", *row)
