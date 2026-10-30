@@ -177,28 +177,29 @@ def _valuation_banner() -> dict:
     v = get_valuation_summary()
     if not v.get("fitted"):
         st.info(
-            "**Fair-value model:** not enough comparable listings yet to price properties "
-            "against their attributes — showing raw €/m² signals only."
+            "**Μοντέλο εκτιμώμενης αξίας:** δεν υπάρχουν ακόμα αρκετές συγκρίσιμες αγγελίες "
+            "για αποτίμηση βάσει χαρακτηριστικών — εμφανίζονται μόνο τιμές €/τ.μ."
         )
         return v
     o = v["overall"]
     r2, n, n_areas = o["r2"], o["n"], o.get("n_areas", 1)
     band = f"±{(pow(2.718281828, o['residual_std']) - 1) * 100:.0f}%"
-    scope = f"{n_areas} area-specific models over {n} comparables"
+    scope = f"{n_areas} μοντέλα ανά περιοχή σε {n} συγκρίσιμες αγγελίες"
     basis = (
-        "Values are **relative to ASKING prices** in each submarket (Greek sold prices "
-        "aren't public), so read them as *priced-vs-comparable-listings*, not vs. what "
-        "flats actually sell for."
+        "Οι εκτιμήσεις είναι **σε σχέση με τις ΖΗΤΟΥΜΕΝΕΣ τιμές** κάθε περιοχής (οι τιμές "
+        "πώλησης στην Ελλάδα δεν είναι δημόσιες) — δείχνουν *τιμή έναντι συγκρίσιμων "
+        "αγγελιών*, όχι έναντι της τιμής που τελικά πουλιούνται τα ακίνητα."
     )
     # One-line headline, with the full honesty caveats tucked in an expander so the top of
     # the page isn't a five-line wall of yellow text on every visit.
-    conf = "reliable" if o["is_confident"] else "indicative — shortlist, then verify"
-    headline = f"📐 Fair-value model: R²={r2:.2f}, typical range {band} — {conf}."
+    conf = "αξιόπιστο" if o["is_confident"] else "ενδεικτικό — ξεχώρισε και μετά επιβεβαίωσε"
+    headline = f"📐 Μοντέλο εκτιμώμενης αξίας: R²={r2:.2f}, τυπικό εύρος {band} — {conf}."
     (st.success if o["is_confident"] else st.warning)(headline)
-    with st.expander("How to read the fair-value figures"):
+    with st.expander("Πώς διαβάζεται η εκτιμώμενη αξία"):
         st.markdown(
-            f"{scope}. {basis} A wide ± range means the model can't price that submarket "
-            "precisely — use the ranking to shortlist and verify each listing on the portal."
+            f"{scope}. {basis} Μεγάλο εύρος ± σημαίνει ότι το μοντέλο δεν αποτιμά με ακρίβεια "
+            "αυτή την περιοχή — χρησιμοποίησε την κατάταξη για να ξεχωρίσεις αγγελίες "
+            "και επιβεβαίωσε κάθε μία στην πηγή."
         )
     return v
 
@@ -214,12 +215,18 @@ def _eligible(listings: list[dict]) -> list[dict]:
     return [d for d in listings if not d["excluded"]]
 
 
+# Display labels for the deal-scorecard verdict (the English value stays the data key).
+VERDICT_GR = {"Strong": "Ισχυρή", "Fair": "Μέτρια", "Pass": "Απόρριψη"}
+# Short-let (Airbnb) filter options on Opportunities.
+SL_ANY, SL_ALLOWED, SL_FROZEN = "Όλα", "Επιτρέπεται Airbnb", "Πάγωμα (μόνο μακροχρόνια)"
+
+
 # ---- shared rendering helpers ---------------------------------------------
 
 
 def _metro_label(d: dict) -> str:
     m = d["metro_distance_m"]
-    return f"{m} m" if m is not None else "unknown"
+    return f"{m} m" if m is not None else "άγνωστη"
 
 
 def _floor_label(value: float | None) -> str:
@@ -251,83 +258,92 @@ def _table(rows: list[dict], show_reason: bool = False) -> None:
     records = []
     for d in rows:
         rec = {
-            "Score": round(d["score"], 0),
-            "Asset": d.get("archetype", ""),
-            "Price": d["price"],
+            "Σκορ": round(d["score"], 0),
+            "Κατηγορία": components.archetype_label(d.get("archetype")),
+            "Τιμή": d["price"],
             # Only show a "Fair value" figure the model could actually stand behind (its
             # value_gap survived the confidence + real-attributes gate); blank otherwise so
             # an imputed prediction isn't read as a precise valuation.
-            "Fair value": (
+            "Εκτιμώμενη αξία": (
                 d.get("predicted_price") if d.get("value_gap_pct") is not None else None
             ),
-            "Value gap": (
+            "Απόκλιση αξίας": (
                 (d.get("value_gap_pct") * 100) if d.get("value_gap_pct") is not None else None
             ),
             # Honest market-position rank: cheaper per m² than N% of comparable active listings.
-            "vs market": (
+            "Έναντι αγοράς": (
                 d["value_percentile"] * 100 if d.get("value_percentile") is not None else None
             ),
-            "€/m²": d["price_per_m2"],
-            "Area": d["area_m2"],
-            "Floor": d["floor"],
-            "Built": d.get("renovated_year") or d.get("year_built"),
-            "Energy": d.get("energy_class") or "",
-            "Yield": (d["gross_yield"] * 100) if d["gross_yield"] is not None else None,
-            "Short-let": {
-                "FROZEN": "🚫 frozen",
-                "EXPANDING_RISK": "⚠️ risk",
-                "ALLOWED": "✓ ok",
+            "€/τ.μ.": d["price_per_m2"],
+            "Εμβαδόν": d["area_m2"],
+            "Όροφος": d["floor"],
+            "Έτος": d.get("renovated_year") or d.get("year_built"),
+            "Ενεργ. κλάση": d.get("energy_class") or "",
+            "Απόδοση": (d["gross_yield"] * 100) if d["gross_yield"] is not None else None,
+            "Airbnb": {
+                "FROZEN": "🚫 πάγωμα",
+                "EXPANDING_RISK": "⚠️ κίνδυνος",
+                "ALLOWED": "✓ επιτρέπεται",
             }.get(str_legality(_area_key(d)).status, ""),
-            "Metro": d["metro_distance_m"],
-            "Neighborhood": d["neighborhood"] or "—",
-            "Flags": " ".join(fmt.badges(d)) or "",
-            "Link": d["url"],
+            "Μετρό": d["metro_distance_m"],
+            "Γειτονιά": d["neighborhood"] or "—",
+            "Σημάνσεις": " ".join(fmt.badges(d)) or "",
+            "Σύνδεσμος": d["url"],
         }
         if show_reason:
-            rec["Filtered out"] = d["exclusion_reason"] or ""
+            rec["Λόγος αποκλεισμού"] = d["exclusion_reason"] or ""
         records.append(rec)
     df = pd.DataFrame(records)
     column_config = {
-        "Score": st.column_config.ProgressColumn(
-            "Score", help="0–100 fit vs strategy", min_value=0, max_value=100, format="%.0f"
+        "Σκορ": st.column_config.ProgressColumn(
+            "Σκορ",
+            help="0–100: ταίριασμα με τη στρατηγική",
+            min_value=0,
+            max_value=100,
+            format="%.0f",
         ),
-        "Asset": st.column_config.TextColumn(
-            "Asset", help="asset class — New build / Renovated / Modern / Dated / Energy liability"
+        "Κατηγορία": st.column_config.TextColumn(
+            "Κατηγορία",
+            help="Νεόδμητο / Ανακαινισμένο / Σύγχρονο / Παλαιό / Ενεργοβόρο",
         ),
-        "Price": st.column_config.NumberColumn("Price", format="€%d"),
-        "Fair value": st.column_config.NumberColumn(
-            "Fair value (est.)",
-            help="Model estimate vs TYPICAL ASKING for similar flats (±44% band, not a "
-            "sold-price valuation — Greece has no open sold register). Blank when too noisy.",
+        "Τιμή": st.column_config.NumberColumn("Τιμή", format="€%d"),
+        "Εκτιμώμενη αξία": st.column_config.NumberColumn(
+            "Εκτιμώμενη αξία",
+            help="Εκτίμηση του μοντέλου έναντι της ΤΥΠΙΚΗΣ ΖΗΤΟΥΜΕΝΗΣ τιμής παρόμοιων "
+            "διαμερισμάτων (εύρος ±44%, όχι αποτίμηση τιμής πώλησης — στην Ελλάδα δεν "
+            "υπάρχει δημόσιο μητρώο πωλήσεων). Κενό όταν η εκτίμηση είναι αβέβαιη.",
             format="€%d",
         ),
-        "Value gap": st.column_config.NumberColumn(
-            "vs asking (est.)",
-            help="+ = priced below the model's estimate of typical asking. An indicative "
-            "screen, not a proven discount.",
+        "Απόκλιση αξίας": st.column_config.NumberColumn(
+            "Έναντι ζητούμενης (εκτ.)",
+            help="+ = τιμή κάτω από την εκτίμηση του μοντέλου για την τυπική ζητούμενη. "
+            "Ενδεικτικό φίλτρο, όχι αποδεδειγμένη έκπτωση.",
             format="%+.0f%%",
         ),
-        "vs market": st.column_config.NumberColumn(
-            "vs market",
-            help="Cheaper per m² than this % of comparable active listings (same area, ±30% "
-            "size). A true market-position rank — no sold-price data, no pseudo-precision.",
+        "Έναντι αγοράς": st.column_config.NumberColumn(
+            "Έναντι αγοράς",
+            help="Φθηνότερο ανά τ.μ. από αυτό το % συγκρίσιμων ενεργών αγγελιών (ίδια "
+            "περιοχή, ±30% εμβαδόν). Πραγματική θέση στην αγορά — χωρίς ψευδο-ακρίβεια.",
             format="%.0f%%",
         ),
-        "Short-let": st.column_config.TextColumn(
-            "Short-let", help="Can a buyer legally run a NEW Airbnb here? (2026 Athens freeze)"
+        "Airbnb": st.column_config.TextColumn(
+            "Airbnb",
+            help="Επιτρέπεται νέα βραχυχρόνια μίσθωση (Airbnb) εδώ; (πάγωμα Αθήνας 2026)",
         ),
-        "€/m²": st.column_config.NumberColumn("€/m²", format="€%.0f"),
-        "Area": st.column_config.NumberColumn("Area", format="%.0f m²"),
-        "Floor": st.column_config.NumberColumn("Floor", format="%.0f"),
-        "Built": st.column_config.NumberColumn(
-            "Built", help="build / renovation year", format="%d"
+        "€/τ.μ.": st.column_config.NumberColumn("€/τ.μ.", format="€%.0f"),
+        "Εμβαδόν": st.column_config.NumberColumn("Εμβαδόν", format="%.0f τ.μ."),
+        "Όροφος": st.column_config.NumberColumn("Όροφος", format="%.0f"),
+        "Έτος": st.column_config.NumberColumn(
+            "Έτος", help="έτος κατασκευής / ανακαίνισης", format="%d"
         ),
-        "Energy": st.column_config.TextColumn("Energy", help="energy performance class"),
-        "Yield": st.column_config.NumberColumn("Yield", format="%.1f%%"),
-        "Metro": st.column_config.NumberColumn("Metro", help="walk to Line 3", format="%d m"),
-        "Link": st.column_config.LinkColumn("Link", display_text="open ↗"),
+        "Ενεργ. κλάση": st.column_config.TextColumn("Ενεργ. κλάση", help="ενεργειακή κλάση (ΠΕΑ)"),
+        "Απόδοση": st.column_config.NumberColumn("Απόδοση", format="%.1f%%"),
+        "Μετρό": st.column_config.NumberColumn(
+            "Μετρό", help="απόσταση με τα πόδια ως τη Γραμμή 3", format="%d m"
+        ),
+        "Σύνδεσμος": st.column_config.LinkColumn("Σύνδεσμος", display_text="άνοιγμα ↗"),
     }
-    st.dataframe(df, use_container_width=True, hide_index=True, column_config=column_config)
+    st.dataframe(df, width="stretch", hide_index=True, column_config=column_config)
 
 
 def _kpi_header(listings: list[dict]) -> None:
@@ -361,23 +377,25 @@ def _regulatory_panel(d: dict) -> None:
     gv = golden_visa_status(d.get("price"), d.get("area_m2"))
     reno = renovation_subsidy(d.get("energy_class"), d.get("year_built"))
 
-    st.markdown("#### 📜 Regulatory check — what portals don't tell you")
+    st.markdown("#### 📜 Νομικός έλεγχος — όσα δεν λένε οι αγγελίες")
     box = {"FROZEN": st.error, "EXPANDING_RISK": st.warning, "ALLOWED": st.success}.get(
         strl.status, st.info
     )
-    box(f"**Short-let (Airbnb):** {strl.headline} — {strl.detail}")
+    box(f"**Βραχυχρόνια μίσθωση (Airbnb):** {strl.headline} — {strl.detail}")
 
     cols = st.columns(2)
     (cols[0].success if gv.qualifies else cols[0].info)(
         f"**Golden Visa:** {gv.headline}" + (f" — {gv.detail}" if gv.detail else "")
     )
     if reno.candidate:
-        cols[1].info(f"**Energy subsidy:** {reno.headline} — {reno.detail}")
+        cols[1].info(f"**Επιδότηση ενέργειας:** {reno.headline} — {reno.detail}")
     else:
-        cols[1].caption("Energy subsidy: not flagged (needs EPC class C or lower).")
+        cols[1].caption(
+            "Επιδότηση ενέργειας: δεν ισχύει (απαιτεί ενεργειακή κλάση Γ ή χαμηλότερη)."
+        )
     st.caption(
-        "⚖️ Indicative flags from public 2026 rules — confirm STR/visa/subsidy eligibility "
-        "with a Greek lawyer before committing. Sources in docs/PRODUCT_STRATEGY.md."
+        "⚖️ Ενδεικτικές ενδείξεις από τους δημόσιους κανόνες του 2026 — επιβεβαίωσε "
+        "Airbnb / Golden Visa / επιδότηση με δικηγόρο πριν δεσμευτείς."
     )
 
 
@@ -394,12 +412,13 @@ def _investment_bullets(d: dict) -> list[str]:
     if gap is not None and fair:
         if gap >= 0.10:
             bullets.append(
-                f"**{gap*100:.0f}% under fair value** → model prices it at {fmt.euro(fair)} "
-                f"vs {fmt.euro(d.get('price', 0))} asked"
+                f"**{gap*100:.0f}% κάτω από την εκτιμώμενη αξία** → το μοντέλο το αποτιμά "
+                f"{fmt.euro(fair)} έναντι {fmt.euro(d.get('price', 0))} που ζητείται"
             )
         elif gap <= -0.10:
             bullets.append(
-                f"**{abs(gap)*100:.0f}% over fair value** — model prices it at {fmt.euro(fair)}"
+                f"**{abs(gap)*100:.0f}% πάνω από την εκτιμώμενη αξία** — το μοντέλο το αποτιμά "
+                f"{fmt.euro(fair)}"
             )
 
     # Yield + income — most important signal
@@ -409,63 +428,64 @@ def _investment_bullets(d: dict) -> list[str]:
         annual = monthly * 12 if monthly else None
         if annual:
             bullets.append(
-                f"**{gy*100:.1f}% gross yield** → {fmt.euro(monthly)}/mo · {fmt.euro(annual)}/yr"
+                f"**{gy*100:.1f}% μικτή απόδοση** → {fmt.euro(monthly)}/μήνα · "
+                f"{fmt.euro(annual)}/έτος"
             )
         else:
-            bullets.append(f"**{gy*100:.1f}% gross yield**")
+            bullets.append(f"**{gy*100:.1f}% μικτή απόδοση**")
 
     # Newness & energy — quality signals (new/efficient stock rents better, holds value)
     yr = d.get("renovated_year") or d.get("year_built")
     if yr:
-        label = "renovated" if d.get("renovated_year") else "built"
-        tag = " — **new build**" if yr >= 2010 else (" — dated" if yr < 1990 else "")
-        bullets.append(f"{label.capitalize()} **{yr}**{tag}")
+        label = "Ανακαίνιση" if d.get("renovated_year") else "Κατασκευή"
+        tag = " — **νεόδμητο**" if yr >= 2010 else (" — παλαιό" if yr < 1990 else "")
+        bullets.append(f"{label} **{yr}**{tag}")
     ec = d.get("energy_class")
     if ec:
         score_ec = energy_class_score(ec)
         if score_ec >= 0.75:
-            note = " — efficient"
+            note = " — αποδοτικό"
         elif energy_liability_multiplier(ec, get_strategy().scoring_reference) < 0.999:
-            note = " — ⚠️ EU-EPBD renovation liability (score reduced)"
+            note = " — ⚠️ υποχρέωση ανακαίνισης EPBD (μειωμένο σκορ)"
         else:
             note = ""
-        bullets.append(f"**Energy class {ec}**{note}")
+        bullets.append(f"**Ενεργειακή κλάση {ec}**{note}")
 
     # Price drop — timing signal
     fp = d.get("first_price")
     cp = d.get("price", 0)
     if fp and cp < fp:
         drop_pct = (fp - cp) / fp * 100
-        bullets.append(f"**Price dropped {drop_pct:.0f}%** from original {fmt.euro(fp)}")
+        bullets.append(f"**Μείωση τιμής {drop_pct:.0f}%** από αρχικά {fmt.euro(fp)}")
 
     # Private seller — saves agent fees
     if d.get("is_private_seller"):
-        bullets.append("**Private seller** — no agent commission")
+        bullets.append("**Ιδιώτης πωλητής** — χωρίς μεσιτική αμοιβή")
 
     # Currently rented — immediate cashflow
     if d.get("is_currently_rented"):
-        rent_str = f" at {fmt.euro(d['listed_rent'])}/mo" if d.get("listed_rent") else ""
-        bullets.append(f"**Already rented{rent_str}** — cashflow from day 1")
+        rent_str = f" με {fmt.euro(d['listed_rent'])}/μήνα" if d.get("listed_rent") else ""
+        bullets.append(f"**Ήδη νοικιασμένο{rent_str}** — έσοδο από την πρώτη μέρα")
 
     # Metro proximity — rental demand driver
     metro = d.get("metro_distance_m")
-    nearest = d.get("nearest_metro") or "metro"
+    nearest = d.get("nearest_metro") or "μετρό"
     if metro is not None:
-        qualifier = "steps" if metro <= 200 else ("walk" if metro <= 400 else "")
+        qualifier = "δίπλα" if metro <= 200 else ("με τα πόδια" if metro <= 400 else "")
         if qualifier:
-            bullets.append(f"**{metro} m {qualifier} to {nearest}** (Line 3)")
+            bullets.append(f"**{metro} m ({qualifier}) από {nearest}** (Γραμμή 3)")
         else:
-            bullets.append(f"{metro} m to {nearest}")
+            bullets.append(f"{metro} m από {nearest}")
 
     # Timing: days on market
     dom = fmt.days_on_market(d.get("first_seen"), d.get("last_seen"))
     if dom is not None:
         if dom == 0:
-            bullets.append("**Listed today** — act fast")
+            bullets.append("**Νέα αγγελία σήμερα** — κινήσου γρήγορα")
         elif dom >= 60:
-            bullets.append(f"**{dom} days on market** — seller likely motivated")
+            bullets.append(f"**{dom} μέρες στην αγορά** — ο πωλητής πιθανώς διαπραγματεύεται")
         elif dom >= 14:
-            bullets.append(f"{dom} days on market")
+            bullets.append(f"{dom} μέρες στην αγορά")
 
     return bullets
 
@@ -504,13 +524,13 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
     target = max(getattr(ref, "target_undervaluation", 0.20), 1e-9)
     if gap is not None:
         under_sig = max(0.0, min(1.0, gap / target))
-        under_value = f"{gap*100:+.0f}% vs fair"
+        under_value = f"{gap*100:+.0f}% έναντι αξίας"
         under_score = round(under_sig * w.undervaluation / total_w * 100, 1)
     else:
         # No hedonic fit for this area: the real scorer falls back to €/m²-vs-median,
         # which the UI can't decompose here (it lacks the market medians). Show "—"
         # rather than a misleading 0 that wouldn't reconcile with the total score.
-        under_value = "via €/m² fallback"
+        under_value = "μέσω €/τ.μ. (εναλλακτικά)"
         # Keep the column numeric (None → blank cell). A "—" string here made the whole
         # "Score" column object-dtype, which Streamlit/pyarrow can't serialise under the
         # NumberColumn config — the breakdown table then fell back to unformatted text.
@@ -518,56 +538,56 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
 
     rows = [
         {
-            "Signal": "Undervaluation",
-            "Value": under_value,
-            "Score": under_score,
-            "Max": round(w.undervaluation / total_w * 100, 1),
+            "Κριτήριο": "Υποτίμηση",
+            "Τιμή": under_value,
+            "Πόντοι": under_score,
+            "Μέγιστο": round(w.undervaluation / total_w * 100, 1),
         },
         {
-            "Signal": "Gross yield",
-            "Value": f"{gy*100:.1f}%" if gy else "—",
-            "Score": round(yield_sig * w.gross_yield / total_w * 100, 1),
-            "Max": round(w.gross_yield / total_w * 100, 1),
+            "Κριτήριο": "Μικτή απόδοση",
+            "Τιμή": f"{gy*100:.1f}%" if gy else "—",
+            "Πόντοι": round(yield_sig * w.gross_yield / total_w * 100, 1),
+            "Μέγιστο": round(w.gross_yield / total_w * 100, 1),
         },
         {
-            "Signal": "Newness (build/reno yr)",
-            "Value": str(built) if built else "—",
-            "Score": round(new_sig * w.newness / total_w * 100, 1),
-            "Max": round(w.newness / total_w * 100, 1),
+            "Κριτήριο": "Παλαιότητα (έτος κατασκ./ανακ.)",
+            "Τιμή": str(built) if built else "—",
+            "Πόντοι": round(new_sig * w.newness / total_w * 100, 1),
+            "Μέγιστο": round(w.newness / total_w * 100, 1),
         },
         {
-            "Signal": "Energy class",
-            "Value": d.get("energy_class") or "—",
-            "Score": round(energy_sig * w.energy_class / total_w * 100, 1),
-            "Max": round(w.energy_class / total_w * 100, 1),
+            "Κριτήριο": "Ενεργειακή κλάση",
+            "Τιμή": d.get("energy_class") or "—",
+            "Πόντοι": round(energy_sig * w.energy_class / total_w * 100, 1),
+            "Μέγιστο": round(w.energy_class / total_w * 100, 1),
         },
         {
-            "Signal": "Price drop",
-            "Value": f"{(fp-cp)/fp*100:.0f}% drop" if (fp and cp < fp) else "none",
-            "Score": round(drop_sig * w.price_drop / total_w * 100, 1),
-            "Max": round(w.price_drop / total_w * 100, 1),
+            "Κριτήριο": "Μείωση τιμής",
+            "Τιμή": f"−{(fp-cp)/fp*100:.0f}%" if (fp and cp < fp) else "καμία",
+            "Πόντοι": round(drop_sig * w.price_drop / total_w * 100, 1),
+            "Μέγιστο": round(w.price_drop / total_w * 100, 1),
         },
         {
-            "Signal": "Currently rented",
-            "Value": "✅ yes" if d.get("is_currently_rented") else "✗ no",
-            "Score": round(rented_sig * w.is_currently_rented / total_w * 100, 1),
-            "Max": round(w.is_currently_rented / total_w * 100, 1),
+            "Κριτήριο": "Ήδη νοικιασμένο",
+            "Τιμή": "✅ ναι" if d.get("is_currently_rented") else "✗ όχι",
+            "Πόντοι": round(rented_sig * w.is_currently_rented / total_w * 100, 1),
+            "Μέγιστο": round(w.is_currently_rented / total_w * 100, 1),
         },
         {
-            "Signal": "Private seller",
-            "Value": "✅ yes" if d.get("is_private_seller") else "✗ no",
-            "Score": round(private_sig * w.is_private_seller / total_w * 100, 1),
-            "Max": round(w.is_private_seller / total_w * 100, 1),
+            "Κριτήριο": "Ιδιώτης πωλητής",
+            "Τιμή": "✅ ναι" if d.get("is_private_seller") else "✗ όχι",
+            "Πόντοι": round(private_sig * w.is_private_seller / total_w * 100, 1),
+            "Μέγιστο": round(w.is_private_seller / total_w * 100, 1),
         },
     ]
     df = pd.DataFrame(rows)
     st.dataframe(
         df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
-            "Score": st.column_config.NumberColumn("Score pts", format="%.1f"),
-            "Max": st.column_config.NumberColumn("Max pts", format="%.1f"),
+            "Πόντοι": st.column_config.NumberColumn("Πόντοι", format="%.1f"),
+            "Μέγιστο": st.column_config.NumberColumn("Μέγιστο", format="%.1f"),
         },
     )
     # The final score is scaled down for energy-inefficient stock (EU-EPBD liability), so
@@ -575,15 +595,15 @@ def _score_breakdown(d: dict, strategy: Strategy) -> None:
     mult = energy_liability_multiplier(d.get("energy_class"), ref)
     if mult < 0.999:
         st.warning(
-            f"⚠️ **Energy-liability adjustment: ×{mult:.2f}** — class "
-            f"{d.get('energy_class') or '?'} faces EU-EPBD renovation mandates, so the "
-            f"final score is reduced ~{(1 - mult) * 100:.0f}% below the weighted total above."
+            f"⚠️ **Προσαρμογή ενεργειακού κινδύνου: ×{mult:.2f}** — η κλάση "
+            f"{d.get('energy_class') or '?'} υπόκειται σε υποχρεώσεις ανακαίνισης EPBD, άρα "
+            f"το τελικό σκορ είναι ~{(1 - mult) * 100:.0f}% χαμηλότερο από το άθροισμα."
         )
     st.caption(
-        "Undervaluation compares the asking price to a hedonic fair value predicted from "
-        "this flat's own size, floor, age, energy class, metro distance and area — so it "
-        "flags a genuine mispricing, not merely a cheap-but-inferior flat. It needs ≥ 25 "
-        "comparables to fit; below that it falls back to raw €/m² vs the area median."
+        "Η υποτίμηση συγκρίνει τη ζητούμενη τιμή με την εκτιμώμενη αξία βάσει εμβαδού, "
+        "ορόφου, παλαιότητας, ενεργειακής κλάσης, απόστασης από μετρό και περιοχής — "
+        "εντοπίζει πραγματική λάθος τιμολόγηση, όχι απλώς ένα φθηνό αλλά κατώτερο σπίτι. "
+        "Χρειάζεται ≥ 25 συγκρίσιμες· αλλιώς συγκρίνει το €/τ.μ. με τη διάμεσο περιοχής."
     )
 
 
@@ -604,26 +624,26 @@ def _fair_value_block(d: dict) -> None:
     hi = int(round(fair * pow(2.718281828, sigma)))
     ask = d.get("price", 0)
 
-    st.markdown("#### 💰 Fair value vs asking")
+    st.markdown("#### 💰 Εκτιμώμενη αξία έναντι ζητούμενης")
     cols = st.columns(3)
-    cols[0].metric("Asking", fmt.euro(ask))
-    cols[1].metric("Model fair value", fmt.euro(fair), delta=f"{gap*100:+.0f}% vs asking")
-    cols[2].metric("Fair range (±1σ)", f"{fmt.euro(lo)} – {fmt.euro(hi)}")
+    cols[0].metric("Ζητούμενη", fmt.euro(ask))
+    cols[1].metric("Εκτιμώμενη αξία", fmt.euro(fair), delta=f"{gap*100:+.0f}% έναντι ζητούμενης")
+    cols[2].metric("Εύρος αξίας (±1σ)", f"{fmt.euro(lo)} – {fmt.euro(hi)}")
 
     # Only a discount BEYOND the model's noise earns a confident "undervalued" call.
     beyond_noise = ask < lo
     if gap > 0 and beyond_noise and area_confident:
         st.success(
-            "Priced **below** the model's fair range — a genuine mispricing signal, not "
-            "just a cheap flat."
+            "Τιμή **κάτω** από το εύρος αξίας του μοντέλου — πραγματική ένδειξη "
+            "υποτίμησης, όχι απλώς φθηνό σπίτι."
         )
     elif gap > 0:
         st.caption(
-            "Priced below the point estimate, but *within* the model's uncertainty band — "
-            "suggestive, not conclusive. Verify the listing before acting."
+            "Τιμή κάτω από την εκτίμηση, αλλά *μέσα* στο εύρος αβεβαιότητας του μοντέλου — "
+            "ενδεικτικό, όχι οριστικό. Επιβεβαίωσε την αγγελία πριν κινηθείς."
         )
     elif ask > hi:
-        st.warning("Priced **above** the model's fair range — looks overpriced for its attributes.")
+        st.warning("Τιμή **πάνω** από το εύρος αξίας — φαίνεται ακριβό για τα χαρακτηριστικά του.")
 
 
 def _net_return_and_financing(d: dict, lid: int) -> None:
@@ -634,23 +654,23 @@ def _net_return_and_financing(d: dict, lid: int) -> None:
     """
     monthly = d.get("listed_rent") or d.get("est_monthly_rent")
     if not monthly:
-        st.markdown("#### 💶 Net return")
-        st.caption("_Needs a rent figure to model net return — none scraped or estimated._")
+        st.markdown("#### 💶 Καθαρή απόδοση")
+        st.caption("_Χρειάζεται ενοίκιο για την καθαρή απόδοση — δεν βρέθηκε ούτε εκτιμήθηκε._")
         return
     annual = monthly * 12
     price = d["price"]
     area = d.get("area_m2")
     private = bool(d.get("is_private_seller"))
 
-    st.markdown("#### 💶 Net return (after Greek buying & operating costs)")
-    with st.expander("⚙️ Cost assumptions — edit to match your case"):
+    st.markdown("#### 💶 Καθαρή απόδοση (μετά από κόστη αγοράς & λειτουργίας)")
+    with st.expander("⚙️ Παραδοχές κόστους — προσάρμοσέ τες στην περίπτωσή σου"):
         c = st.columns(3)
-        vacancy = c[0].number_input("Vacancy %", 0.0, 30.0, 5.0, 0.5, key=f"vac-{lid}") / 100
-        maint = c[1].number_input("Maintenance % of rent", 0.0, 30.0, 8.0, 0.5, key=f"maint-{lid}")
-        enfia = c[2].number_input("ENFIA €/m²/yr", 0.0, 20.0, 4.0, 0.5, key=f"enfia-{lid}")
+        vacancy = c[0].number_input("Κενότητα %", 0.0, 30.0, 5.0, 0.5, key=f"vac-{lid}") / 100
+        maint = c[1].number_input("Συντήρηση % ενοικίου", 0.0, 30.0, 8.0, 0.5, key=f"maint-{lid}")
+        enfia = c[2].number_input("ΕΝΦΙΑ €/τ.μ./έτος", 0.0, 20.0, 4.0, 0.5, key=f"enfia-{lid}")
         c2 = st.columns(3)
-        mgmt = c2[0].number_input("Management % of rent", 0.0, 20.0, 0.0, 0.5, key=f"mgmt-{lid}")
-        ins = c2[1].number_input("Insurance % of value/yr", 0.0, 2.0, 0.1, 0.05, key=f"ins-{lid}")
+        mgmt = c2[0].number_input("Διαχείριση % ενοικίου", 0.0, 20.0, 0.0, 0.5, key=f"mgmt-{lid}")
+        ins = c2[1].number_input("Ασφάλιση % αξίας/έτος", 0.0, 2.0, 0.1, 0.05, key=f"ins-{lid}")
     a = finance.CostAssumptions(
         vacancy_rate=vacancy,
         maintenance_pct_of_rent=maint / 100,
@@ -662,28 +682,38 @@ def _net_return_and_financing(d: dict, lid: int) -> None:
     noi = finance.net_operating_income(annual, price, area, a)
     acq = finance.acquisition_costs(price, private, a)
     nc = st.columns(4)
-    nc[0].metric("Net yield", fmt.pct(ny), help="Net operating income ÷ (price + buying costs)")
-    nc[1].metric("Gross yield", fmt.pct(d.get("gross_yield")))
-    nc[2].metric("Net income/yr", fmt.euro(noi), help="Rent after vacancy, mgmt, maintenance, tax")
+    nc[0].metric("Καθαρή απόδοση", fmt.pct(ny), help="Καθαρό έσοδο ÷ (τιμή + κόστη αγοράς)")
+    nc[1].metric("Μικτή απόδοση", fmt.pct(d.get("gross_yield")))
+    nc[2].metric(
+        "Καθαρό έσοδο/έτος",
+        fmt.euro(noi),
+        help="Ενοίκιο μετά από κενότητα, διαχείριση, συντήρηση, φόρους",
+    )
     nc[3].metric(
-        "Buying costs",
+        "Κόστη αγοράς",
         fmt.euro(acq),
-        help="Transfer tax, notary, legal" + ("" if private else ", agent"),
+        help="Φόρος μεταβίβασης, συμβολαιογράφος, δικηγόρος" + ("" if private else ", μεσίτης"),
     )
 
-    st.markdown("#### 🏦 Financing (mortgage & cash-on-cash)")
+    st.markdown("#### 🏦 Χρηματοδότηση (στεγαστικό & απόδοση ιδίων κεφαλαίων)")
     fc = st.columns(3)
-    deposit = fc[0].slider("Deposit %", 10, 100, 30, key=f"dep-{lid}") / 100
-    rate = fc[1].slider("Interest rate %", 0.0, 10.0, 4.0, 0.1, key=f"rate-{lid}") / 100
-    years = fc[2].slider("Term (years)", 5, 40, 25, key=f"term-{lid}")
+    deposit = fc[0].slider("Προκαταβολή %", 10, 100, 30, key=f"dep-{lid}") / 100
+    rate = fc[1].slider("Επιτόκιο %", 0.0, 10.0, 4.0, 0.1, key=f"rate-{lid}") / 100
+    years = fc[2].slider("Διάρκεια (έτη)", 5, 40, 25, key=f"term-{lid}")
     lev = finance.leverage_summary(price, annual, area, private, deposit, rate, years, a)
     if lev:
         lc = st.columns(4)
-        lc[0].metric("Monthly payment", fmt.euro(lev["monthly_payment"]))
-        lc[1].metric("Cash invested", fmt.euro(lev["cash_invested"]), help="Deposit + buying costs")
-        lc[2].metric("Cashflow/yr after debt", fmt.euro(lev["annual_cashflow_after_debt"]))
+        lc[0].metric("Μηνιαία δόση", fmt.euro(lev["monthly_payment"]))
+        lc[1].metric(
+            "Ίδια κεφάλαια",
+            fmt.euro(lev["cash_invested"]),
+            help="Προκαταβολή + κόστη αγοράς",
+        )
+        lc[2].metric("Ταμειακή ροή/έτος μετά τη δόση", fmt.euro(lev["annual_cashflow_after_debt"]))
         lc[3].metric(
-            "Cash-on-cash", fmt.pct(lev["cash_on_cash"]), help="Annual cashflow ÷ cash invested"
+            "Απόδοση ιδίων κεφ.",
+            fmt.pct(lev["cash_on_cash"]),
+            help="Ετήσια ταμειακή ροή ÷ ίδια κεφάλαια",
         )
 
 
@@ -695,37 +725,39 @@ def _comparables(d: dict, listings: list[dict]) -> None:
     if not rows:
         rows = comps_panel.comparable_listings(d, listings, n=6)
     if not rows:
-        st.caption("No comparable active listings in this neighborhood yet.")
+        st.caption("Δεν υπάρχουν ακόμα συγκρίσιμες ενεργές αγγελίες σε αυτή τη γειτονιά.")
         return
     records = [
         {
-            "Price": c.get("price"),
-            "€/m²": c.get("price_per_m2"),
-            "Area": c.get("area_m2"),
-            "Floor": c.get("floor"),
-            "vs this €/m²": c.get("ppm2_delta_pct"),
-            "Score": round(c["score"], 0) if c.get("score") is not None else None,
-            "Link": c.get("url"),
+            "Τιμή": c.get("price"),
+            "€/τ.μ.": c.get("price_per_m2"),
+            "Εμβαδόν": c.get("area_m2"),
+            "Όροφος": c.get("floor"),
+            "Διαφορά €/τ.μ.": c.get("ppm2_delta_pct"),
+            "Σκορ": round(c["score"], 0) if c.get("score") is not None else None,
+            "Σύνδεσμος": c.get("url"),
         }
         for c in rows
     ]
     st.dataframe(
         pd.DataFrame(records),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
-            "Price": st.column_config.NumberColumn("Price", format="€%d"),
-            "€/m²": st.column_config.NumberColumn("€/m²", format="€%.0f"),
-            "Area": st.column_config.NumberColumn("Area", format="%.0f m²"),
-            "Floor": st.column_config.NumberColumn("Floor", format="%.0f"),
-            "vs this €/m²": st.column_config.NumberColumn(
-                "vs this €/m²", help="Negative = cheaper per m² than this listing", format="%+.0f%%"
+            "Τιμή": st.column_config.NumberColumn("Τιμή", format="€%d"),
+            "€/τ.μ.": st.column_config.NumberColumn("€/τ.μ.", format="€%.0f"),
+            "Εμβαδόν": st.column_config.NumberColumn("Εμβαδόν", format="%.0f τ.μ."),
+            "Όροφος": st.column_config.NumberColumn("Όροφος", format="%.0f"),
+            "Διαφορά €/τ.μ.": st.column_config.NumberColumn(
+                "Διαφορά €/τ.μ.",
+                help="Αρνητικό = φθηνότερο ανά τ.μ. από αυτή την αγγελία",
+                format="%+.0f%%",
             ),
-            "Score": st.column_config.NumberColumn("Score", format="%.0f"),
-            "Link": st.column_config.LinkColumn("Link", display_text="open ↗"),
+            "Σκορ": st.column_config.NumberColumn("Σκορ", format="%.0f"),
+            "Σύνδεσμος": st.column_config.LinkColumn("Σύνδεσμος", display_text="άνοιγμα ↗"),
         },
     )
-    st.caption("Same neighborhood, within ±25% area and ±30% price, ranked by €/m² closeness.")
+    st.caption("Ίδια γειτονιά, ±25% εμβαδόν και ±30% τιμή, ταξινομημένα κατά εγγύτητα €/τ.μ.")
 
 
 def _acquisition_block(d: dict) -> None:
@@ -736,21 +768,22 @@ def _acquisition_block(d: dict) -> None:
         return
     private = bool(d.get("is_private_seller"))
     ac = acquisition.acquisition_costs(price, agent_fee_pct=0.0 if private else 0.0248)
-    st.markdown("#### 🧾 Total acquisition cost")
+    st.markdown("#### 🧾 Συνολικό κόστος αγοράς")
     c = st.columns(4)
-    c[0].metric("Sticker price", fmt.euro(ac["price"]))
+    c[0].metric("Τιμή αγγελίας", fmt.euro(ac["price"]))
     c[1].metric(
-        "Fees & taxes",
+        "Έξοδα & φόροι",
         fmt.euro(ac["total_fees"]),
-        help="Transfer tax, notary, registry, legal, agent",
+        help="Φόρος μεταβίβασης, συμβολαιογράφος, κτηματολόγιο, δικηγόρος, μεσίτης",
     )
-    c[2].metric("Total cash-in", fmt.euro(ac["total_cash"]))
-    c[3].metric("Fees % of price", f"{ac['fees_pct_of_price'] * 100:.1f}%")
+    c[2].metric("Συνολικό ποσό", fmt.euro(ac["total_cash"]))
+    c[3].metric("Έξοδα % τιμής", f"{ac['fees_pct_of_price'] * 100:.1f}%")
     st.caption(
-        f"Transfer tax {fmt.euro(ac['transfer_tax'])} · notary {fmt.euro(ac['notary'])} · "
-        f"registry {fmt.euro(ac['land_registry'])} · legal {fmt.euro(ac['legal'])} · "
-        f"agent {fmt.euro(ac['agent'])}"
-        + ("  _(private seller — no agent fee)_" if private else "")
+        f"Φόρος μεταβίβασης {fmt.euro(ac['transfer_tax'])} · "
+        f"συμβολαιογράφος {fmt.euro(ac['notary'])} · "
+        f"κτηματολόγιο {fmt.euro(ac['land_registry'])} · δικηγόρος {fmt.euro(ac['legal'])} · "
+        f"μεσίτης {fmt.euro(ac['agent'])}"
+        + ("  _(ιδιώτης πωλητής — χωρίς μεσιτική αμοιβή)_" if private else "")
     )
 
 
@@ -773,19 +806,19 @@ def _investor_metrics_block(d: dict) -> None:
         shown = fmt_s.format(val) if val is not None else "—"
         return f"{emoji[v[key]]} **{label}:** {shown}"
 
-    st.markdown("#### 📐 Investor metrics")
+    st.markdown("#### 📐 Επενδυτικοί δείκτες")
     c = st.columns(4)
     c[0].markdown(cell("Cap rate", mm["cap_rate"], "cap_rate", "{:.1%}"))
     c[1].markdown(cell("GRM", mm["grm"], "grm", "{:.0f}×"))
     c[2].markdown(cell("DSCR", mm["dscr"], "dscr", "{:.2f}"))
     c[3].markdown(
-        cell("Break-even occ.", mm["break_even_occupancy"], "break_even_occupancy", "{:.0%}")
+        cell("Νεκρό σημείο πληρότ.", mm["break_even_occupancy"], "break_even_occupancy", "{:.0%}")
     )
-    est = " Rent is estimated." if d.get("rent_estimated") else ""
+    est = " Το ενοίκιο είναι εκτίμηση." if d.get("rent_estimated") else ""
     st.caption(
-        "Athens-calibrated (cap rate ≥4.5%, GRM ≤22, DSCR ≥1.2, break-even ≤80% = good). We "
-        "deliberately don't use US rules like the '1% rule' — at ~5% Athens yields they'd fail "
-        "on every flat and tell you nothing." + est
+        "Βαθμονομημένο για την Αθήνα (cap rate ≥4,5%, GRM ≤22, DSCR ≥1,2, νεκρό σημείο ≤80% "
+        "= καλό). Δεν χρησιμοποιούμε αμερικανικούς κανόνες όπως ο «κανόνας 1%» — με αποδόσεις "
+        "~5% στην Αθήνα θα απέρριπταν κάθε διαμέρισμα." + est
     )
 
 
@@ -796,16 +829,24 @@ def _scorecard_block(d: dict) -> None:
     if not sc.get("checks"):
         return
     color = {"Strong": "🟢", "Fair": "🟡", "Pass": "🔴"}
-    st.markdown(f"#### 🧮 Deal scorecard — {color.get(sc['verdict'], '')} {sc['verdict']}")
-    st.caption(f"{sc['points']}/{sc['max_points']} points ({sc['pct']:.0f}%). Athens-calibrated.")
+    verdict = VERDICT_GR.get(sc["verdict"], sc["verdict"])
+    st.markdown(f"#### 🧮 Αξιολόγηση ευκαιρίας — {color.get(sc['verdict'], '')} {verdict}")
+    st.caption(
+        f"{sc['points']}/{sc['max_points']} πόντοι ({sc['pct']:.0f}%). "
+        "Βαθμονομημένο για την Αθήνα."
+    )
     st.dataframe(
         pd.DataFrame(
             [
-                {"Check": c["label"], "Pts": f"{c['points']}/{c['max_points']}", "Note": c["note"]}
+                {
+                    "Έλεγχος": c["label"],
+                    "Πόντοι": f"{c['points']}/{c['max_points']}",
+                    "Σημείωση": c["note"],
+                }
                 for c in sc["checks"]
             ]
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -823,15 +864,15 @@ def _projection_block(d: dict) -> None:
     if not pr:
         return
     t = pr["total"]
-    st.markdown("#### 📈 5-year projection")
+    st.markdown("#### 📈 Πρόβλεψη 5ετίας")
     c = st.columns(4)
-    c[0].metric("Cumulative cashflow", fmt.euro(t["cumulative_cash_flow"]))
-    c[1].metric("Appreciation (2%/yr)", fmt.euro(t["property_appreciation"]))
-    c[2].metric("Debt paydown", fmt.euro(t["debt_paydown"]))
-    c[3].metric("Total return on cash", f"{t['total_return_pct'] * 100:.0f}%")
+    c[0].metric("Σωρευτική ταμειακή ροή", fmt.euro(t["cumulative_cash_flow"]))
+    c[1].metric("Υπεραξία (2%/έτος)", fmt.euro(t["property_appreciation"]))
+    c[2].metric("Αποπληρωμή δανείου", fmt.euro(t["debt_paydown"]))
+    c[3].metric("Συνολική απόδοση ιδίων", f"{t['total_return_pct'] * 100:.0f}%")
     st.caption(
-        "The four pillars of return over a 5-yr hold (30% down, 25-yr @4.5%). Appreciation is "
-        "a MODEST 2%/yr assumption, not a forecast — the market may do more or less."
+        "Οι τέσσερις πηγές απόδοσης σε 5ετή διακράτηση (30% προκαταβολή, 25ετές δάνειο @4,5%). "
+        "Η υπεραξία είναι ΣΥΝΤΗΡΗΤΙΚΗ παραδοχή 2%/έτος, όχι πρόβλεψη."
     )
 
 
@@ -845,51 +886,55 @@ def _sensitivity_block(d: dict) -> None:
     grid = sensitivity.sensitivity_grid(price, monthly * 12)
     if not grid.get("net_yield"):
         return
-    st.markdown("#### 🎛️ Rate × vacancy sensitivity")
+    st.markdown("#### 🎛️ Ευαισθησία επιτοκίου × κενότητας")
     rates = grid["rates"]
     vac = grid["vacancies"]
     ny = pd.DataFrame(
         grid["net_yield"],
-        index=[f"{r * 100:.0f}% rate" for r in rates],
-        columns=[f"{v * 100:.0f}% empty" for v in vac],
+        index=[f"επιτόκιο {r * 100:.0f}%" for r in rates],
+        columns=[f"κενό {v * 100:.0f}%" for v in vac],
     )
-    st.caption("Net yield (after vacancy, costs, mortgage interest) — 30% down, 25-yr term.")
-    st.dataframe(ny.style.format("{:.1%}"), use_container_width=True)
+    st.caption(
+        "Καθαρή απόδοση (μετά από κενότητα, κόστη, τόκους) — 30% προκαταβολή, 25ετές δάνειο."
+    )
+    st.dataframe(ny.style.format("{:.1%}"), width="stretch")
 
     annual = monthly * 12
-    with st.expander("More what-ifs — rent & purchase-price moves"):
+    with st.expander("Περισσότερα σενάρια — αλλαγές ενοικίου & τιμής αγοράς"):
         rs = sensitivity.rent_sensitivity(price, annual)
         if rs.get("net_yield"):
             rdf = pd.DataFrame(
                 {
-                    "Rent change": [f"{s * 100:+.0f}%" for s in rs["steps"]],
-                    "Net yield": rs["net_yield"],
-                    "Cashflow/mo": rs["cashflow_monthly"],
+                    "Αλλαγή ενοικίου": [f"{s * 100:+.0f}%" for s in rs["steps"]],
+                    "Καθαρή απόδοση": rs["net_yield"],
+                    "Ταμειακή ροή/μήνα": rs["cashflow_monthly"],
                 }
             )
-            st.markdown("**If rent moves**")
+            st.markdown("**Αν αλλάξει το ενοίκιο**")
             st.dataframe(
-                rdf.style.format({"Net yield": "{:.1%}", "Cashflow/mo": "€{:.0f}"}),
-                use_container_width=True,
+                rdf.style.format({"Καθαρή απόδοση": "{:.1%}", "Ταμειακή ροή/μήνα": "€{:.0f}"}),
+                width="stretch",
                 hide_index=True,
             )
         ps = sensitivity.price_sensitivity(price, annual)
         if ps.get("net_yield"):
             pdf = pd.DataFrame(
                 {
-                    "Price change": [f"{s * 100:+.0f}%" for s in ps["steps"]],
-                    "Net yield": ps["net_yield"],
-                    "Cash-on-cash": ps["cash_on_cash"],
+                    "Αλλαγή τιμής": [f"{s * 100:+.0f}%" for s in ps["steps"]],
+                    "Καθαρή απόδοση": ps["net_yield"],
+                    "Απόδοση ιδίων κεφ.": ps["cash_on_cash"],
                 }
             )
-            st.markdown("**If you negotiate the price**")
+            st.markdown("**Αν διαπραγματευτείς την τιμή**")
             st.dataframe(
-                pdf.style.format({"Net yield": "{:.1%}", "Cash-on-cash": "{:.1%}"}),
-                use_container_width=True,
+                pdf.style.format({"Καθαρή απόδοση": "{:.1%}", "Απόδοση ιδίων κεφ.": "{:.1%}"}),
+                width="stretch",
                 hide_index=True,
             )
     if d.get("rent_estimated"):
-        st.caption("_Rent is estimated (no local comp) — treat these as indicative._")
+        st.caption(
+            "_Το ενοίκιο είναι εκτίμηση (χωρίς τοπικό συγκρίσιμο) — τα νούμερα είναι ενδεικτικά._"
+        )
 
 
 # ---- pages -----------------------------------------------------------------
@@ -909,9 +954,9 @@ def _coverage_panel(listings: list[dict]) -> None:
     complete = sum(1 for d in listings if d.get("data_complete"))
     with st.expander(
         (
-            f"📦 Coverage — {total:,} listings, {complete / total * 100:.0f}% fully-detailed"
+            f"📦 Κάλυψη — {total:,} αγγελίες, {complete / total * 100:.0f}% με πλήρη στοιχεία"
             if total
-            else "📦 Coverage"
+            else "📦 Κάλυψη"
         ),
         expanded=False,
     ):
@@ -924,30 +969,30 @@ def _coverage_panel(listings: list[dict]) -> None:
             newest = max((d["last_seen"] for d in ds if d.get("last_seen")), default=None)
             rows.append(
                 {
-                    "Region": region,
-                    "Listings": n,
-                    "Fully detailed": f"{comp / n * 100:.0f}%" if n else "—",
-                    "Has energy": f"{en / n * 100:.0f}%" if n else "—",
-                    "Exact location": f"{exact / n * 100:.0f}%" if n else "—",
-                    "Last updated": newest.strftime("%Y-%m-%d %H:%M") if newest else "—",
+                    "Περιοχή": region,
+                    "Αγγελίες": n,
+                    "Πλήρη στοιχεία": f"{comp / n * 100:.0f}%" if n else "—",
+                    "Με ενεργ. κλάση": f"{en / n * 100:.0f}%" if n else "—",
+                    "Ακριβής θέση": f"{exact / n * 100:.0f}%" if n else "—",
+                    "Ενημέρωση": newest.strftime("%d/%m/%Y %H:%M") if newest else "—",
                 }
             )
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
         st.caption(
-            "Depth is recovered continuously by the detail-enrichment pass; card-only "
-            "listings carry a *limited data* badge until then."
+            "Τα πλήρη στοιχεία συμπληρώνονται σταδιακά από την αναλυτική σάρωση· μέχρι τότε "
+            "οι αγγελίες φέρουν την ένδειξη *ελλιπή στοιχεία*."
         )
 
 
 def page_opportunities(listings: list[dict]) -> None:
-    st.subheader("Opportunities")
+    st.subheader("Ευκαιρίες")
     _valuation_banner()
     _coverage_panel(_eligible(listings))
 
     if not listings:
         st.info(
-            "No listings yet. Press **🔄 Refresh now** in the sidebar to run the "
-            "pipeline, or wait for the daily scrape."
+            "Δεν υπάρχουν αγγελίες ακόμα. Πάτα **🔄 Φρέσκα δεδομένα** στο πλάι ή περίμενε "
+            "την ημερήσια ενημέρωση."
         )
         return
 
@@ -957,9 +1002,9 @@ def page_opportunities(listings: list[dict]) -> None:
     # with the reason each was filtered, so the user always sees what was scraped.
     if not eligible:
         st.warning(
-            f"**{len(listings)}** listings were scraped, but none pass your current "
-            "hard filters. Showing them all below with the reason each was filtered — "
-            "loosen the rules on the **Strategy** page to surface more."
+            f"Βρέθηκαν **{len(listings)}** αγγελίες, αλλά καμία δεν περνά τα τρέχοντα "
+            "αυστηρά φίλτρα. Εμφανίζονται όλες παρακάτω με τον λόγο αποκλεισμού — "
+            "χαλάρωσε τους κανόνες της στρατηγικής για να δεις περισσότερες."
         )
         rows = sorted(listings, key=lambda d: (d["price_per_m2"] or float("inf")))
         _table(rows, show_reason=True)
@@ -967,60 +1012,60 @@ def page_opportunities(listings: list[dict]) -> None:
 
     # Sidebar filters — defaults include everything so nothing hides silently.
     with st.sidebar:
-        st.subheader("Filters")
+        st.subheader("Φίλτρα")
         # Keep the everyday filters visible; tuck the rest into an expander so the sidebar
         # isn't a wall of ~15 controls (the #1 "hard to use" complaint).
         present_regions = [r for r in REGIONS if any(d.get("region") == r for d in eligible)]
         chosen_regions = (
-            st.multiselect("Region", present_regions, default=present_regions)
+            st.multiselect("Περιοχή", present_regions, default=present_regions)
             if present_regions
             else []
         )
         prices = [d["price"] for d in eligible]
         pmin, pmax = min(prices), max(prices)
         price_range = (
-            st.slider("Price (€)", pmin, pmax, (pmin, pmax), step=5000)
+            st.slider("Τιμή (€)", pmin, pmax, (pmin, pmax), step=5000)
             if pmin < pmax
             else (pmin, pmax)
         )
         min_vs_market = st.slider(
-            "Only good value — cheaper than …% of similar",
+            "Μόνο καλή τιμή — φθηνότερο από …% των παρόμοιων",
             0,
             95,
             0,
             step=5,
-            help="Market-position rank vs comparable active listings (same area, ±30% size). "
-            "0 = show all. An honest relative-value screen — no sold-price data needed.",
+            help="Θέση στην αγορά έναντι συγκρίσιμων ενεργών αγγελιών (ίδια περιοχή, ±30% "
+            "εμβαδόν). 0 = όλες.",
         )
         short_let_filter = st.selectbox(
-            "🏠 Short-let (Airbnb)",
-            ["Any", "Short-let allowed", "Frozen (long-let only)"],
+            "🏠 Βραχυχρόνια μίσθωση (Airbnb)",
+            [SL_ANY, SL_ALLOWED, SL_FROZEN],
             index=0,
-            help="Frozen = a buyer cannot get a new Airbnb licence (2026 Athens district freeze).",
+            help="Πάγωμα = δεν εκδίδεται νέα άδεια Airbnb (πάγωμα περιοχών Αθήνας 2026).",
         )
 
-        with st.expander("⚙️ More filters"):
+        with st.expander("⚙️ Περισσότερα φίλτρα"):
             near_metro_only = st.checkbox(
-                "🚇 Near a metro station only",
+                "🚇 Μόνο κοντά σε σταθμό μετρό",
                 value=False,
-                help="Keep only listings within the metro distance below (Line 2/3).",
+                help="Μόνο αγγελίες εντός της απόστασης από μετρό παρακάτω (Γραμμή 2/3).",
             )
             income = st.number_input(
-                "Your monthly net income (€) — 0 = off",
+                "Μηνιαίο καθαρό εισόδημα (€) — 0 = ανενεργό",
                 min_value=0,
                 value=0,
                 step=100,
-                help="Filters to homes a 25-yr mortgage at ~30% down supports on this income.",
+                help="Μόνο σπίτια που καλύπτει 25ετές στεγαστικό με ~30% προκαταβολή.",
             )
             max_afford = _max_affordable_price(income)
             if max_afford:
                 st.caption(
-                    f"≈ affordable up to **{fmt.euro(max_afford)}** (35% of income, ~4.5%, 25 yr)."
+                    f"≈ προσιτό έως **{fmt.euro(max_afford)}** (35% εισοδήματος, ~4,5%, 25 έτη)."
                 )
             present_strats = sorted({t for d in eligible for t in (d.get("strategy_tags") or [])})
             strat_filter = (
                 st.multiselect(
-                    "Strategy",
+                    "Στρατηγική",
                     present_strats,
                     default=[],
                     help="Cashflow · Value-add · Underpriced · Motivated seller · Prime location",
@@ -1029,21 +1074,23 @@ def page_opportunities(listings: list[dict]) -> None:
                 else []
             )
             subsidy_only = st.checkbox(
-                "🔧 Energy-subsidy candidates only",
+                "🔧 Μόνο υποψήφια για ενεργειακή επιδότηση",
                 value=False,
-                help="EPC class C or lower — eligible for the Exoikonomo 2026 renovation subsidy.",
+                help="Ενεργειακή κλάση Γ ή χαμηλότερη — επιλέξιμο για το Εξοικονομώ 2026.",
             )
             areas = [d["area_m2"] for d in eligible]
             amin, amax = int(min(areas)), int(max(areas)) + 1
             area_range = (
-                st.slider("Area (m²)", amin, amax, (amin, amax)) if amin < amax else (amin, amax)
+                st.slider("Εμβαδόν (τ.μ.)", amin, amax, (amin, amax))
+                if amin < amax
+                else (amin, amax)
             )
-            min_yield = st.slider("Min gross yield (%)", 0.0, 12.0, 0.0, step=0.5) / 100
-            min_year = st.slider("Built/renovated after", 1950, 2025, 1950, step=5)
-            new_only = st.checkbox("New builds only (≥ 2010)", value=False)
-            include_unknown_year = st.checkbox("Include unknown build year", value=True)
-            max_metro = st.slider("Max metro distance (m)", 0, 5000, 5000, step=50)
-            include_unknown_metro = st.checkbox("Include unknown metro distance", value=True)
+            min_yield = st.slider("Ελάχ. μικτή απόδοση (%)", 0.0, 12.0, 0.0, step=0.5) / 100
+            min_year = st.slider("Κατασκευή/ανακαίνιση μετά το", 1950, 2025, 1950, step=5)
+            new_only = st.checkbox("Μόνο νεόδμητα (≥ 2010)", value=False)
+            include_unknown_year = st.checkbox("Και με άγνωστο έτος κατασκευής", value=True)
+            max_metro = st.slider("Μέγ. απόσταση από μετρό (m)", 0, 5000, 5000, step=50)
+            include_unknown_metro = st.checkbox("Και με άγνωστη απόσταση από μετρό", value=True)
 
     def _built_year(d: dict) -> int | None:
         return d.get("renovated_year") or d.get("year_built")
@@ -1057,11 +1104,11 @@ def page_opportunities(listings: list[dict]) -> None:
             return False
         if strat_filter and not (set(strat_filter) & set(d.get("strategy_tags") or [])):
             return False
-        if short_let_filter != "Any":
+        if short_let_filter != SL_ANY:
             status = str_legality(_area_key(d)).status
-            if short_let_filter == "Short-let allowed" and status == "FROZEN":
+            if short_let_filter == SL_ALLOWED and status == "FROZEN":
                 return False
-            if short_let_filter == "Frozen (long-let only)" and status != "FROZEN":
+            if short_let_filter == SL_FROZEN and status != "FROZEN":
                 return False
         if (
             subsidy_only
@@ -1100,18 +1147,20 @@ def page_opportunities(listings: list[dict]) -> None:
     # 75 — the verdict already encodes how much of that score we can stand behind.
     _verdict_rank = {"BUY": 2, "WATCH": 1, "PASS": 0}
     sort_opts = {
-        "Best overall (score)": lambda d: (d["score"], d.get("data_complete", False)),
-        "Cheapest vs comparable listings": lambda d: (d.get("value_percentile") or -1),
-        "Most negotiable (days on market)": lambda d: (d.get("days_on_market") or 0),
-        "Highest net yield": lambda d: (d.get("net_yield") or -1),
+        "Καλύτερο συνολικά (σκορ)": lambda d: (d["score"], d.get("data_complete", False)),
+        "Φθηνότερο έναντι παρόμοιων": lambda d: (d.get("value_percentile") or -1),
+        "Πιο διαπραγματεύσιμο (μέρες στην αγορά)": lambda d: (d.get("days_on_market") or 0),
+        "Υψηλότερη καθαρή απόδοση": lambda d: (d.get("net_yield") or -1),
     }
     scol, fcol = st.columns([4, 1])
     with scol:
         sort_by = st.radio(
-            "Sort by", list(sort_opts), horizontal=True, label_visibility="collapsed"
+            "Ταξινόμηση", list(sort_opts), horizontal=True, label_visibility="collapsed"
         )
     with fcol:
-        buys_only = st.checkbox("🟢 BUYs only", value=False, help="Verified BUY verdicts only")
+        buys_only = st.checkbox(
+            "🟢 Μόνο BUY", value=False, help="Μόνο επιβεβαιωμένες προτάσεις BUY"
+        )
     inner = sort_opts[sort_by]
     rows = sorted(
         [d for d in eligible if keep(d) and (not buys_only or d.get("rec_verdict") == "BUY")],
@@ -1127,8 +1176,8 @@ def page_opportunities(listings: list[dict]) -> None:
 
     n_buys = sum(1 for d in rows if d.get("rec_verdict") == "BUY")
     st.markdown(
-        f"**{len(rows)}** listings match your filters (of {len(eligible)} tracked) · "
-        f"**{n_buys}** on the BUY shortlist"
+        f"**{len(rows)}** αγγελίες ταιριάζουν στα φίλτρα (από {len(eligible)}) · "
+        f"**{n_buys}** στη λίστα BUY"
     )
     if rows:
         # Cap the card grid to the top N by score — rendering all ~9k cards ships a
@@ -1137,17 +1186,17 @@ def page_opportunities(listings: list[dict]) -> None:
         components.listing_grid(rows[:grid_cap])
         if len(rows) > grid_cap:
             st.caption(
-                f"Showing the top {grid_cap} cards ({sort_by.split(' (')[0].lower()}). "
-                "Full list in the table below."
+                f"Εμφανίζονται οι πρώτες {grid_cap} κάρτες ({sort_by.split(' (')[0].lower()}). "
+                "Η πλήρης λίστα είναι στον πίνακα παρακάτω."
             )
-        with st.expander("Table view (sort / export)"):
+        with st.expander("Πίνακας (ταξινόμηση / εξαγωγή)"):
             _table(rows)
     else:
-        st.info("No listings match the current filters. Widen them in the sidebar.")
+        st.info("Καμία αγγελία δεν ταιριάζει στα φίλτρα. Διεύρυνέ τα στο πλάι.")
 
 
 def page_today(listings: list[dict]) -> None:
-    st.subheader("🗞️ Daily brief")
+    st.subheader("🗞️ Ημερήσια ενημέρωση")
     elig = _eligible(listings)
     cap = 30
 
@@ -1160,43 +1209,45 @@ def page_today(listings: list[dict]) -> None:
 
     # Counts strip — the "what changed since yesterday" a subscriber opens the tool for.
     c = st.columns(3)
-    c[0].metric("🟢 New BUYs (24 h)", len(new_buys))
-    c[1].metric("💸 Price drops (24 h)", len(drops))
-    c[2].metric("🆕 New listings (24 h)", len(new))
+    c[0].metric("🟢 Νέα BUY (24 ώρες)", len(new_buys))
+    c[1].metric("💸 Μειώσεις τιμής (24 ώρες)", len(drops))
+    c[2].metric("🆕 Νέες αγγελίες (24 ώρες)", len(new))
     # Honest framing when the 24h feed is empty: the change-signals (new listings, price
     # drops, motivated sellers) are BUILT by comparing daily snapshots — they only appear
     # once the pipeline has run on consecutive days. Show that instead of three bare zeros
     # that read as "broken". The always-useful briefs below still make the page actionable.
     if not new_buys and not drops and not new:
         st.info(
-            "No 24-hour changes to show yet. The daily-change feed (new listings, price "
-            "drops, motivated sellers) is built by comparing snapshots across days and fills "
-            "in as the pipeline runs — the price-history depth grows every day. Meanwhile the "
-            "**best current opportunities** are below."
+            "Δεν υπάρχουν ακόμα αλλαγές 24ώρου. Οι ημερήσιες αλλαγές (νέες αγγελίες, "
+            "μειώσεις τιμής, πρόθυμοι πωλητές) προκύπτουν συγκρίνοντας στιγμιότυπα ημερών και "
+            "συμπληρώνονται καθώς τρέχει η ενημέρωση. Στο μεταξύ, οι **καλύτερες τρέχουσες "
+            "ευκαιρίες** είναι παρακάτω."
         )
     st.divider()
 
     # Lead with the actual decisions: BUY-verdict listings that appeared today. This is the
     # feed a paying user wants — not "here's everything new", but "here's what to act on".
     if new_buys:
-        st.markdown("#### 🟢 New BUY signals today")
+        st.markdown("#### 🟢 Νέες προτάσεις BUY σήμερα")
         components.listing_grid(new_buys[:cap])
         st.divider()
 
     # Price cuts today — the classic motivated-seller trigger, straight from price history.
     if drops:
-        st.markdown("#### 💸 Price drops in the last 24 h")
+        st.markdown("#### 💸 Μειώσεις τιμής το τελευταίο 24ωρο")
         for d in drops:
             # Surface the cut as a lead strategy pill (the recommendation line owns the
             # thesis slot, so a deal_thesis here would never render). €old→€new is the
             # actionable bit — a fresh cut is the classic motivated-seller trigger.
-            pill = f"💸 −{d['drop_pct'] * 100:.0f}% today (€{d['new_price']:,.0f})"
+            pill = f"💸 −{d['drop_pct'] * 100:.0f}% σήμερα (€{d['new_price']:,.0f})"
             d["strategy_tags"] = [pill, *(d.get("strategy_tags") or [])]
         components.listing_grid(sorted(drops, key=lambda d: d["drop_pct"], reverse=True)[:cap])
         st.divider()
 
     if new and not new_buys:
-        st.markdown(f"#### 🆕 {len(new)} new in the last 24 h (none cleared the BUY bar)")
+        st.markdown(
+            f"#### 🆕 {len(new)} νέες το τελευταίο 24ωρο (καμία δεν πέρασε το κριτήριο BUY)"
+        )
         components.listing_grid(new[:cap])
         st.divider()
 
@@ -1204,17 +1255,17 @@ def page_today(listings: list[dict]) -> None:
     # and the highest yield right now — so the landing view is actionable even between runs.
     briefs = [
         (
-            "💰 Cheapest vs comparable listings",
+            "💰 Φθηνότερα έναντι παρόμοιων",
             lambda d: d.get("value_percentile") or -1,
             lambda d: (d.get("value_percentile") or 0) >= 0.90,
         ),
         (
-            "⏳ Most negotiable (longest on market)",
+            "⏳ Πιο διαπραγματεύσιμα (περισσότερο στην αγορά)",
             lambda d: d.get("days_on_market") or 0,
             lambda d: (d.get("days_on_market") or 0) > 90,
         ),
         (
-            "📈 Highest net yield",
+            "📈 Υψηλότερη καθαρή απόδοση",
             lambda d: d.get("net_yield") or -1,
             lambda d: d.get("net_yield") is not None,
         ),
@@ -1225,7 +1276,7 @@ def page_today(listings: list[dict]) -> None:
             st.markdown(f"#### {title}")
             components.listing_grid(picks)
     if not new and not drops and not any(any(pred(d) for d in elig) for _, _, pred in briefs):
-        st.info("No listings yet — run the pipeline from the sidebar.")
+        st.info("Δεν υπάρχουν αγγελίες ακόμα — ανανέωσε τα δεδομένα από το πλάι.")
 
 
 def _rank_color(t: float) -> list[int]:
@@ -1242,12 +1293,12 @@ def _rank_color(t: float) -> list[int]:
 
 
 def page_map(listings: list[dict]) -> None:
-    st.subheader("Map")
+    st.subheader("Χάρτης")
     pts = [d for d in _eligible(listings) if d["lat"] and d["lng"]]
     if not pts:
         st.info(
-            "No geocoded listings to map yet. Geocoding runs during the pipeline; "
-            "if listings show 'unknown' metro distance, geocoding hasn't resolved them."
+            "Δεν υπάρχουν ακόμα αγγελίες με συντεταγμένες. Ο εντοπισμός γίνεται κατά την "
+            "ενημέρωση· αν η απόσταση από μετρό είναι «άγνωστη», δεν έχει εντοπιστεί ακόμα."
         )
         return
     from scout.enrich import METRO_STATIONS
@@ -1312,14 +1363,14 @@ def page_map(listings: list[dict]) -> None:
                     latitude=center["lat"].mean(), longitude=center["lon"].mean(), zoom=13
                 ),
                 layers=layers,
-                tooltip={"text": "Score: {score}"},
+                tooltip={"text": "Σκορ: {score}"},
             )
         )
         st.caption(
-            f"Solid pins ({len(exact)}) = exact location, coloured by **relative rank** "
-            "(greener = scores better than most listings in view). "
-            f"Faint blobs ({len(approx)}) = approximate (area centroid — not enriched yet). "
-            "Blue = metro stations."
+            f"Έντονα σημεία ({len(exact)}) = ακριβής θέση, χρωματισμένα κατά **σχετική "
+            "κατάταξη** (πιο πράσινο = καλύτερο σκορ από τις περισσότερες αγγελίες). "
+            f"Αχνοί κύκλοι ({len(approx)}) = κατά προσέγγιση (κέντρο περιοχής). "
+            "Μπλε = σταθμοί μετρό."
         )
     except Exception:
         st.map(center)
@@ -1348,67 +1399,65 @@ def _scenarios_block(d: dict) -> None:
         return
     annual = monthly * 12
     price, area, priv = d["price"], d.get("area_m2"), bool(d.get("is_private_seller"))
-    st.markdown("#### 📉 Downside & scenarios")
+    st.markdown("#### 📉 Δυσμενή σενάρια")
     sens = investment.net_yield_sensitivity(price, annual, area, priv)
     if sens:
         c = st.columns(3)
         c[0].metric(
-            "Net yield — pessimistic",
+            "Καθαρή απόδοση — απαισιόδοξο",
             fmt.pct(sens["pessimistic"]),
-            help="12% vacancy + higher maintenance",
+            help="12% κενότητα + υψηλότερη συντήρηση",
         )
-        c[1].metric("Net yield — base", fmt.pct(sens["base"]))
+        c[1].metric("Καθαρή απόδοση — βασικό", fmt.pct(sens["base"]))
         c[2].metric(
-            "Net yield — optimistic",
+            "Καθαρή απόδοση — αισιόδοξο",
             fmt.pct(sens["optimistic"]),
-            help="2% vacancy + light maintenance",
+            help="2% κενότητα + ελαφριά συντήρηση",
         )
     c2 = st.columns(3)
     yoo = d.get("yield_on_offer")
     if yoo is not None:
         c2[0].metric(
-            "Net yield at suggested offer",
+            "Καθαρή απόδοση στην προτεινόμενη προσφορά",
             fmt.pct(yoo),
-            help=f"if you land it at {fmt.euro(d.get('suggested_offer'))}",
+            help=f"αν το κλείσεις στα {fmt.euro(d.get('suggested_offer'))}",
         )
     be = investment.break_even_rent(price, area, priv)
     if be:
         c2[1].metric(
-            "Break-even rent",
-            fmt.euro(be) + "/mo",
-            help="rent below which it bleeds cash before financing",
+            "Ενοίκιο νεκρού σημείου",
+            fmt.euro(be) + "/μήνα",
+            help="κάτω από αυτό το ενοίκιο έχεις ζημία (πριν τη χρηματοδότηση)",
         )
     pb = investment.payback_years(price, annual, area, priv)
     if pb:
-        c2[2].metric("Payback (unlevered)", f"~{pb:.0f} yrs")
+        c2[2].metric("Απόσβεση (χωρίς δάνειο)", f"~{pb:.0f} έτη")
     tax = investment.greek_rental_tax(annual)
     if tax:
         st.caption(
-            f"🧾 Greek rental-income tax ≈ **{fmt.euro(tax['annual_tax'])}/yr** "
-            f"({tax['effective_rate'] * 100:.0f}% effective) — inside the net figures above."
+            f"🧾 Φόρος εισοδήματος από ενοίκια ≈ **{fmt.euro(tax['annual_tax'])}/έτος** "
+            f"({tax['effective_rate'] * 100:.0f}% πραγματικός) — περιλαμβάνεται στα καθαρά."
         )
     reno = investment.renovation_roi(d.get("energy_class"), area, annual)
     if reno:
         st.caption(
-            f"🔧 Retrofit case: ~{fmt.euro(reno['capex'])} capex → "
-            f"+{fmt.euro(reno['annual_rent_uplift'])}/yr rent "
-            f"({reno['roi_pct'] * 100:.0f}% ROI, ~{reno['payback_years']:.0f}yr payback)."
+            f"🔧 Ενεργειακή αναβάθμιση: ~{fmt.euro(reno['capex'])} κόστος → "
+            f"+{fmt.euro(reno['annual_rent_uplift'])}/έτος ενοίκιο "
+            f"({reno['roi_pct'] * 100:.0f}% ROI, απόσβεση ~{reno['payback_years']:.0f} έτη)."
         )
     if d.get("rent_estimated"):
-        st.caption(
-            "_Rent is an area estimate — treat these as indicative until a real comp lands._"
-        )
+        st.caption("_Το ενοίκιο είναι εκτίμηση περιοχής — τα νούμερα είναι ενδεικτικά._")
 
 
 def _risk_and_context(d: dict, listings: list[dict]) -> None:
     """EPBD renovation liability, transparent price percentile, area liquidity, and a
     leverage one-liner — the decision context portals don't give."""
-    st.markdown("#### 🧭 Risk & context")
+    st.markdown("#### 🧭 Κίνδυνοι & πλαίσιο")
 
     # EPBD renovation-mandate liability + indicative capex (only for a known poor class).
     flag = epbd.epbd_flag(d.get("energy_class"), d.get("area_m2"))
     if flag.at_risk:
-        st.warning(f"⚠️ **EPBD liability** — {flag.note}")
+        st.warning(f"⚠️ **Υποχρέωση EPBD** — {flag.note}")
 
     cols = st.columns(2)
     # Transparent, checkable value signal: cheaper per m² than X% of this municipality.
@@ -1418,21 +1467,21 @@ def _risk_and_context(d: dict, listings: list[dict]) -> None:
     )
     if pct is not None:
         cols[0].metric(
-            "Cheaper per m² than",
-            f"{pct * 100:.0f}% of {d.get('search_area') or 'area'}",
-            help="Share of active listings in this municipality with a higher €/m².",
+            "Φθηνότερο ανά τ.μ. από",
+            f"{pct * 100:.0f}% της περιοχής {d.get('search_area') or ''}".rstrip(),
+            help="Ποσοστό ενεργών αγγελιών του δήμου με υψηλότερο €/τ.μ.",
         )
 
     # Area liquidity — how fast this submarket clears (from our own tracked lifecycle).
     liq = get_area_liquidity().get(d.get("search_area"))
     if liq and liq["median_days"] is not None:
         cols[1].metric(
-            "Typical days on market",
+            "Τυπικές μέρες στην αγορά",
             f"~{liq['median_days']:.0f}",
             help=(
-                f"Median dwell before delisting in {d.get('search_area')} "
-                f"({liq['cleared']} tracked; absorption {(liq['absorption'] or 0) * 100:.0f}%). "
-                "Delisting is a proxy for sold."
+                f"Διάμεσος χρόνος μέχρι την απόσυρση στην περιοχή {d.get('search_area')} "
+                f"({liq['cleared']} αγγελίες· απορρόφηση "
+                f"{(liq['absorption'] or 0) * 100:.0f}%). Η απόσυρση θεωρείται ένδειξη πώλησης."
             ),
         )
 
@@ -1443,12 +1492,12 @@ def _risk_and_context(d: dict, listings: list[dict]) -> None:
             d["price"], monthly * 12, d.get("area_m2"), bool(d.get("is_private_seller"))
         )
         if line:
-            est = " _(rent est.)_" if d.get("rent_estimated") else ""
+            est = " _(εκτίμηση ενοικίου)_" if d.get("rent_estimated") else ""
             st.caption(f"🏦 {line}{est}")
 
 
 def page_detail(listings: list[dict]) -> None:
-    st.subheader("Listing detail")
+    st.subheader("Λεπτομέρειες αγγελίας")
     wanted = st.session_state.get("detail_id")
     ranked = sorted(listings, key=lambda x: -(x.get("score") or 0))
     # A selectbox of all ~23k listings is unusably heavy: offer the top 400 plus the one a card
@@ -1475,40 +1524,47 @@ def page_detail(listings: list[dict]) -> None:
     fp = d.get("first_price")
     price_delta = fmt.euro(d["price"] - fp) if fp else None
     cols = st.columns(5)
-    cols[0].metric("Price", fmt.euro(d["price"]), delta=price_delta, delta_color="inverse")
-    cols[1].metric("€/m²", fmt.euro_per_m2(d["price_per_m2"]))
-    cols[2].metric("Gross yield", fmt.pct(d["gross_yield"]))
+    cols[0].metric("Τιμή", fmt.euro(d["price"]), delta=price_delta, delta_color="inverse")
+    cols[1].metric("€/τ.μ.", fmt.euro_per_m2(d["price_per_m2"]))
+    cols[2].metric("Μικτή απόδοση", fmt.pct(d["gross_yield"]))
     dom = fmt.days_on_market(d.get("first_seen"), d.get("last_seen"))
-    cols[3].metric("Days on market", dom if dom is not None else "—")
-    cols[4].metric("Score", f"{d['score']:.0f} / 100")
+    cols[3].metric("Μέρες στην αγορά", dom if dom is not None else "—")
+    cols[4].metric("Σκορ", f"{d['score']:.0f} / 100")
 
     if d["excluded"]:
-        st.error(f"Excluded by hard filter: {d['exclusion_reason']}")
+        st.error(f"Αποκλείστηκε από αυστηρό φίλτρο: {d['exclusion_reason']}")
 
     # Verdict up front — the answer before any deep dive.
     sc = deal_scorecard.scorecard(d)
     vic = {"Strong": "🟢", "Fair": "🟡", "Pass": "🔴"}
     vc = st.columns(5)
-    vc[0].metric("Deal grade", d.get("deal_grade") or "—")
-    vc[1].metric("Scorecard", f"{vic.get(sc['verdict'], '')} {sc['verdict']}")
-    vc[2].metric("Net yield", fmt.pct(d["net_yield"]) if d.get("net_yield") is not None else "—")
+    vc[0].metric("Βαθμός ευκαιρίας", d.get("deal_grade") or "—")
+    vc[1].metric(
+        "Αξιολόγηση",
+        f"{vic.get(sc['verdict'], '')} {VERDICT_GR.get(sc['verdict'], sc['verdict'])}",
+    )
+    vc[2].metric(
+        "Καθαρή απόδοση", fmt.pct(d["net_yield"]) if d.get("net_yield") is not None else "—"
+    )
     # Honest headline value signal: market-position rank among comparable ACTIVE listings
     # (no sold-price data, no pseudo-precise ±44% "discount"). The hedonic model gap is kept
     # below as a secondary, clearly-labelled estimate.
     rv = relative_value(d)
     vc[3].metric(
-        "vs market",
-        f"cheaper than {rv.percentile * 100:.0f}%" if rv else "—",
-        help="Share of comparable active listings (same area, ±30% size) priced higher per m².",
+        "Έναντι αγοράς",
+        f"φθηνότερο από {rv.percentile * 100:.0f}%" if rv else "—",
+        help="Ποσοστό συγκρίσιμων ενεργών αγγελιών (ίδια περιοχή, ±30% εμβαδόν) με "
+        "υψηλότερο €/τ.μ.",
     )
     # A raw yield % means nothing without area context — 5.5% is exceptional in a prime
     # low-yield neighborhood, mediocre in a peripheral high-yield one. This ranks the yield
     # against comparable ACTIVE listings in the SAME area, instead of a flat national band.
     ry = relative_yield(d)
     vc[4].metric(
-        "yield vs area",
-        f"better than {ry.percentile * 100:.0f}%" if ry else "—",
-        help="Share of comparable active listings (same area, ±30% size) with a lower yield.",
+        "Απόδοση έναντι περιοχής",
+        f"καλύτερη από {ry.percentile * 100:.0f}%" if ry else "—",
+        help="Ποσοστό συγκρίσιμων ενεργών αγγελιών (ίδια περιοχή, ±30% εμβαδόν) με "
+        "χαμηλότερη απόδοση.",
     )
     if d.get("strategy_tags"):
         st.write(" ".join(f"`{t}`" for t in d["strategy_tags"]))
@@ -1521,34 +1577,40 @@ def page_detail(listings: list[dict]) -> None:
         box(f"{verdict_emoji(rv)} **{rv} — {rh}**")
         rc = st.columns(2)
         if d.get("rec_rationale"):
-            rc[0].markdown("**Why:**\n" + "\n".join(f"- {x}" for x in d["rec_rationale"]))
+            rc[0].markdown("**Γιατί:**\n" + "\n".join(f"- {x}" for x in d["rec_rationale"]))
         if d.get("rec_risks"):
-            rc[1].markdown("**Watch out:**\n" + "\n".join(f"- {x}" for x in d["rec_risks"]))
+            rc[1].markdown("**Προσοχή:**\n" + "\n".join(f"- {x}" for x in d["rec_risks"]))
     elif d.get("deal_thesis"):
         st.info(f"💡 {d['deal_thesis']}")
 
     _regulatory_panel(d)
 
     tabs = st.tabs(
-        ["💰 Returns", "🧾 Costs & risk", "🎛️ Sensitivity", "🧮 Score & comps", "🏗️ Details"]
+        [
+            "💰 Αποδόσεις",
+            "🧾 Κόστη & κίνδυνοι",
+            "🎛️ Ευαισθησία",
+            "🧮 Σκορ & συγκρίσιμα",
+            "🏗️ Χαρακτηριστικά",
+        ]
     )
 
     with tabs[0]:
         monthly = d.get("listed_rent") or d.get("est_monthly_rent")
         if monthly:
             math_cols = st.columns(4)
-            math_cols[0].metric("Est. monthly rent", fmt.euro(monthly))
-            math_cols[1].metric("Annual income", fmt.euro(monthly * 12))
-            math_cols[2].metric("Purchase price", fmt.euro(d["price"]))
-            math_cols[3].metric("Gross yield", fmt.pct(d.get("gross_yield")))
+            math_cols[0].metric("Εκτ. μηνιαίο ενοίκιο", fmt.euro(monthly))
+            math_cols[1].metric("Ετήσιο έσοδο", fmt.euro(monthly * 12))
+            math_cols[2].metric("Τιμή αγοράς", fmt.euro(d["price"]))
+            math_cols[3].metric("Μικτή απόδοση", fmt.pct(d.get("gross_yield")))
             if fp and d["price"] < fp:
                 drop_pct = (fp - d["price"]) / fp * 100
                 st.info(
-                    f"📉 Price dropped **{drop_pct:.0f}%** from {fmt.euro(fp)} to "
-                    f"{fmt.euro(d['price'])} (saved {fmt.euro(fp - d['price'])})"
+                    f"📉 Η τιμή μειώθηκε **{drop_pct:.0f}%** από {fmt.euro(fp)} σε "
+                    f"{fmt.euro(d['price'])} (−{fmt.euro(fp - d['price'])})"
                 )
         else:
-            st.caption("_No rent scraped — yield uses the strategy fallback €/m²/month._")
+            st.caption("_Δεν βρέθηκε ενοίκιο — η απόδοση χρησιμοποιεί προεπιλεγμένο €/τ.μ./μήνα._")
         for b in _investment_bullets(d):
             st.markdown(f"• {b}")
         _fair_value_block(d)
@@ -1566,60 +1628,58 @@ def page_detail(listings: list[dict]) -> None:
 
     with tabs[3]:
         _scorecard_block(d)
-        st.markdown("#### 📊 Score breakdown")
+        st.markdown("#### 📊 Ανάλυση σκορ")
         _score_breakdown(d, get_strategy())
-        st.markdown("#### 🔁 Comparable active listings nearby")
+        st.markdown("#### 🔁 Συγκρίσιμες ενεργές αγγελίες κοντά")
         _comparables(d, listings)
 
     with tabs[4]:
-        st.markdown("#### 🏗️ Property specs")
+        st.markdown("#### 🏗️ Χαρακτηριστικά ακινήτου")
         spec_cols = st.columns(3)
         spec_cols[0].markdown(
-            f"**Area:** {d['area_m2']:.0f} m²  \n"
-            f"**Bedrooms:** {d['bedrooms'] or '—'}  \n"
-            f"**Floor:** {_floor_label(d['floor'])}  \n"
-            f"**Built:** {d.get('year_built') or '—'}"
-            + (f" (renov. {d['renovated_year']})" if d.get("renovated_year") else "")
+            f"**Εμβαδόν:** {d['area_m2']:.0f} τ.μ.  \n"
+            f"**Υπνοδωμάτια:** {d['bedrooms'] or '—'}  \n"
+            f"**Όροφος:** {_floor_label(d['floor'])}  \n"
+            f"**Κατασκευή:** {d.get('year_built') or '—'}"
+            + (f" (ανακαίν. {d['renovated_year']})" if d.get("renovated_year") else "")
         )
         spec_cols[1].markdown(
-            f"**Neighborhood:** {d['neighborhood'] or '—'}  \n"
-            f"**Address:** {d['address'] or '—'}  \n"
-            f"**Nearest metro:** {d.get('nearest_metro') or '—'}  \n"
-            f"**Metro distance:** {_metro_label(d)}"
+            f"**Γειτονιά:** {d['neighborhood'] or '—'}  \n"
+            f"**Διεύθυνση:** {d['address'] or '—'}  \n"
+            f"**Κοντινότερο μετρό:** {d.get('nearest_metro') or '—'}  \n"
+            f"**Απόσταση από μετρό:** {_metro_label(d)}"
         )
         spec_cols[2].markdown(
-            f"**Energy class:** {d.get('energy_class') or '—'}  \n"
-            f"**Heating:** {d.get('heating') or '—'}  \n"
-            f"**Private seller:** {'✅ yes' if d['is_private_seller'] else '✗ no'}  \n"
-            f"**Currently rented:** {'✅ yes' if d['is_currently_rented'] else '✗ no'}"
+            f"**Ενεργειακή κλάση:** {d.get('energy_class') or '—'}  \n"
+            f"**Θέρμανση:** {d.get('heating') or '—'}  \n"
+            f"**Ιδιώτης πωλητής:** {'✅ ναι' if d['is_private_seller'] else '✗ όχι'}  \n"
+            f"**Ήδη νοικιασμένο:** {'✅ ναι' if d['is_currently_rented'] else '✗ όχι'}"
         )
-        st.markdown("#### 📈 Price history")
+        st.markdown("#### 📈 Ιστορικό τιμής")
         history = get_history(lid)
         if len(history) >= 2:
-            hist_df = pd.DataFrame(history, columns=["observed_at", "price"]).set_index(
-                "observed_at"
-            )
+            hist_df = pd.DataFrame(history, columns=["Ημερομηνία", "Τιμή"]).set_index("Ημερομηνία")
             st.line_chart(hist_df)
         elif len(history) == 1:
             st.caption(
-                f"First recorded price: {fmt.euro(history[0][1])} on {history[0][0]:%Y-%m-%d}. "
-                "Price history builds up over multiple pipeline runs."
+                f"Πρώτη καταγεγραμμένη τιμή: {fmt.euro(history[0][1])} στις "
+                f"{history[0][0]:%d/%m/%Y}. Το ιστορικό χτίζεται με τις ημερήσιες ενημερώσεις."
             )
         else:
-            st.caption("No price history yet — accumulates over daily runs.")
+            st.caption("Δεν υπάρχει ακόμα ιστορικό τιμής — συγκεντρώνεται καθημερινά.")
 
     st.divider()
     lb, db = st.columns(2)
     with lb:
-        st.link_button("Open on portal ↗", d["url"], use_container_width=True)
+        st.link_button("Άνοιγμα στην πηγή ↗", d["url"], width="stretch")
     with db:
         st.download_button(
-            "⬇ One-page report (HTML)",
+            "⬇ Αναφορά μίας σελίδας (HTML)",
             listing_report.build_report_html(d),
             file_name=f"holargos-{lid}.html",
             mime="text/html",
-            use_container_width=True,
-            help="A printable one-pager to hand a client — the agent deliverable.",
+            width="stretch",
+            help="Εκτυπώσιμη σύνοψη μίας σελίδας για την αγγελία.",
         )
     skey = shortlist.lkey(d)
     st.checkbox(
@@ -1770,7 +1830,7 @@ def page_debug() -> None:
 
     st.markdown("**All records (raw, including excluded & inactive)**")
     df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
     st.download_button(
         "⬇️ Download as CSV", df.to_csv(index=False).encode("utf-8"), "holargos_listings.csv"
     )
@@ -1811,35 +1871,35 @@ def _health_panel() -> None:
                     for r in recent
                 ]
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
 
 def page_neighborhoods(listings: list[dict]) -> None:
-    st.subheader("Neighborhood analytics")
-    st.caption("Per-area market stats over the eligible (hard-filter-passing) listings.")
+    st.subheader("Ανάλυση αγοράς ανά γειτονιά")
+    st.caption("Στατιστικά αγοράς ανά περιοχή για τις αγγελίες που περνούν τα φίλτρα.")
     stats = analytics.neighborhood_stats(_eligible(listings))
     if not stats:
-        st.info("No neighborhood data yet — run the pipeline to populate listings.")
+        st.info("Δεν υπάρχουν ακόμα στοιχεία γειτονιών — ανανέωσε τα δεδομένα.")
         return
     records = [
         {
-            "Neighborhood": s["neighborhood"],
-            "Listings": s["count"],
-            "Median price": fmt.euro(s["median_price"]),
-            "Median €/m²": fmt.euro_per_m2(s["median_ppm2"]),
-            "Median gross yield": (
+            "Γειτονιά": s["neighborhood"],
+            "Αγγελίες": s["count"],
+            "Διάμεση τιμή": fmt.euro(s["median_price"]),
+            "Διάμεσο €/τ.μ.": fmt.euro_per_m2(s["median_ppm2"]),
+            "Διάμεση μικτή απόδοση": (
                 f"{s['median_yield_pct']:.1f}%" if s["median_yield_pct"] is not None else "—"
             ),
-            "Opportunities": s["opportunities"],
-            "Sitting >180d": s["long_sitting"],
-            "Below model": s["below_model"],
-            "Rented": s["rented"],
+            "Ευκαιρίες": s["opportunities"],
+            "Πάνω από 180 μέρες": s["long_sitting"],
+            "Κάτω από αξία": s["below_model"],
+            "Νοικιασμένα": s["rented"],
         }
         for s in stats
     ]
-    st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(records), width="stretch", hide_index=True)
 
     # Rental market by area — REAL asked rents (scraped rental listings), joined with the
     # sale market to show where yield is structurally high vs low. This is the aggregation
@@ -1864,35 +1924,40 @@ def page_neighborhoods(listings: list[dict]) -> None:
             sale_med = _stats.median(sales)
             rent_rows.append(
                 {
-                    "Area": area,
-                    "Median rent (€/m²/mo)": round(rent, 1),
-                    "Median sale (€/m²)": int(sale_med),
-                    "Implied gross yield": f"{rent * 12 / sale_med * 100:.1f}%",
+                    "Περιοχή": area,
+                    "Διάμεσο ενοίκιο (€/τ.μ./μήνα)": round(rent, 1),
+                    "Διάμεση τιμή πώλησης (€/τ.μ.)": int(sale_med),
+                    "Τεκμαρτή μικτή απόδοση": f"{rent * 12 / sale_med * 100:.1f}%",
                 }
             )
         if rent_rows:
-            st.markdown("#### 🏠 Rental market by area — real asked rents")
-            rent_rows.sort(key=lambda r: -float(r["Implied gross yield"].rstrip("%")))
-            st.dataframe(pd.DataFrame(rent_rows), use_container_width=True, hide_index=True)
+            st.markdown("#### 🏠 Αγορά ενοικίων ανά περιοχή — πραγματικά ζητούμενα ενοίκια")
+            rent_rows.sort(key=lambda r: -float(r["Τεκμαρτή μικτή απόδοση"].rstrip("%")))
+            st.dataframe(pd.DataFrame(rent_rows), width="stretch", hide_index=True)
             st.caption(
-                "Median asked rent from scraped rental listings ÷ median sale €/m² = the "
-                "area's structural gross yield — where rental demand outruns prices."
+                "Διάμεσο ζητούμενο ενοίκιο ÷ διάμεση τιμή πώλησης €/τ.μ. = η δομική μικτή "
+                "απόδοση της περιοχής — πού η ζήτηση ενοικίων ξεπερνά τις τιμές."
             )
     except Exception:  # rent table must never break the page
         pass
     st.caption(
-        "**Sitting >180d** = motivated-seller supply · **Below model** = flats priced under "
-        "fair value (beyond the model's ±band) — where to hunt for deals in each area."
+        "**Πάνω από 180 μέρες** = πωλητές πιθανώς πρόθυμοι για διαπραγμάτευση · **Κάτω από "
+        "αξία** = σπίτια κάτω από την εκτιμώμενη αξία (πέρα από το ± εύρος) — εκεί ψάχνεις."
     )
 
-    st.markdown("#### 📈 Market price index (monthly median)")
+    st.markdown("#### 📈 Δείκτης τιμών αγοράς (μηνιαία διάμεσος)")
     idx = analytics.market_price_index(get_all_price_history())
     if len(idx) >= 2:
-        idx_df = pd.DataFrame(idx).set_index("month")[["median_price"]]
+        idx_df = (
+            pd.DataFrame(idx)
+            .set_index("month")[["median_price"]]
+            .rename(columns={"median_price": "Διάμεση τιμή"})
+            .rename_axis("Μήνας")
+        )
         st.line_chart(idx_df)
-        st.caption("Median recorded price across all listings, by month.")
+        st.caption("Διάμεση καταγεγραμμένη τιμή όλων των αγγελιών, ανά μήνα.")
     else:
-        st.caption("The price index builds up over multiple pipeline runs.")
+        st.caption("Ο δείκτης τιμών χτίζεται με τις ημερήσιες ενημερώσεις.")
 
 
 def page_deals(listings: list[dict]) -> None:
@@ -1901,24 +1966,26 @@ def page_deals(listings: list[dict]) -> None:
     import csv
     import io
 
-    st.subheader("💰 Deals — motivated sellers")
+    st.subheader("💰 Deals — πρόθυμοι πωλητές")
     st.caption(
-        "Owners most likely to negotiate, ranked by days-on-market, price cuts, "
-        "over-asked-and-sitting, and relistings — the signals free portals hide. This "
-        "sharpens every day the tracker runs (the price/status history compounds)."
+        "Ιδιοκτήτες που πιθανότατα θα διαπραγματευτούν, κατά μέρες στην αγορά, μειώσεις "
+        "τιμής, υψηλή τιμή που δεν πουλάει και επαναδημοσιεύσεις. Γίνεται πιο ακριβές κάθε "
+        "μέρα που συγκεντρώνεται ιστορικό."
     )
     eligible = _eligible(listings)
     ranked = sorted(eligible, key=lambda d: d.get("negotiation_score") or 0, reverse=True)
     motivated = [d for d in ranked if (d.get("negotiation_score") or 0) >= 45]
 
     c = st.columns(3)
-    c[0].metric("Motivated-seller leads", len(motivated))
-    c[1].metric("Tracked & eligible", len(eligible))
+    c[0].metric("Πρόθυμοι πωλητές", len(motivated))
+    c[1].metric("Αγγελίες που παρακολουθούνται", len(eligible))
     tracked_days = None
     seens = [d["first_seen"] for d in eligible if d.get("first_seen")]
     if seens:
         tracked_days = (datetime.utcnow() - min(seens)).days
-    c[2].metric("Market tracked for", f"{tracked_days} d" if tracked_days is not None else "—")
+    c[2].metric(
+        "Παρακολούθηση αγοράς", f"{tracked_days} μέρες" if tracked_days is not None else "—"
+    )
 
     # Agent lead export (the Pro product — a per-territory motivated-seller list).
     buf = io.StringIO()
@@ -1976,19 +2043,19 @@ def page_deals(listings: list[dict]) -> None:
             ]
         )
     st.download_button(
-        "⬇  Export agent lead list (CSV) — **Pro**",
+        "⬇  Εξαγωγή λίστας πρόθυμων πωλητών (CSV)",
         buf.getvalue(),
         "motivated_sellers.csv",
         "text/csv",
-        help="The per-territory motivated-seller list agents subscribe for.",
+        help="Η λίστα πρόθυμων πωλητών σε μορφή CSV (για Excel).",
     )
 
     if not motivated:
         st.info(
-            "No strong motivated-seller signals yet — this is expected on a fresh market. "
-            "The signal is built from **change over time** (price cuts, days-on-market, "
-            "relistings); it fills in as the daily tracker accumulates history. Showing the "
-            "current ranking below."
+            "Δεν υπάρχουν ακόμα ισχυρές ενδείξεις πρόθυμων πωλητών — αναμενόμενο σε νέα "
+            "παρακολούθηση. Η ένδειξη χτίζεται από **αλλαγές στον χρόνο** (μειώσεις τιμής, "
+            "μέρες στην αγορά, επαναδημοσιεύσεις) και συμπληρώνεται καθημερινά. Παρακάτω η "
+            "τρέχουσα κατάταξη."
         )
     components.listing_grid(ranked[:60], metric="negotiation_score")
 
@@ -2058,11 +2125,11 @@ def page_compare(listings: list[dict]) -> None:
     the "which of these do I chase?" view (inspired by deal-analyzer compare tools)."""
     from scout import metrics as _m
 
-    st.subheader("⚖️ Compare")
-    st.caption("Pick 2–4 listings to line up their metrics side by side.")
+    st.subheader("⚖️ Σύγκριση")
+    st.caption("Διάλεξε 2–4 αγγελίες για να δεις τους δείκτες τους δίπλα-δίπλα.")
     elig = _eligible(listings)
     if not elig:
-        st.info("No listings to compare yet.")
+        st.info("Δεν υπάρχουν ακόμα αγγελίες για σύγκριση.")
         return
 
     def _name(d: dict) -> str:
@@ -2072,10 +2139,10 @@ def page_compare(listings: list[dict]) -> None:
 
     by_id = {d["id"]: d for d in elig}
     opts = {f"[{d['score']:.0f}] {_name(d)}": d["id"] for d in elig}
-    picks = st.multiselect("Listings", list(opts.keys()), max_selections=4)
+    picks = st.multiselect("Αγγελίες", list(opts.keys()), max_selections=4)
     chosen = [by_id[opts[p]] for p in picks]
     if len(chosen) < 2:
-        st.info("Select at least two listings.")
+        st.info("Διάλεξε τουλάχιστον δύο αγγελίες.")
         return
 
     def _metrics(d: dict) -> dict:
@@ -2085,26 +2152,31 @@ def page_compare(listings: list[dict]) -> None:
             d["price"], annual, d.get("area_m2"), is_private_seller=bool(d.get("is_private_seller"))
         )
         return {
-            "Score": f"{d['score']:.0f}",
-            "Grade": d.get("deal_grade") or "—",
-            "Price": fmt.euro(d["price"]),
-            "€/m²": fmt.euro_per_m2(d.get("price_per_m2")),
-            "Area": f"{d['area_m2']:.0f} m²" if d.get("area_m2") else "—",
-            "Net yield": fmt.pct(d.get("net_yield")) if d.get("net_yield") is not None else "—",
+            "Σκορ": f"{d['score']:.0f}",
+            "Βαθμός": d.get("deal_grade") or "—",
+            "Τιμή": fmt.euro(d["price"]),
+            "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")),
+            "Εμβαδόν": f"{d['area_m2']:.0f} τ.μ." if d.get("area_m2") else "—",
+            "Καθαρή απόδοση": (
+                fmt.pct(d.get("net_yield")) if d.get("net_yield") is not None else "—"
+            ),
             "Cap rate": f"{im['cap_rate']:.1%}" if im["cap_rate"] is not None else "—",
             "GRM": f"{im['grm']:.0f}×" if im["grm"] is not None else "—",
             "DSCR": f"{im['dscr']:.2f}" if im["dscr"] is not None else "—",
             # Every cell is text: a mixed int/str column fails Arrow serialisation.
-            "Days on market": (
+            "Μέρες στην αγορά": (
                 str(d["days_on_market"]) if d.get("days_on_market") is not None else "—"
             ),
-            "To metro": _metro_label(d),
-            "Energy": d.get("energy_class") or "—",
+            "Ως το μετρό": _metro_label(d),
+            "Ενεργ. κλάση": d.get("energy_class") or "—",
         }
 
     table = {_name(d): _metrics(d) for d in chosen}
-    st.dataframe(pd.DataFrame(table), use_container_width=True)
-    st.caption("Higher score/net yield/cap rate & lower GRM/days-on-market is better.")
+    st.dataframe(pd.DataFrame(table), width="stretch")
+    st.caption(
+        "Καλύτερα: υψηλότερο σκορ / καθαρή απόδοση / cap rate και "
+        "χαμηλότερο GRM / λιγότερες μέρες στην αγορά."
+    )
 
 
 # Buyer pages first, then the analyst tools. Labels are what the sidebar shows.
@@ -2151,9 +2223,7 @@ def main() -> None:
     with st.sidebar:
         st.markdown("### 🏠 Property Scout")
         page = st.radio("Σελίδα", list(pages), key="page", label_visibility="collapsed")
-        st.button(
-            "🔄 Φρέσκα δεδομένα", key="refresh", on_click=_refresh_data, use_container_width=True
-        )
+        st.button("🔄 Φρέσκα δεδομένα", key="refresh", on_click=_refresh_data, width="stretch")
     listings = get_listings()
     with st.sidebar:
         st.caption(_data_status(listings))

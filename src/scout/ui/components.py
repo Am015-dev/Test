@@ -46,6 +46,20 @@ _ARCHETYPE_CLASS = {
     "Energy liability": "liability",
     "Standard": "std",
 }
+# Greek display labels for the archetype pill (the English value stays the data/CSS key).
+_ARCHETYPE_LABEL = {
+    "New build": "Νεόδμητο",
+    "Renovated": "Ανακαινισμένο",
+    "Modern": "Σύγχρονο",
+    "Dated": "Παλαιό",
+    "Energy liability": "Ενεργοβόρο",
+    "Standard": "Τυπικό",
+}
+
+
+def archetype_label(archetype: str | None) -> str:
+    """Greek label for an archetype value ("" when unknown/empty)."""
+    return _ARCHETYPE_LABEL.get(archetype or "", archetype or "")
 
 
 def _score_hue(score: float) -> int:
@@ -65,11 +79,11 @@ def _card_html(d: dict, metric: str = "score") -> str:
     if metric == "negotiation_score":
         score = round(d.get("negotiation_score") or 0)
         hue = int(max(0.0, min(1.0, score / 100.0)) * 130)
-        score_label = "motiv"
+        score_label = "κίνητρο"
     else:
         score = round(d.get("score") or 0)
         hue = _score_hue(score)
-        score_label = "score"
+        score_label = "σκορ"
     price = fmt.euro(d.get("price"))
     ppm2 = fmt.euro_per_m2(d.get("price_per_m2"))
     hood = _esc(d.get("neighborhood") or d.get("search_area") or "—")
@@ -88,10 +102,10 @@ def _card_html(d: dict, metric: str = "score") -> str:
     if d.get("area_m2"):
         specs.append(f'<span class="ph-spec">{d["area_m2"]:.0f} m²</span>')
     if d.get("bedrooms"):
-        specs.append(f'<span class="ph-spec">{_esc(d["bedrooms"])} bd</span>')
+        specs.append(f'<span class="ph-spec">{_esc(d["bedrooms"])} υ/δ</span>')
     fl = d.get("floor")
     if fl is not None:
-        specs.append(f'<span class="ph-spec">Fl {fl:.0f}</span>')
+        specs.append(f'<span class="ph-spec">Όρ. {fl:.0f}</span>')
     built = d.get("renovated_year") or d.get("year_built")
     if built:
         specs.append(f'<span class="ph-spec">{_esc(built)}</span>')
@@ -107,21 +121,21 @@ def _card_html(d: dict, metric: str = "score") -> str:
         vcls = "pos" if vp > 0.55 else ("neg" if vp < 0.45 else "neutral")
         signals.append(
             f'<div class="ph-sig ph-sig-{vcls}"><b>{vp * 100:.0f}%</b>'
-            f"<span>cheaper than peers</span></div>"
+            f"<span>φθηνότερο από παρόμοια</span></div>"
         )
     # Prefer NET yield (the honest after-cost return); fall back to gross. Rent is imputed
     # for most card-only listings, so mark those "est." rather than implying a real comp.
-    est = " (est.)" if d.get("rent_estimated") else ""
+    est = " (εκτ.)" if d.get("rent_estimated") else ""
     ny = d.get("net_yield")
     if ny is not None:
         signals.append(
-            f'<div class="ph-sig"><b>{ny * 100:.1f}%</b><span>net yield{est}</span></div>'
+            f'<div class="ph-sig"><b>{ny * 100:.1f}%</b><span>καθαρή απόδοση{est}</span></div>'
         )
     else:
         gy = d.get("gross_yield")
         if gy:
             signals.append(
-                f'<div class="ph-sig"><b>{gy * 100:.1f}%</b><span>gross yield{est}</span></div>'
+                f'<div class="ph-sig"><b>{gy * 100:.1f}%</b><span>μικτή απόδοση{est}</span></div>'
             )
     # A raw yield % means nothing without area context — 5.5% is exceptional in a prime
     # low-yield neighborhood, mediocre in a peripheral high-yield one. This ranks it
@@ -132,18 +146,18 @@ def _card_html(d: dict, metric: str = "score") -> str:
         ycls = "pos" if yp > 0.55 else ("neg" if yp < 0.45 else "neutral")
         signals.append(
             f'<div class="ph-sig ph-sig-{ycls}"><b>{yp * 100:.0f}%</b>'
-            f"<span>higher yield than peers</span></div>"
+            f"<span>υψηλότερη απόδοση από παρόμοια</span></div>"
         )
     dom = d.get("days_on_market")
     if dom is not None:
-        signals.append(f'<div class="ph-sig"><b>{dom}d</b><span>on market</span></div>')
+        signals.append(f'<div class="ph-sig"><b>{dom} ημ.</b><span>στην αγορά</span></div>')
     metro = d.get("metro_distance_m")
     if metro is not None:
         # A centroid-only location gives an area-level distance, not a per-listing one —
         # label it "~" and "area" so a buyer never treats it as an exact walk time.
         approx = d.get("location_precision") != "exact"
         pfx = "~" if approx else ""
-        lbl = "to metro (area)" if approx else "to metro"
+        lbl = "ως το μετρό (περιοχή)" if approx else "ως το μετρό"
         signals.append(f'<div class="ph-sig"><b>{pfx}{metro} m</b><span>{lbl}</span></div>')
 
     # Keep only temporal/status badges (NEW, PRICE ↓, RELISTED, RENTED, PRIVATE). Archetype
@@ -175,7 +189,7 @@ def _card_html(d: dict, metric: str = "score") -> str:
         f'<span class="ph-grade ph-grade-{_esc(grade)}">{_esc(grade)}</span>' if grade else ""
     )
     conf_html = (
-        f'<span class="ph-conf" title="data confidence">{conf}%<small>data</small></span>'
+        f'<span class="ph-conf" title="αξιοπιστία δεδομένων">{conf}%<small>δεδ.</small></span>'
         if conf is not None
         else ""
     )
@@ -201,8 +215,8 @@ def _card_html(d: dict, metric: str = "score") -> str:
     rec_says_missing = bool(rec_h) and "missing" in rec_h
     missing = d.get("data_missing") or []
     completeness_html = (
-        f'<div class="ph-incomplete">⚠ Limited data — missing: {_esc(", ".join(missing))}. '
-        f"Verify on the listing.</div>"
+        f'<div class="ph-incomplete">⚠ Ελλιπή στοιχεία — λείπουν: {_esc(", ".join(missing))}. '
+        f"Επιβεβαίωσε στην αγγελία.</div>"
         if missing and not rec_says_missing
         else ""
     )
@@ -214,7 +228,9 @@ def _card_html(d: dict, metric: str = "score") -> str:
     if rec_h and cflags and cflags[0] in rec_h:
         cflags = cflags[1:]
     consistency_html = (
-        f'<div class="ph-inconsistent">⚠ Check: {_esc("; ".join(cflags))}.</div>' if cflags else ""
+        f'<div class="ph-inconsistent">⚠ Έλεγχος: {_esc("; ".join(cflags))}.</div>'
+        if cflags
+        else ""
     )
 
     # Data-quality guard: the listing's numbers look like a DATA ERROR (a whole building
@@ -222,7 +238,7 @@ def _card_html(d: dict, metric: str = "score") -> str:
     # it — badge it loudly, never hide it. Reuses the ph-inconsistent warning style.
     dqflags = d.get("data_quality_flags") or []
     data_quality_html = (
-        f'<div class="ph-inconsistent">⚠️ Data looks off: {_esc("; ".join(dqflags))}.</div>'
+        f'<div class="ph-inconsistent">⚠️ Ύποπτα στοιχεία: {_esc("; ".join(dqflags))}.</div>'
         if dqflags
         else ""
     )
@@ -252,7 +268,7 @@ def _card_html(d: dict, metric: str = "score") -> str:
         <div class="ph-price">{price}</div>
         <div class="ph-ppm2">{ppm2}</div>
       </div>
-      <span class="ph-arch ph-arch-{arch_cls}">{_esc(archetype)}</span>
+      <span class="ph-arch ph-arch-{arch_cls}">{_esc(archetype_label(archetype))}</span>
     </div>
     <div class="ph-hood">📍 {hood_full}</div>
     <div class="ph-specs">{"".join(specs)}</div>
@@ -264,7 +280,7 @@ def _card_html(d: dict, metric: str = "score") -> str:
     {data_quality_html}
     <div class="ph-card-foot">
       <div class="ph-badges">{badges}</div>
-      <a class="ph-cta" href="{url}" target="_blank" rel="noopener">View listing ↗</a>
+      <a class="ph-cta" href="{url}" target="_blank" rel="noopener">Δες την αγγελία ↗</a>
     </div>
   </div>
 </div>"""
