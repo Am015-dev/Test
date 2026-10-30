@@ -2229,6 +2229,7 @@ def page_shortlist(listings: list[dict]) -> None:
                     if a.button("✅ Έγκριση (στο Watchlist)", key=f"ok{m.id}-{d['id']}"):
                         shortlist.decide(m.id, d["id"], True)
                         st.cache_data.clear()
+                        st.cache_resource.clear()  # get_listings() is a cache_resource
                         st.rerun()
                     if r.button("❌ Απόρριψη", key=f"no{m.id}-{d['id']}"):
                         shortlist.decide(m.id, d["id"], False)
