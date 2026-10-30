@@ -34,16 +34,64 @@ def test_seen_covers_sent_approved_rejected():
     assert Mandate(1, "x", SearchFilters(), {1}, {2}, {3}).seen == {1, 2, 3}
 
 
-def test_mandate_table_is_created_on_first_use(tmp_path, monkeypatch):
-    # Simulates the deployed dashboard: DB exists, init_db never ran, no `mandate` table yet.
-    import scout.db as db
-    import scout.shortlist as sl
-    from scout.config import get_settings
+class FakeGist:
+    """In-memory stand-in for the GitHub gists API (one gist)."""
 
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/t.db")
-    get_settings.cache_clear()
-    monkeypatch.setattr(db, "_engine", None)
-    monkeypatch.setattr(sl, "_table_ready", False)
+    def __init__(self):
+        self.gists = {}
+
+    def request(self, method, url, headers=None, json=None, timeout=None):
+        class R:
+            def __init__(s, data):
+                s.data = data
+
+            def raise_for_status(s):
+                pass
+
+            def json(s):
+                return s.data
+
+        path = url.removeprefix("https://api.github.com")
+        if method == "GET" and path.startswith("/gists?"):
+            return R([{"id": k, **v} for k, v in self.gists.items()])
+        if method == "POST":
+            self.gists["g1"] = json
+            return R({"id": "g1"})
+        gid = path.rsplit("/", 1)[1]
+        if method == "PATCH":
+            self.gists[gid]["files"].update(json["files"])
+        return R({"id": gid, "files": self.gists[gid]["files"]})
+
+
+def test_mandates_round_trip_through_gist(monkeypatch):
+    import requests
+
+    import scout.shortlist as sl
+
+    fake = FakeGist()
+    monkeypatch.setattr(requests, "request", fake.request)
+    monkeypatch.setattr(sl, "_gist_id", None)
+    monkeypatch.setenv("GITHUB_TOKEN", "x")
     assert sl.list_mandates() == []
-    mid = sl.save_mandate("δυάρι", SearchFilters(price_max=1))
-    assert [m.id for m in sl.list_mandates()] == [mid]
+    a = sl.save_mandate("δυάρι", SearchFilters(price_max=180_000, wants=["parking"]))
+    b = sl.save_mandate("τριάρι", SearchFilters())
+    sl._add_ids(a, "sent", {5})
+    sl._add_ids(a, "sent", {7})
+    sl._add_ids(a, "rejected", {9})
+    m = {x.id: x for x in sl.list_mandates()}
+    assert m[a].filters.price_max == 180_000 and m[a].filters.wants == ["parking"]
+    assert m[a].sent == {5, 7} and m[a].rejected == {9} and m[b].seen == set()
+    assert list(fake.gists) == ["g1"] and fake.gists["g1"]["public"] is False
+    sl.delete_mandate(a)
+    assert [x.id for x in sl.list_mandates()] == [b]
+
+
+def test_no_token_is_a_clear_error_and_daily_step_is_a_noop(monkeypatch):
+    import pytest
+
+    import scout.shortlist as sl
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    with pytest.raises(sl.StorageNotConfigured):
+        sl.list_mandates()
+    assert sl.run_shortlists() == 0

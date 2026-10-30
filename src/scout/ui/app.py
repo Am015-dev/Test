@@ -39,6 +39,8 @@ try:
         os.environ["DATABASE_URL"] = st.secrets["DATABASE_URL"]
     if "ANTHROPIC_API_KEY" in st.secrets:
         os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
+    if "GITHUB_TOKEN" in st.secrets:
+        os.environ["GITHUB_TOKEN"] = st.secrets["GITHUB_TOKEN"]
 except Exception:
     pass
 
@@ -2130,7 +2132,7 @@ MAX_SEARCHES = 20  # per Streamlit session — bounds API cost
 
 
 def _db_reason(e: Exception) -> str:
-    """First line of the underlying DB error (no SQL, no parameters, no credentials)."""
+    """First line of the underlying storage error (no SQL, parameters or credentials)."""
     return str(getattr(e, "orig", e)).strip().splitlines()[0][:300]
 
 
