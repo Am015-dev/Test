@@ -138,3 +138,13 @@ def test_describe_is_plain_greek():
         "περιοχή: Χολαργός · τιμή 0–180,000 € · υπνοδωμάτια: 1 · μόνο ιδιώτης · ανελκυστήρας"
     )
     assert "τα πάντα" in describe(SearchFilters())
+
+
+def test_area_matches_across_greek_case_endings():
+    """The parser returns nominative names ('Παπάγος'); listings say 'Παπάγου' / 'Papagou'."""
+    papagou = {**BASE, "neighborhood": "Παπάγου (Υπουργείο Μεταφορών)", "search_area": "Papagou"}
+    assert match(papagou, SearchFilters(areas=["Παπάγος"])) is not None
+    assert match(papagou, SearchFilters(areas=["Papagos"])) is not None
+    agia = {**BASE, "neighborhood": "Αγίας Παρασκευής", "search_area": "Agia Paraskevi"}
+    assert match(agia, SearchFilters(areas=["Αγία Παρασκευή"])) is not None
+    assert match(BASE, SearchFilters(areas=["Μαρούσι"])) is None

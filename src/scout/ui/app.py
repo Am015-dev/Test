@@ -113,7 +113,7 @@ inject_css()
 # this TTL only controls the passive/background refresh cadence.
 
 
-@st.cache_resource(ttl=21600, show_spinner="Downloading the latest listings…")
+@st.cache_resource(ttl=21600, show_spinner="Κατεβάζω τις πιο πρόσφατες αγγελίες…")
 def _sync_data() -> bool:
     """Pull the daily-published DB from the repo's `data` branch (no-op with DATABASE_URL)."""
     from scout import remote_db
@@ -124,7 +124,9 @@ def _sync_data() -> bool:
     return fresh
 
 
-@st.cache_resource(ttl=10800, show_spinner="Loading listings and computing market rankings…")
+@st.cache_resource(
+    ttl=10800, show_spinner="Φορτώνω τις αγγελίες και υπολογίζω τις τιμές της αγοράς…"
+)
 def get_listings() -> list[dict]:
     _sync_data()
     # Market-position annotation (price/yield percentile vs comparable active listings),

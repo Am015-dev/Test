@@ -94,6 +94,19 @@ def _norm(s: str) -> str:
     return "".join(c for c in s if not unicodedata.combining(c))
 
 
+def _stem(word: str) -> str:
+    """Drop the inflected ending so Παπάγος/Παπάγου, Χολαργός/Χολαργού, Papagos/Papagou meet."""
+    if len(word) > 5:
+        return word[:-2]
+    return word[:-1] if len(word) > 3 else word
+
+
+def _area_in(area: str, where: str) -> bool:
+    """Every word of ``area`` (stemmed) appears in the listing's normalised location text."""
+    words = _norm(area).replace("-", " ").split()
+    return bool(words) and all(_stem(w) in where for w in words)
+
+
 def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
     """Return (match %, reasons), or None if a hard criterion fails.
 
@@ -102,7 +115,7 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
     reasons: list[str] = []
     where = _norm(" ".join(str(d.get(k) or "") for k in ("neighborhood", "address", "search_area")))
     if f.areas:
-        hit = next((a for a in f.areas if _norm(a) in where), None)
+        hit = next((a for a in f.areas if _area_in(a, where)), None)
         if hit is None:
             return None
         reasons.append(f"περιοχή: {hit}")
