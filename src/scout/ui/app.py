@@ -89,9 +89,9 @@ st.set_page_config(
     page_title="Holargos Property Scout",
     page_icon="🏠",
     layout="wide",
-    # Keep the filter sidebar open on load (mobile/narrow viewports otherwise hide it
-    # behind the « chevron and the filters look "lost").
-    initial_sidebar_state="expanded",
+    # "auto": open on desktop, collapsed on phones. "expanded" covered the whole page on a
+    # phone, hiding the content until the user found the « button.
+    initial_sidebar_state="auto",
 )
 inject_css()
 
