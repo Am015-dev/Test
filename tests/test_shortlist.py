@@ -71,6 +71,7 @@ def test_mandates_round_trip_through_gist(monkeypatch):
     fake = FakeGist()
     monkeypatch.setattr(requests, "request", fake.request)
     monkeypatch.setattr(sl, "_gist_id", None)
+    monkeypatch.setattr(sl, "_recent", None)
     monkeypatch.setenv("GITHUB_TOKEN", "x")
     assert sl.list_mandates() == []
     a = sl.save_mandate("δυάρι", SearchFilters(price_max=180_000, wants=["parking"]))
@@ -95,3 +96,31 @@ def test_no_token_is_a_clear_error_and_daily_step_is_a_noop(monkeypatch):
     with pytest.raises(sl.StorageNotConfigured):
         sl.list_mandates()
     assert sl.run_shortlists() == 0
+
+
+def test_reads_right_after_a_write_use_the_written_state(monkeypatch):
+    # GitHub may serve the pre-write gist for a moment: two quick reviews must both persist.
+    import requests
+
+    import scout.shortlist as sl
+
+    fake = FakeGist()
+    monkeypatch.setattr(sl, "_gist_id", None)
+    monkeypatch.setattr(sl, "_recent", None)
+    monkeypatch.setenv("GITHUB_TOKEN", "x")
+    monkeypatch.setattr(requests, "request", fake.request)
+    a = sl.save_mandate("δυάρι", SearchFilters())
+    stale = {"mandates.json": dict(fake.gists["g1"]["files"]["mandates.json"])}
+    real_request = fake.request
+
+    def stale_get(method, url, **kw):
+        r = real_request(method, url, **kw)
+        if method == "GET" and "/gists/g1" in url:
+            r.json = lambda: {"id": "g1", "files": stale}
+        return r
+
+    monkeypatch.setattr(requests, "request", stale_get)
+    sl._add_ids(a, "approved", {1})
+    sl._add_ids(a, "rejected", {2})
+    m = sl.list_mandates()[0]
+    assert m.approved == {1} and m.rejected == {2}
