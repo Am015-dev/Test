@@ -405,7 +405,7 @@ def _filter_editor(f: SearchFilters, pool: list[dict]) -> SearchFilters:
             "Τύπος",
             list(nl_search.KIND_LABEL),
             default=f.kinds,
-            format_func=nl_search.KIND_LABEL.get,
+            format_func=lambda k: nl_search.KIND_LABEL.get(k, k),
             placeholder="Όλοι",
             key=f"fe_kinds_{ver}",
         )
@@ -414,7 +414,7 @@ def _filter_editor(f: SearchFilters, pool: list[dict]) -> SearchFilters:
             "Να έχει",
             list(nl_search.WANT_LABEL),
             default=f.wants,
-            format_func=nl_search.WANT_LABEL.get,
+            format_func=lambda k: nl_search.WANT_LABEL.get(k, k),
             placeholder="π.χ. ανελκυστήρα, πάρκινγκ",
             key=f"fe_wants_{ver}",
         )
