@@ -94,6 +94,17 @@ def _norm(s: str) -> str:
     return "".join(c for c in s if not unicodedata.combining(c))
 
 
+_GREEKLISH = {"θ": "th", "χ": "ch", "ψ": "ps", "ξ": "x"}
+_GREEKLISH_1 = str.maketrans("αβγδεζηικλμνοπρσςτυφω", "avgdeziiklmnoprsstyfo")
+
+
+def _latin(text: str) -> str:
+    """Rough Greek→Latin transliteration (accents already stripped): χολαργοσ → cholargos."""
+    for g, lat in _GREEKLISH.items():
+        text = text.replace(g, lat)
+    return text.translate(_GREEKLISH_1)
+
+
 def _stem(word: str) -> str:
     """Drop the inflected ending so Παπάγος/Παπάγου, Χολαργός/Χολαργού, Papagos/Papagou meet."""
     if len(word) > 5:
@@ -113,7 +124,14 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
     Unknown (None) listing fields never exclude. Wants are soft: 60 + 40 * confirmed/total.
     """
     reasons: list[str] = []
-    where = _norm(" ".join(str(d.get(k) or "") for k in ("neighborhood", "address", "search_area")))
+    # Match on where the listing IS. `search_area` is only the area XE was searched for, and XE's
+    # area search also returns neighbouring places (a Χαλάνδρι flat under "Cholargos"), so it is a
+    # fallback for listings that carry no location of their own.
+    where = _norm(" ".join(str(d.get(k) or "") for k in ("neighborhood", "address")))
+    if where.strip():
+        where = f"{where} {_latin(where)}"  # so "Cholargos" also finds "Χολαργός"
+    else:
+        where = _norm(str(d.get("search_area") or ""))
     if f.areas:
         hit = next((a for a in f.areas if _area_in(a, where)), None)
         if hit is None:

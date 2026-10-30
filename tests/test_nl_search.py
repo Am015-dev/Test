@@ -148,3 +148,11 @@ def test_area_matches_across_greek_case_endings():
     agia = {**BASE, "neighborhood": "Αγίας Παρασκευής", "search_area": "Agia Paraskevi"}
     assert match(agia, SearchFilters(areas=["Αγία Παρασκευή"])) is not None
     assert match(BASE, SearchFilters(areas=["Μαρούσι"])) is None
+
+
+def test_area_uses_the_listing_location_not_the_scraped_search_area():
+    """XE's 'Cholargos' search also returns Χαλάνδρι flats — those must not match Χολαργός."""
+    halandri = {**BASE, "neighborhood": "Χαλάνδρι (Κάτω Χαλάνδρι)", "search_area": "Cholargos"}
+    assert match(halandri, SearchFilters(areas=["Χολαργός", "Cholargos"])) is None
+    no_location = {**BASE, "neighborhood": None, "address": None, "search_area": "Cholargos"}
+    assert match(no_location, SearchFilters(areas=["Cholargos"])) is not None
