@@ -28,20 +28,9 @@ from .conftest import make_listing  # noqa: E402
 from .test_shortlist import FakeGist  # noqa: E402
 
 APP = str(Path(__file__).resolve().parents[1] / "src" / "scout" / "ui" / "app.py")
-SEARCH, SHORTLIST, STARRED = "🔎 Αναζήτηση", "🤖 Shortlist", "⭐ Αγαπημένα"
+SEARCH, SHORTLIST, STARRED = "🔎 Αναζήτηση", "🤖 Αποθηκευμένες αναζητήσεις", "⭐ Αγαπημένα"
 DETAIL = "🏠 Αγγελία"
-PAGES = [
-    SEARCH,
-    SHORTLIST,
-    STARRED,
-    "🗺 Χάρτης",
-    DETAIL,
-    "📊 Αγορά",
-    "🏆 Ευκαιρίες",
-    "📰 Σήμερα",
-    "💼 Deals",
-    "⚖️ Σύγκριση",
-]
+PAGES = [SEARCH, "🗺 Χάρτης", STARRED, SHORTLIST, "⚖️ Σύγκριση", DETAIL]
 KINDS = [
     "button",
     "checkbox",
@@ -202,8 +191,18 @@ def test_buyer_journey(env):
     next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
     ok(at, "details")
     assert at.session_state["page"] == DETAIL
-    # unstar from the detail page checkbox
-    at.checkbox[0].uncheck().run()
+    # the listing page compares it with like-for-like flats and has no rental-investor noise
+    text = " ".join(m.value for m in at.markdown)
+    assert "Σε σύγκριση με παρόμοια" in text
+    assert not any(w in text for w in ("απόδοση", "Golden Visa", "Airbnb", "DSCR", "cap rate"))
+    # an AI opinion on this one listing
+    calls = at.session_state.get("advice_calls", 0)
+    next(b for b in at.button if b.label == "🤖 Γνώμη AI").click().run()
+    ok(at, "listing advice")
+    assert at.session_state["advice_calls"] == calls + 1
+    assert any("🤖 " in m.value and "hg-advice" in m.value for m in at.markdown)
+    # unstar from the listing page
+    next(b for b in at.button if b.label == "★ Αφαίρεση").click().run()
     ok(at, "unstar")
     at.radio(key="page").set_value(STARRED).run()
     assert any("Δεν έχεις αγαπημένα" in i.value for i in at.info)
@@ -266,7 +265,15 @@ def test_compare_lines_up_every_picked_listing(env):
     assert len(cols) == len(set(cols)) == 4, cols
 
 
-ADMIN_PAGES = ["⚙️ Strategy", "🛠 Debug"]  # only listed with ?admin=1
+ADMIN_PAGES = [  # only listed with ?admin=1
+    "🧮 Ανάλυση επενδυτή",
+    "📊 Αγορά",
+    "🏆 Ευκαιρίες",
+    "📰 Σήμερα",
+    "💼 Deals",
+    "⚙️ Strategy",
+    "🛠 Debug",
+]
 
 
 def fresh_admin(page: str):

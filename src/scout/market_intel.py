@@ -87,11 +87,12 @@ class Intel:
         twins = {id(t) for t in self.twins(d)}
         levels = [(m, a, s, f)] if f is not None else []  # tightest first, then relax
         for key in [*levels, (m, a, s, None), (m, a, None, None)]:
-            pool = [
-                x["price_per_m2"]
+            rows = [
+                x
                 for x in self._pool(key)
                 if x is not d and id(x) not in twins and x.get("id") != d.get("id")
             ]
+            pool = [x["price_per_m2"] for x in rows]
             if len(pool) >= MIN_COMPS:
                 q = statistics.quantiles(pool, n=4)
                 med = statistics.median(pool)
@@ -102,6 +103,7 @@ class Intel:
                     "n": len(pool),
                     "pct": d["price_per_m2"] / med - 1,
                     "label": self._label(*key),
+                    "rows": sorted(rows, key=lambda x: x["price_per_m2"]),
                 }
         return None
 
