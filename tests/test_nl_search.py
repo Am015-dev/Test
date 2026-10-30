@@ -121,3 +121,20 @@ def test_advise_rewards_discount_to_model_value():
     assert advise(d)["score"] == 58  # 0.6*50 + 0.4*70
     assert advise({**d, "value_confident": False})["score"] == 50
     assert advise({**d, "price_dropped": True})["score"] == 62
+
+
+def test_describe_is_plain_greek():
+    from scout.nl_search import describe
+
+    f = SearchFilters(
+        areas=["Χολαργός"],
+        price_max=180_000,
+        bedrooms_min=1,
+        bedrooms_max=1,
+        private_only=True,
+        wants=["elevator"],
+    )
+    assert describe(f) == (
+        "περιοχή: Χολαργός · τιμή 0–180,000 € · υπνοδωμάτια: 1 · μόνο ιδιώτης · ανελκυστήρας"
+    )
+    assert "τα πάντα" in describe(SearchFilters())

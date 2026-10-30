@@ -49,6 +49,28 @@ class SearchFilters(BaseModel):
     wants: list[Want] = Field(default_factory=list)
 
 
+def describe(f: SearchFilters) -> str:
+    """The parsed filters in plain Greek, so the user can check what was understood."""
+    parts = []
+    if f.areas:
+        parts.append("περιοχή: " + ", ".join(f.areas))
+    if f.budget:
+        parts.append(f"budget {f.budget:,} €")
+    if f.price_min or f.price_max:
+        parts.append(f"τιμή {f.price_min or 0:,}–{f'{f.price_max:,}' if f.price_max else '∞'} €")
+    if f.area_min or f.area_max:
+        parts.append(f"{f.area_min or 0:g}–{f'{f.area_max:g}' if f.area_max else '∞'} τ.μ.")
+    if f.bedrooms_min is not None or f.bedrooms_max is not None:
+        lo, hi = f.bedrooms_min, f.bedrooms_max
+        parts.append(f"υπνοδωμάτια: {lo if lo == hi else f'{lo}–{hi}'}")
+    if f.floor_min is not None:
+        parts.append(f"όροφος ≥ {f.floor_min:g}")
+    if f.private_only:
+        parts.append("μόνο ιδιώτης")
+    parts += [WANT_LABEL[w] for w in f.wants]
+    return " · ".join(parts) or "τίποτα συγκεκριμένο — δείχνω τα πάντα"
+
+
 def _norm(s: str) -> str:
     s = unicodedata.normalize("NFD", s.casefold())
     return "".join(c for c in s if not unicodedata.combining(c))

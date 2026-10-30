@@ -2151,8 +2151,7 @@ def page_search(listings: list[dict]) -> None:
     f = st.session_state.get("nl_filters")
     if f is None:
         return
-    chips = " · ".join(f"{k}={v}" for k, v in f.model_dump(exclude_defaults=True).items())
-    st.caption("Κατάλαβα: " + chips)
+    st.caption("Κατάλαβα: " + nl_search.describe(f))
     if st.button("🤖 Ο agent να ψάχνει καθημερινά γι' αυτό"):
         from scout import shortlist
 
@@ -2171,7 +2170,7 @@ def page_search(listings: list[dict]) -> None:
         area, gaps = max(by_area.items(), key=lambda kv: statistics.median(kv[1]))
         st.info(
             f"💡 Πού: οι πιο υποτιμημένες αγγελίες είναι στο **{area}** "
-            f"(διάμεσα {statistics.median(gaps):+.0%} κάτω από την εκτίμηση αξίας, "
+            f"(διάμεσα {statistics.median(gaps):.0%} κάτω από την εκτιμώμενη αξία, "
             f"{len(gaps)} αγγελίες). Top επιλογή: **{hits[0][1]['price']:,} €**."
         )
     for (pct, reasons), d, adv in hits[:50]:
@@ -2186,7 +2185,7 @@ def page_search(listings: list[dict]) -> None:
             offer = d.get("suggested_offer")
             st.caption(
                 "Αξία: "
-                + (f"{gap:+.0%} κάτω από εκτίμηση" if gap and gap > 0 else "—")
+                + (f"{gap:.0%} κάτω από την εκτιμώμενη αξία" if gap and gap > 0 else "—")
                 + (" · 📉 μειώθηκε η τιμή" if d.get("price_dropped") else "")
                 + (f" · {d['days_on_market']} μέρες στην αγορά" if d.get("days_on_market") else "")
                 + (f" · Προσφορά: {offer:,.0f} €" if offer else "")

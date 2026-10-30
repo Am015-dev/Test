@@ -118,7 +118,7 @@ def digest(m: Mandate, picks: list[tuple[dict, dict, list[str]]]) -> str:
         lines.append(
             f"[{adv['score']}] {d['price']:,} € · {d.get('area_m2') or '?'} τ.μ. · "
             f"{d.get('neighborhood') or '—'}"
-            + (f" · {gap:+.0%} κάτω από εκτίμηση" if gap and gap > 0 else "")
+            + (f" · {gap:.0%} κάτω από την εκτιμώμενη αξία" if gap and gap > 0 else "")
             + f"\n  {d['url']}"
         )
     lines += ["", "Έλεγξε και έγκρινε/απόρριψε στη σελίδα Shortlist."]
