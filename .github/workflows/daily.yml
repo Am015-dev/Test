@@ -1,30 +1,30 @@
-# Daily data refresh — the "cron" of the completely-free deployment.
+# Daily data refresh — everything lives in GitHub, no external database.
 #
-# Data now lives in a free-tier Postgres (DATABASE_URL secret), not a committed SQLite
-# file — the repo is public (for unlimited free Actions minutes), and a public repo
-# cannot hold private data. Scrape + rescore write DIRECTLY to Postgres; there is no
-# git-commit step anymore, which also removes the old "push rejected mid-run" class of
-# bug entirely (nothing to push).
+# The listings DB (SQLite) is stored as ONE file on an orphan `data` branch that is
+# force-pushed as a single commit each run, so the repo never grows. The Streamlit app
+# downloads it from raw.githubusercontent.com (see src/scout/remote_db.py).
 #
-# Each run scrapes ONE rotating 1/5 slice of areas (full coverage every 5 days), then
-# rescores the whole panel. Why a slice, not all 55 areas: a full two-portal sweep runs
-# >5h — it can't finish inside a sane CI window.
+# Each run restores the DB from the `data` branch, scrapes ONE rotating 1/5 slice of areas
+# (full coverage every 5 days), rescores the whole panel, and publishes the DB back.
+# Collect is best-effort and time-boxed; rescore + publish run with `if: always()` so even a
+# blocked scrape still ships whatever fresh data we got.
 name: daily-refresh
 on:
   schedule:
     - cron: "0 4 * * *"   # 04:00 UTC = 07:00 Athens, before the workday
   workflow_dispatch: {}    # manual "Run workflow" button
 
+permissions:
+  contents: write
+
 concurrency:
   group: daily-refresh
-  cancel-in-progress: true   # a manual run supersedes a scheduled one — never bill two at once
+  cancel-in-progress: false  # never cancel mid-publish; a second run queues instead
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    timeout-minutes: 55      # above the sum of the step caps so publish is never cancelled
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,11 +33,21 @@ jobs:
           cache: "pip"
           cache-dependency-path: pyproject.toml
       - name: Install
-        run: pip install -e ".[postgres]"
+        run: pip install -e .
+
+      - name: Restore DB from the data branch (first run starts empty)
+        run: |
+          mkdir -p data
+          if git fetch --depth=1 origin data; then
+            git show FETCH_HEAD:listings.db > data/listings.db
+            ls -l data/listings.db
+          else
+            echo "no data branch yet — starting with an empty DB"
+          fi
 
       - name: Collect today's area slice (best-effort, time-boxed)
-        timeout-minutes: 25          # cap the ONE slow step; the job is never cancelled
-        continue-on-error: true      # a block/timeout must not lose the rescore
+        timeout-minutes: 25
+        continue-on-error: true
         env:
           SCRAPE_DETAIL_PAGES: "false"
           SCRAPE_REQUEST_MIN_S: "4"
@@ -45,9 +55,25 @@ jobs:
         run: python scripts/run_daily.py --shards 5
 
       - name: Rescore whole panel from the DB (no network)
-        if: always()                 # runs even if collect was cut off — fresh medians/scores
+        if: always()
         timeout-minutes: 15
         run: |
           python -c "import sys; sys.path.insert(0, 'src'); \
+          from scout.db import init_db; init_db(); \
           from scout.config import load_strategy; from scout.pipeline import rescore_all; \
           print('rescored', rescore_all(load_strategy()), 'listings')"
+
+      - name: Publish DB to the data branch (single commit, no history growth)
+        if: always()
+        run: |
+          test -s data/listings.db || { echo "no DB to publish"; exit 0; }
+          # fold the WAL into the main file so one file is the whole DB
+          python -c "import sqlite3; c = sqlite3.connect('data/listings.db'); c.execute('PRAGMA wal_checkpoint(TRUNCATE)'); c.close()"
+          rm -rf /tmp/pub && mkdir /tmp/pub && cp data/listings.db /tmp/pub/listings.db
+          cd /tmp/pub
+          git init -q -b data
+          git config user.name "daily-refresh-bot"
+          git config user.email "actions@github.com"
+          git add listings.db
+          git commit -q -m "data: daily refresh $(date -u +%F)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
