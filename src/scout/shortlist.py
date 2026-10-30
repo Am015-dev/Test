@@ -42,7 +42,12 @@ def pick(
     Listings in ``skip`` (already sent / reviewed) and excluded ones never appear."""
     hits = []
     for d in listings:
-        if d.get("excluded") or d.get("is_suspect") or lkey(d) in skip:
+        if (
+            d.get("excluded")
+            or d.get("is_suspect")
+            or not d.get("is_fresh", True)
+            or lkey(d) in skip
+        ):
             continue
         m = match(d, filters)
         if m is not None:

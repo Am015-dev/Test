@@ -117,7 +117,7 @@ def test_budget_is_total_cash_including_buying_costs():
 def test_advise_rewards_discount_to_model_value():
     from scout.nl_search import advise
 
-    d = {**BASE, "score": 50, "value_gap_pct": 0.20, "value_confident": True}
+    d = {**BASE, "score": 50, "value_gap_pct": 0.20, "value_confident": True, "year_built": 2015}
     assert advise(d)["score"] == 58  # 0.6*50 + 0.4*70
     assert advise({**d, "value_confident": False})["score"] == 50
     assert advise({**d, "price_dropped": True})["score"] == 62
@@ -135,7 +135,7 @@ def test_describe_is_plain_greek():
         wants=["elevator"],
     )
     assert describe(f) == (
-        "περιοχή: Χολαργός · τιμή 0–180,000 € · υπνοδωμάτια: 1 · μόνο ιδιώτης · ανελκυστήρας"
+        "περιοχή: Χολαργός · τιμή 0–180.000 € · υπνοδωμάτια: 1 · μόνο ιδιώτης · ανελκυστήρας"
     )
     assert "τα πάντα" in describe(SearchFilters())
 
@@ -156,3 +156,37 @@ def test_area_uses_the_listing_location_not_the_scraped_search_area():
     assert match(halandri, SearchFilters(areas=["Χολαργός", "Cholargos"])) is None
     no_location = {**BASE, "neighborhood": None, "address": None, "search_area": "Cholargos"}
     assert match(no_location, SearchFilters(areas=["Cholargos"])) is not None
+
+
+def test_old_buildings_are_discounted_and_unfinished_score_zero():
+    from scout.nl_search import advise
+
+    new = {**BASE, "score": 80, "year_built": 2018}
+    old = {**BASE, "score": 80, "year_built": 1965}
+    renovated = {**old, "renovated_year": 2021}
+    assert advise(new)["score"] == 80
+    assert advise(old)["score"] == 48 and advise(old)["age"] >= 60
+    assert advise(renovated)["score"] == 80
+    assert advise({**new, "is_unfinished": True})["score"] == 0
+
+
+def test_unfinished_hidden_unless_asked_and_year_min_filters():
+    unfinished = {**BASE, "is_unfinished": True}
+    assert match(unfinished, SearchFilters()) is None
+    assert match(unfinished, SearchFilters(include_unfinished=True)) is not None
+    assert match({**BASE, "year_built": 1975}, SearchFilters(year_min=2000)) is None
+    assert match({**BASE, "year_built": 2005}, SearchFilters(year_min=2000)) is not None
+    assert match(BASE, SearchFilters(year_min=2000)) is None  # unknown year can't prove it
+
+
+def test_candidates_hide_stale_excluded_and_suspect():
+    from scout.nl_search import candidates
+
+    rows = [
+        {**BASE, "is_fresh": True},
+        {**BASE, "is_fresh": False},
+        {**BASE, "excluded": True},
+        {**BASE, "is_suspect": True},
+    ]
+    assert len(candidates(rows)) == 1
+    assert len(candidates(rows, include_stale=True)) == 2
