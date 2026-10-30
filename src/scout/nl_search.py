@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unicodedata
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -57,6 +58,15 @@ class SearchFilters(BaseModel):
         description="Only when the user names a kind: 'διαμέρισμα'/'δυάρι'/'τριάρι'/'γκαρσονιέρα' "
         "= apartment, 'μεζονέτα' = maisonette, 'μονοκατοικία'/'βίλα' = house.",
     )
+    year_min: int | None = Field(
+        None,
+        description="Built (or renovated) in or after this year, only if the user asks about age: "
+        "'νεόδμητο' = 2020, 'μετά το 2000' = 2000, 'όχι πάνω από 20 χρόνια' = current year - 20, "
+        "'όχι παλιό' = 1990.",
+    )
+    include_unfinished: bool = Field(
+        False, description="True only if the user explicitly wants unfinished/under-construction."
+    )
     budget: int | None = Field(
         None,
         description="Total capital the user wants to invest, EUR, when stated as an amount to "
@@ -65,15 +75,21 @@ class SearchFilters(BaseModel):
     wants: list[Want] = Field(default_factory=list)
 
 
+def _gr(n: float) -> str:
+    """Greek thousands separator: 180000 -> '180.000'."""
+    return f"{n:,.0f}".replace(",", ".")
+
+
 def describe(f: SearchFilters) -> str:
     """The parsed filters in plain Greek, so the user can check what was understood."""
     parts = []
     if f.areas:
         parts.append("περιοχή: " + ", ".join(f.areas))
     if f.budget:
-        parts.append(f"budget {f.budget:,} €")
+        parts.append(f"budget {_gr(f.budget)} €")
     if f.price_min or f.price_max:
-        parts.append(f"τιμή {f.price_min or 0:,}–{f'{f.price_max:,}' if f.price_max else '∞'} €")
+        hi = _gr(f.price_max) if f.price_max else "∞"
+        parts.append(f"τιμή {_gr(f.price_min or 0)}–{hi} €")
     if f.area_min or f.area_max:
         parts.append(f"{f.area_min or 0:g}–{f'{f.area_max:g}' if f.area_max else '∞'} τ.μ.")
     if f.bedrooms_min is not None or f.bedrooms_max is not None:
@@ -83,6 +99,10 @@ def describe(f: SearchFilters) -> str:
         parts.append(f"όροφος ≥ {f.floor_min:g}")
     if f.kinds:
         parts.append("τύπος: " + "/".join(KIND_LABEL[k] for k in f.kinds))
+    if f.year_min:
+        parts.append(f"κατασκευή από {f.year_min}")
+    if f.include_unfinished:
+        parts.append("και ημιτελή")
     if f.private_only:
         parts.append("μόνο ιδιώτης")
     parts += [WANT_LABEL[w] for w in f.wants]
@@ -158,6 +178,13 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
         return None
     if f.private_only and d.get("is_private_seller") is False:
         return None
+    if d.get("is_unfinished") and not f.include_unfinished:
+        return None
+    built = d.get("renovated_year") or d.get("year_built")
+    if f.year_min:
+        if built is None or built < f.year_min:
+            return None
+        reasons.append(f"έτος {built}")
     if f.budget and d.get("price"):
         cash = d["price"] + (acquisition_costs(d["price"], bool(d.get("is_private_seller"))) or 0)
         if cash > f.budget:
@@ -174,12 +201,40 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
     return pct, reasons
 
 
+def building_age(d: dict, today_year: int | None = None) -> int | None:
+    """Years since construction or the last stated renovation; None when unknown."""
+    if d.get("building_age") is not None:
+        return d["building_age"]
+    built = d.get("renovated_year") or d.get("year_built")
+    if not built:
+        return None
+    age = (today_year or date.today().year) - int(built)
+    return age if 0 <= age < 200 else None
+
+
+def age_factor(age: int | None) -> float:
+    """How much the building's age discounts a buy score. A 60-year-old block (old wiring and
+    plumbing, no insulation, pre-1985 seismic code) is not a top buy however cheap it looks."""
+    if age is None:
+        return 0.9  # unknown age: a little caution, not a verdict
+    if age <= 15:
+        return 1.0
+    if age <= 30:
+        return 0.95
+    if age <= 40:
+        return 0.85
+    if age <= 50:
+        return 0.72
+    return 0.6
+
+
 def advise(d: dict) -> dict:
     """Buyer view of one listing: a 0-100 score plus the facts behind it.
 
-    Score = 60% the thesis score already on the listing + 40% buy-value: how far the price
-    sits under the model value (20% under = full marks), seller motivation and a price drop.
-    Without a confident model value it is the thesis score alone.
+    Score = 60% the thesis score already on the listing + 40% buy-value (how far the price sits
+    under the model value — 20% under = full marks — seller motivation, a price drop), then
+    discounted by building age (see ``age_factor``). Without a confident model value the
+    buy-value part is skipped. Unfinished buildings score 0.
     """
     base = d.get("score") or 0
     gap = d.get("value_gap_pct") if d.get("value_confident") else None
@@ -189,7 +244,23 @@ def advise(d: dict) -> dict:
         value = min(max(gap / 0.20, 0), 1) * 70 + min(d.get("negotiation_score") or 0, 100) * 0.2
         value += 10 if d.get("price_dropped") else 0
         score = 0.6 * base + 0.4 * value
-    return {"score": round(score), "gap": gap}
+    age = building_age(d)
+    score *= age_factor(age)
+    if d.get("is_unfinished"):
+        score = 0
+    return {"score": round(score), "gap": gap, "age": age}
+
+
+def candidates(listings: list[dict], include_stale: bool = False) -> list[dict]:
+    """Listings worth showing a buyer: not excluded, not data-suspect, and (by default) seen
+    recently — old snapshot rows are often already sold and their links dead."""
+    return [
+        d
+        for d in listings
+        if not d.get("excluded")
+        and not d.get("is_suspect")
+        and (include_stale or d.get("is_fresh", True))
+    ]
 
 
 MAX_CHARS = 500
@@ -198,7 +269,8 @@ SYSTEM = (
     "Convert a Greek home-BUYING search request into filters by calling set_filters. "
     "Prices are purchase prices in EUR ('180Χ' = 180000). Only set fields the user stated. "
     "Area names go in the NOMINATIVE case ('Παπάγος', not 'Παπάγου'), each with its Latin "
-    "transliteration. An amount the user says they want to invest is budget, not price_max."
+    "transliteration. An amount the user says they want to invest is budget, not price_max. "
+    "Never set year_min or include_unfinished unless the user talks about age or construction."
 )
 
 
@@ -221,7 +293,7 @@ def parse_query(text: str, client=None) -> SearchFilters:
         resp = client.messages.create(
             model=MODEL,
             max_tokens=500,
-            system=SYSTEM,
+            system=f"{SYSTEM} The current year is {date.today().year}.",
             messages=[{"role": "user", "content": text}],
             tools=[
                 {

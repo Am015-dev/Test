@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import statistics
 import sys
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -1284,101 +1285,195 @@ def page_today(listings: list[dict]) -> None:
         st.info("Δεν υπάρχουν αγγελίες ακόμα — ανανέωσε τα δεδομένα από το πλάι.")
 
 
-def _rank_color(t: float) -> list[int]:
-    """Red → amber → green for a rank fraction t∈[0,1]. Colours by RELATIVE rank, not the
-    absolute score: the market's absolute scores are low (data is thin), so an absolute
-    red→green scale paints almost everything red and hides where the best options are.
-    Rank-colouring makes the map a useful heatmap of relatively-better listings."""
-    t = max(0.0, min(1.0, t))
-    if t < 0.5:
-        u = t / 0.5
-        return [220, int(70 + 120 * u), 60]  # (220,70,60) red → (220,190,60) amber
-    u = (t - 0.5) / 0.5
-    return [int(220 - 170 * u), int(190 - 10 * u), int(60 + 20 * u)]  # amber → (50,180,80) green
+MAP_AGE_ANY = 80  # the age slider's max position means "no age limit"
+
+
+def _map_area_group(d: dict) -> str:
+    """Municipality part of the neighbourhood: "Χολαργός (Τσακός)" -> "Χολαργός"."""
+    name = d.get("neighborhood") or d.get("search_area") or "Άγνωστη περιοχή"
+    return name.split(" (")[0].strip()
+
+
+def _building_age(d: dict) -> int | None:
+    age = d.get("building_age")
+    if age is not None:
+        return age
+    yb = d.get("year_built")
+    return max(datetime.utcnow().year - yb, 0) if yb else None
+
+
+def _map_filter(
+    listings: list[dict],
+    *,
+    areas: list[str],
+    price: tuple[int, int],
+    price_bounds: tuple[int, int],
+    min_score: int,
+    max_age: int,
+    unknown_age: bool,
+    fresh_only: bool,
+    hide_bad: bool,
+) -> list[dict]:
+    """Apply the map page's filters. A price handle left at the slider's end = no limit."""
+    lo = price[0] if price[0] > price_bounds[0] else None
+    hi = price[1] if price[1] < price_bounds[1] else None
+    wanted = set(areas)
+    out = []
+    for d in listings:
+        if hide_bad and (d["excluded"] or d.get("is_suspect") or d.get("is_unfinished")):
+            continue
+        if fresh_only and not d.get("is_fresh", True):
+            continue
+        if wanted and _map_area_group(d) not in wanted:
+            continue
+        p = d.get("price")
+        if (lo is not None and (p is None or p < lo)) or (hi is not None and p and p > hi):
+            continue
+        if (d.get("score") or 0) < min_score:
+            continue
+        if max_age < MAP_AGE_ANY:
+            age = _building_age(d)
+            if (age is None and not unknown_age) or (age is not None and age > max_age):
+                continue
+        out.append(d)
+    return out
 
 
 def page_map(listings: list[dict]) -> None:
     st.subheader("Χάρτης")
-    pts = [d for d in _eligible(listings) if d["lat"] and d["lng"]]
-    if not pts:
-        st.info(
-            "Δεν υπάρχουν ακόμα αγγελίες με συντεταγμένες. Ο εντοπισμός γίνεται κατά την "
-            "ενημέρωση· αν η απόσταση από μετρό είναι «άγνωστη», δεν έχει εντοπιστεί ακόμα."
-        )
+    if not listings:
+        st.info("Δεν υπάρχουν αγγελίες ακόμα — ανανέωσε τα δεδομένα από το πλάι.")
         return
-    from scout.enrich import METRO_STATIONS
+    # Area options stay stable across reruns (all listings); the counts shown follow the
+    # "hide"/"fresh" toggles so they match what the map can actually show.
+    groups = Counter(_map_area_group(d) for d in listings)
+    options = [g for g, _ in groups.most_common()]
+    prices = sorted(d["price"] for d in listings if d.get("price"))
+    if prices:
+        p_lo = int(prices[len(prices) // 100] // 10_000 * 10_000)
+        p_hi = int(-(-prices[min(len(prices) * 99 // 100, len(prices) - 1)] // 10_000) * 10_000)
+    else:
+        p_lo, p_hi = 0, 1_000_000
+    p_hi = max(p_hi, p_lo + 10_000)
 
-    # Split exact vs approx (centroid) points: an approx point is one shared location for a
-    # whole municipality, so plotting it as a precise pin would imply an accuracy we don't
-    # have. Exact points render solid & small; approx render large, faint and hollow — read
-    # as an area blob, not an address.
-    exact = [d for d in pts if d.get("location_precision") == "exact"]
-    approx = [d for d in pts if d.get("location_precision") != "exact"]
-    exact_df = pd.DataFrame({"lat": d["lat"], "lon": d["lng"], "score": d["score"]} for d in exact)
-    if not exact_df.empty:
-        # Colour by rank within the plotted set (greener = better than most in view), so the
-        # map surfaces the relatively-best options instead of a sea of red on low absolutes.
-        ranks = exact_df["score"].fillna(0).rank(pct=True, method="average")
-        exact_df["fill"] = [_rank_color(t) for t in ranks]
-    approx_df = pd.DataFrame(
-        {"lat": d["lat"], "lon": d["lng"], "score": d["score"]} for d in approx
+    c3, c4 = st.columns(2)
+    hide_bad = c3.checkbox(
+        "Απόκρυψη εκτός κριτηρίων, ύποπτων & ημιτελών",
+        value=True,
+        key="map_hide",
+        help="Κρύβει αγγελίες που κόβονται από τα κριτήρια, με ύποπτα στοιχεία ή ημιτελή κτίρια.",
     )
-    center = exact_df if not exact_df.empty else approx_df
-    metro_df = pd.DataFrame(
-        {"lat": lat, "lon": lng, "name": n} for n, (lat, lng) in METRO_STATIONS.items()
+    fresh_only = c4.checkbox(
+        "Μόνο πρόσφατες αγγελίες",
+        value=True,
+        key="map_fresh",
+        help="Μόνο όσες εμφανίστηκαν στην πηγή τις τελευταίες 10 ημέρες.",
     )
-    try:
-        import pydeck as pdk
+    base_counts = Counter(
+        _map_area_group(d)
+        for d in listings
+        if not (hide_bad and (d["excluded"] or d.get("is_suspect") or d.get("is_unfinished")))
+        and (not fresh_only or d.get("is_fresh", True))
+    )
+    c1, c2 = st.columns([3, 2])
+    areas = c1.multiselect(
+        "Περιοχές",
+        options,
+        key="map_areas",
+        format_func=lambda g: f"{g} ({base_counts.get(g, 0)})",
+        placeholder="Όλες οι περιοχές",
+    )
+    # In thousands: a numeric slider can't group digits ("450000 €"), "450 χιλ. €" reads right.
+    k_lo, k_hi = c2.slider(
+        "Τιμή",
+        min_value=p_lo // 1000,
+        max_value=p_hi // 1000,
+        value=(p_lo // 1000, p_hi // 1000),
+        step=10,
+        format="%d χιλ. €",
+        key="map_price",
+        help="Στα άκρα της μπάρας = χωρίς όριο.",
+    )
+    price = (k_lo * 1000, k_hi * 1000)
+    c5, c6, c7, c8 = st.columns([2, 2, 1.4, 1.4])
+    min_score = c5.slider("Ελάχιστο σκορ", 0, 100, 0, step=5, key="map_score")
+    max_age = c6.slider(
+        "Μέγ. ηλικία κτιρίου (έτη)",
+        0,
+        MAP_AGE_ANY,
+        MAP_AGE_ANY,
+        step=5,
+        key="map_age",
+        help=f"Στο {MAP_AGE_ANY} = χωρίς όριο.",
+    )
+    unknown_age = c7.checkbox(
+        "Και χωρίς έτος",
+        value=True,
+        key="map_age_unknown",
+        help="Κράτα και αγγελίες χωρίς έτος κατασκευής όταν βάζεις όριο ηλικίας.",
+    )
+    size_by_price = c8.checkbox("Μέγεθος κατά τιμή", value=False, key="map_size")
 
-        layers = []
-        if not approx_df.empty:
-            layers.append(
-                pdk.Layer(
-                    "ScatterplotLayer",
-                    data=approx_df,
-                    get_position="[lon, lat]",
-                    get_fill_color="[150, 150, 160, 40]",  # faint = approximate area location
-                    get_radius=300,
-                )
-            )
-        if not exact_df.empty:
-            layers.append(
-                pdk.Layer(
-                    "ScatterplotLayer",
-                    data=exact_df,
-                    get_position="[lon, lat]",
-                    get_fill_color="fill",
-                    get_radius=60,
-                    pickable=True,
-                )
-            )
-        layers.append(
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=metro_df,
-                get_position="[lon, lat]",
-                get_fill_color="[30, 90, 255]",
-                get_radius=90,
-            )
+    matched = _map_filter(
+        listings,
+        areas=areas,
+        price=price,
+        price_bounds=(p_lo, p_hi),
+        min_score=min_score,
+        max_age=max_age,
+        unknown_age=unknown_age,
+        fresh_only=fresh_only,
+        hide_bad=hide_bad,
+    )
+    shown = [d for d in matched if d.get("lat") and d.get("lng")]
+    no_loc = len(matched) - len(shown)
+    approx = sum(1 for d in shown if d.get("location_precision") != "exact")
+    noun = "αγγελία" if len(shown) == 1 else "αγγελίες"
+    st.markdown(f"**{fmt._gr_int(len(shown))} {noun} στον χάρτη**")
+    notes = []
+    if approx:
+        notes.append(
+            f"{fmt._gr_int(approx)} με κατά προσέγγιση θέση (κέντρο περιοχής — απλωμένες λίγο "
+            "γύρω του για να φαίνονται, πιο αχνές)"
         )
-        st.pydeck_chart(
-            pdk.Deck(
-                map_style="light",  # token-free Carto basemap so pins sit on real streets
-                initial_view_state=pdk.ViewState(
-                    latitude=center["lat"].mean(), longitude=center["lon"].mean(), zoom=13
-                ),
-                layers=layers,
-                tooltip={"text": "Σκορ: {score}"},
+    if no_loc:
+        notes.append(f"{fmt._gr_int(no_loc)} ακόμα ταιριάζουν αλλά δεν έχουν θέση")
+    if notes:
+        st.caption(" · ".join(notes) + ".")
+    if not shown:
+        if matched:
+            st.info(
+                "Καμία από τις αγγελίες που ταιριάζουν δεν έχει ακόμα θέση. Ο εντοπισμός γίνεται "
+                "κατά την ενημέρωση των δεδομένων."
             )
-        )
-        st.caption(
-            f"Έντονα σημεία ({len(exact)}) = ακριβής θέση, χρωματισμένα κατά **σχετική "
-            "κατάταξη** (πιο πράσινο = καλύτερο σκορ από τις περισσότερες αγγελίες). "
-            f"Αχνοί κύκλοι ({len(approx)}) = κατά προσέγγιση (κέντρο περιοχής). "
-            "Μπλε = σταθμοί μετρό."
-        )
-    except Exception:
-        st.map(center)
+        else:
+            st.info("Καμία αγγελία δεν ταιριάζει — χαλάρωσε τα φίλτρα (σκορ, τιμή, περιοχή).")
+        return
+    components.results_map(shown, key="map_chart", height=480, size_by_price=size_by_price)
+
+    top = sorted(shown, key=lambda d: d.get("score") or 0, reverse=True)[:20]
+    st.markdown("#### Οι καλύτερες στον χάρτη" + (" (top 20)" if len(shown) > 20 else ""))
+    # Link first so it stays on screen on a phone; the wide text columns scroll.
+    table = pd.DataFrame(
+        {
+            "Αγγελία": d.get("url") or "",
+            "Τιμή": fmt.euro(d.get("price")),
+            "Σκορ": round(d.get("score") or 0),
+            "Περιοχή": d.get("neighborhood") or d.get("search_area") or "—",
+            "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")),
+            "Τίτλος": d.get("title") or "",
+        }
+        for d in top
+    )
+    st.dataframe(
+        table,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Αγγελία": st.column_config.LinkColumn("Αγγελία", display_text="Άνοιγμα ↗"),
+            "Σκορ": st.column_config.NumberColumn("Σκορ", format="%d"),
+        },
+    )
 
 
 @st.cache_data(ttl=300)

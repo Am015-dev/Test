@@ -51,6 +51,9 @@ def normalize(raw: dict, now: datetime | None = None) -> Listing | None:
         payload.get("year_built"), payload.get("renovated_year"), current_year=now.year
     )
 
+    # Collectors that don't detect it omit the key; a None must not fail the bool field.
+    payload["is_unfinished"] = bool(payload.get("is_unfinished"))
+
     try:
         return Listing(**payload)
     except Exception as exc:  # fail soft on validation errors

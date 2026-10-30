@@ -141,6 +141,19 @@ def env(tmp_path, monkeypatch):
         "parse_query",
         lambda text, client=None: SearchFilters(areas=["Χολαργός", "Cholargos"], price_max=400_000),
     )
+    import scout.advisor as adv
+
+    def fake_review(query, rows, client=None, max_rows=12):
+        labels = ["Αξίζει", "Με επιφύλαξη", "Απόφυγε"]
+        return adv.Review(
+            summary="Δοκιμαστική γνώμη συμβούλου.",
+            verdicts=[
+                adv.Verdict(key=adv.key_of(r), label=labels[i % 3], reason="δοκιμή")
+                for i, r in enumerate(rows[:max_rows])
+            ],
+        )
+
+    monkeypatch.setattr(adv, "review", fake_review)
     return fake
 
 
@@ -172,6 +185,9 @@ def test_buyer_journey(env):
     at.button(key="ex0").click().run()
     ok(at, "example")
     assert any("Κατάλαβα" in m.value for m in at.markdown)
+    # the AI advisor reviewed the results and its verdicts are on the cards
+    assert any("Γνώμη συμβούλου" in m.value for m in at.markdown)
+    assert any("🤖 Αξίζει" in m.value for m in at.markdown)
     # star the first result
     next(b for b in at.button if b.label == "☆ Αγαπημένο").click().run()
     ok(at, "star")
@@ -216,6 +232,7 @@ def test_search_filter_editor_sort_and_clear(env):
     at = fresh(SEARCH)
     at.button(key="ex0").click().run()
     ver = at.session_state["f_ver"]
+    calls = at.session_state["advice_calls"]
     at.number_input(key=f"fe_pmax_{ver}").set_value(150_000).run()
     ok(at, "price filter")
     at.selectbox(key="sort").set_value("Χαμηλότερη τιμή").run()
@@ -224,6 +241,11 @@ def test_search_filter_editor_sort_and_clear(env):
     assert prices, "no result cards shown"
     nums = [int(p.replace("### ", "").replace(" €", "").replace(".", "")) for p in prices]
     assert nums == sorted(nums) and all(n <= 150_000 for n in nums)
+    # filter and sort tweaks reuse the search's AI review instead of a new ~15 s call
+    assert at.session_state["advice_calls"] == calls
+    at.button(key="advice_again").click().run()
+    ok(at, "new advice")
+    assert at.session_state["advice_calls"] == calls + 1
     at.button(key="clear_q").click().run()
     ok(at, "clear")
     assert "nl_filters" not in at.session_state

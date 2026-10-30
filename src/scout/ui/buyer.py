@@ -13,10 +13,13 @@ import statistics
 
 import streamlit as st
 
-from scout import nl_search, shortlist
+from scout import advisor, nl_search, shortlist
 from scout.nl_search import SearchFilters
 
 PAGE_SIZE = 12
+MAX_ADVICE = 25  # Claude reviews per browser session — bounds API cost
+ADVICE_TONE = {"Αξίζει": "good", "Με επιφύλαξη": "warn", "Απόφυγε": "bad"}
+ADVICE_RANK = {"Αξίζει": 0, "Με επιφύλαξη": 1, "Απόφυγε": 2}
 MAX_SEARCHES = 30  # per browser session — bounds API cost
 NAV_DETAIL = "🏠 Αγγελία"  # label of the listing-detail page (cards link to it)
 
@@ -139,7 +142,21 @@ def _card_html(d: dict, adv: dict) -> str:
         facts.append(_floor(d["floor"]))
     if d.get("price_per_m2"):
         facts.append(f"{eur(d['price_per_m2'])}/τ.μ.")
+    age = adv.get("age")
+    if d.get("renovated_year"):
+        facts.append(f"ανακαίνιση <b>{d['renovated_year']}</b>")
+    elif d.get("year_built"):
+        facts.append(f"κατασκευή <b>{d['year_built']}</b>" + (f" ({age} ετών)" if age else ""))
     badges = []
+    if d.get("is_unfinished"):
+        badges.append(("bad", "Ημιτελές"))
+    if age is not None and age >= 40 and not d.get("renovated_year"):
+        badges.append(("warn", f"Παλιό κτίριο — {age} ετών"))
+    elif age is None:
+        badges.append(("muted", "Έτος κατασκευής: δεν δηλώνεται"))
+    for flag in advisor.red_flags(d):
+        if not flag.startswith(("Κτίριο", "Χωρίς έτος", "Ημιτελές")):
+            badges.append(("warn", flag))
     if adv["gap"] and adv["gap"] > 0:
         badges.append(("good", f"▼ {adv['gap']:.0%} κάτω από την εκτίμηση"))
     if d.get("price_dropped"):
@@ -168,12 +185,12 @@ def _score_html(adv: dict, grade: str | None) -> str:
     g = f"<i>{html.escape(str(grade))}</i>" if grade else ""
     return (
         f'<span class="hg-score hg-score-{tone}" '
-        f'title="Σκορ 0–100: 60% ταίριασμα στη στρατηγική, 40% αξία">'
+        f'title="Σκορ 0–100: στρατηγική + αξία, μειωμένο για παλιά κτίρια">'
         f"<small>Σκορ</small><b>{s}</b>{g}</span>"
     )
 
 
-def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list) -> None:
+def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list, advice=None) -> None:
     """One listing. ``actions`` = [(label, callback, args[, type])], each rendered as a button."""
     key = shortlist.lkey(d)
     uid = f"{k}-{d['id']}"
@@ -190,6 +207,12 @@ def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list) -
                 _score_html(adv, d.get("deal_grade")), unsafe_allow_html=True, width="content"
             )
         st.markdown(_card_html(d, adv), unsafe_allow_html=True)
+        if advice is not None:
+            st.markdown(
+                f'<div class="hg-advice hg-advice-{ADVICE_TONE[advice.label]}">'
+                f"<b>🤖 {html.escape(advice.label)}</b> — {html.escape(advice.reason)}</div>",
+                unsafe_allow_html=True,
+            )
         if reasons:
             st.caption("✓ Ταιριάζει: " + _greek_numbers(", ".join(reasons)))
         with st.container(key=f"act-{uid}"):
@@ -305,6 +328,19 @@ def _filter_editor(f: SearchFilters) -> SearchFilters:
             key=f"fe_wants_{ver}",
         )
         priv = c6.checkbox("Μόνο από ιδιώτη", f.private_only, key=f"fe_priv_{ver}")
+        c7, c8 = st.columns(2)
+        ymin = c7.number_input(
+            "Κατασκευή ή ανακαίνιση από (έτος)",
+            0,
+            2030,
+            int(f.year_min or 0),
+            5,
+            key=f"fe_ymin_{ver}",
+            help="0 = οποιοδήποτε. Αγγελίες χωρίς δηλωμένο έτος δεν εμφανίζονται όταν βάλεις έτος.",
+        )
+        unfinished = c8.checkbox(
+            "Να δείχνει και ημιτελή κτίρια", f.include_unfinished, key=f"fe_unf_{ver}"
+        )
     bmin, bmax = BEDROOMS[beds]
     return f.model_copy(
         update={
@@ -316,6 +352,8 @@ def _filter_editor(f: SearchFilters) -> SearchFilters:
             "kinds": kinds,
             "wants": wants,
             "private_only": priv,
+            "year_min": int(ymin) or None,
+            "include_unfinished": unfinished,
         }
     )
 
@@ -377,11 +415,9 @@ def page_search(listings: list[dict]) -> None:
     else:
         f = SearchFilters()
 
-    hits = [
-        (m, d, nl_search.advise(d))
-        for d in listings
-        if not d.get("is_suspect") and (m := nl_search.match(d, f))
-    ]
+    stale_ok = st.session_state.get("include_stale", False)
+    pool = nl_search.candidates(listings, include_stale=stale_ok)
+    hits = [(m, d, nl_search.advise(d)) for d in pool if (m := nl_search.match(d, f))]
     n = f"{len(hits):,}".replace(",", ".")
     heading = (
         f"<b>{n}</b> αγγελίες ταιριάζουν"
@@ -398,6 +434,14 @@ def page_search(listings: list[dict]) -> None:
             on_click=_save_mandate,
             args=(st.session_state.get("nl_text", ""), f),
             width="stretch",
+        )
+    stale = sum(1 for d in listings if not d.get("is_fresh", True))
+    if stale:
+        st.checkbox(
+            f"Δείξε και {stale:,} παλαιότερες αγγελίες (μπορεί να έχουν ήδη πουληθεί)".replace(
+                ",", "."
+            ),
+            key="include_stale",
         )
     if not hits:
         st.info(
@@ -417,10 +461,50 @@ def page_search(listings: list[dict]) -> None:
             f"💡 Οι πιο υποτιμημένες αγγελίες είναι στο **{area}** "
             f"(διάμεσα {statistics.median(gaps):.0%} κάτω από την εκτιμώμενη αξία, {len(gaps)} αγγελίες)."
         )
+    verdicts = {}
+    if asked:
+        # One review per search (not per sort/filter tweak — each call takes ~15 s): the 12 best
+        # matches of this search. Tweaks keep the verdicts of listings already reviewed.
+        ver = st.session_state.get("f_ver", 0)
+        store = st.session_state.setdefault("advice_v", {})
+        force = st.session_state.pop("advice_force", False)
+        if ver not in store or force:
+            best = sorted(hits, key=lambda h: SORTS["Καλύτερη αντιστοιχία"](h[0][0], h[2], h[1]))
+            store[ver] = _call_advisor(
+                st.session_state.get("nl_text", ""), f, [h[1] for h in best[:12]]
+            )
+        review = store.get(ver)
+        if review is not None:
+            verdicts = {v.key: v for v in review.verdicts}
+            with st.container(border=True, key="advice-box"):
+                st.markdown("**🤖 Γνώμη συμβούλου**")
+                st.write(review.summary)
+                st.button(
+                    "🔄 Νέα γνώμη για τα τρέχοντα αποτελέσματα",
+                    key="advice_again",
+                    on_click=_advice_again,
+                )
+            if sort == "Καλύτερη αντιστοιχία":
+                hits.sort(
+                    key=lambda h: ADVICE_RANK.get(
+                        getattr(verdicts.get(shortlist.lkey(h[1])), "label", ""), 3
+                    )
+                )
+        elif st.session_state.get("advice_err"):
+            st.caption(f"🤖 {st.session_state['advice_err']}")
+    if st.toggle("🗺 Χάρτης αποτελεσμάτων", key="show_map"):
+        from scout.ui import components
+
+        components.results_map([h[1] for h in hits], key="search-map", height=380)
     limit = st.session_state.get("limit", PAGE_SIZE)
     for (_pct, reasons), d, adv in hits[:limit]:
         result_card(
-            d, adv, reasons, "s", [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)]
+            d,
+            adv,
+            reasons,
+            "s",
+            [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)],
+            advice=verdicts.get(shortlist.lkey(d)),
         )
     if len(hits) > limit:
         st.button(
@@ -429,6 +513,26 @@ def page_search(listings: list[dict]) -> None:
             on_click=_more,
             width="stretch",
         )
+
+
+def _call_advisor(query: str, f: SearchFilters, rows: list[dict]):
+    """One Claude review of ``rows`` (errors and the per-session cap become a caption)."""
+    if st.session_state.get("advice_calls", 0) >= MAX_ADVICE:
+        st.session_state["advice_err"] = "Έφτασες το όριο γνωμών για αυτή τη συνεδρία."
+        return None
+    st.session_state["advice_calls"] = st.session_state.get("advice_calls", 0) + 1
+    with st.spinner(f"🤖 Ο σύμβουλος εξετάζει τις {len(rows)} καλύτερες αγγελίες…"):
+        try:
+            result = advisor.review(query or nl_search.describe(f), rows)
+            st.session_state["advice_err"] = ""
+            return result
+        except advisor.AdvisorError as e:
+            st.session_state["advice_err"] = str(e)
+            return None
+
+
+def _advice_again() -> None:
+    st.session_state["advice_force"] = True
 
 
 # ---- shortlist -----------------------------------------------------------------------------

@@ -543,6 +543,13 @@ footer {{ visibility: hidden; height: 0; }}
 .hg-b-priv {{ background: #EDE9FE; color: #5B21B6; }}
 .hg-b-offer {{ background: #E0F2FE; color: #075985; }}
 .hg-b-muted {{ background: #F1F5F9; color: #475569; }}
+.hg-b-warn {{ background: #FEF3C7; color: #92400E; }}
+.hg-b-bad {{ background: #FEE2E2; color: #991B1B; }}
+.hg-advice {{ margin: .35rem 0 .1rem; padding: .45rem .65rem; border-radius: 10px; font-size: .86rem;
+    line-height: 1.35; border-left: 4px solid; }}
+.hg-advice-good {{ background: #F0FDF4; border-color: #16A34A; color: #14532D; }}
+.hg-advice-warn {{ background: #FFFBEB; border-color: #D97706; color: #78350F; }}
+.hg-advice-bad {{ background: #FEF2F2; border-color: #DC2626; color: #7F1D1D; }}
 .hg-score {{ display: inline-flex; align-items: baseline; gap: 5px; border-radius: 10px;
     padding: 5px 10px; border: 1px solid; white-space: nowrap; cursor: help; }}
 .hg-score small {{ font-size: .7rem; font-weight: 600; opacity: .85; }}

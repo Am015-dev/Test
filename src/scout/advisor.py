@@ -1,0 +1,219 @@
+"""AI buying advisor: Claude reviews a search's top listings and gives an honest verdict each.
+
+The ranking formula can't tell a 60-year-old flat or an unfinished shell from a bargain; this
+module asks a capable model to judge the shortlist the way a skeptical Athens buying advisor
+would. ``red_flags`` is the cheap deterministic part, shared by the prompt and the UI.
+"""
+
+from __future__ import annotations
+
+import json
+import statistics
+from datetime import date
+from typing import Literal
+
+from pydantic import BaseModel, field_validator
+
+from scout.config import get_settings
+
+MODEL = "claude-sonnet-5-5"
+MAX_REASON = 160
+OLD_BUILDING_YEARS = 40
+
+Label = Literal["Αξίζει", "Με επιφύλαξη", "Απόφυγε"]
+
+
+class Verdict(BaseModel):
+    key: str
+    label: Label
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def _short(cls, v: str) -> str:
+        v = " ".join(v.split())
+        return v if len(v) <= MAX_REASON else v[: MAX_REASON - 1].rstrip() + "…"
+
+
+class Review(BaseModel):
+    summary: str
+    verdicts: list[Verdict]
+
+
+class AdvisorError(Exception):
+    """The review could not be produced (message is Greek, shown to the user)."""
+
+
+def key_of(d: dict) -> str:
+    return f"{d.get('source')}:{d.get('source_id')}"
+
+
+def _age(d: dict) -> int | None:
+    if d.get("building_age") is not None:
+        return int(d["building_age"])
+    if d.get("year_built"):
+        return date.today().year - int(d["year_built"])
+    return None
+
+
+def red_flags(d: dict) -> list[str]:
+    """Short Greek warning tags from the listing's own data. Missing data is not a flag,
+    except a missing build year (the single most important fact for an Athens flat)."""
+    flags: list[str] = []
+    age = _age(d)
+    if age is None:
+        flags.append("Χωρίς έτος κατασκευής")
+    elif age >= OLD_BUILDING_YEARS and not d.get("renovated_year"):
+        flags.append(f"Κτίριο {age} ετών")
+    if d.get("is_unfinished"):
+        flags.append("Ημιτελές")
+    floor = d.get("floor")
+    if floor is not None and floor < 0:
+        flags.append("Υπόγειο")
+    elif floor == 0:
+        flags.append("Ισόγειο")
+    if (d.get("energy_class") or "").strip().upper() in ("Η", "Ζ", "H", "Z"):
+        flags.append(f"Ενεργειακή {d['energy_class'].strip().upper()}")
+    ppm2, median = d.get("price_per_m2"), d.get("area_median_ppm2")
+    if ppm2 and median and ppm2 < 0.6 * median:
+        flags.append("Πολύ φθηνό για την περιοχή — έλεγξε γιατί")
+    return flags
+
+
+# Fields worth the model's attention (everything else is noise or internal scoring detail).
+FIELDS = (
+    "title",
+    "neighborhood",
+    "price",
+    "area_m2",
+    "price_per_m2",
+    "area_median_ppm2",
+    "bedrooms",
+    "floor",
+    "year_built",
+    "renovated_year",
+    "building_age",
+    "is_unfinished",
+    "energy_class",
+    "heating",
+    "is_private_seller",
+    "days_on_market",
+    "price_dropped",
+    "first_price",
+    "predicted_price",
+    "value_gap_pct",
+    "value_confident",
+    "suggested_offer",
+    "metro_distance_m",
+    "nearest_metro",
+    "deal_grade",
+    "score",
+)
+
+
+def _compact(d: dict) -> dict:
+    out: dict = {"key": key_of(d)}
+    for f in FIELDS:
+        v = d.get(f)
+        if v is None or v == "":
+            continue
+        out[f] = round(v, 3) if isinstance(v, float) else v
+    flags = red_flags(d)
+    if flags:
+        out["red_flags"] = flags
+    return out
+
+
+SYSTEM = """Είσαι έμπειρος, σκεπτικιστής σύμβουλος αγοράς κατοικίας στην Αθήνα (Β/ΒΑ προάστια). \
+Ο πελάτης ΑΓΟΡΑΖΕΙ για να μείνει ή ως μακροπρόθεσμη επένδυση αξίας — όχι για ενοικίαση. \
+Κρίνεις κάθε αγγελία με ειλικρίνεια· προτιμάς να χάσει μια ευκαιρία παρά να αγοράσει πρόβλημα.
+
+Κριτήρια (με αυτή τη σειρά βαρύτητας):
+1. Ηλικία κτιρίου: κτίριο ≥40 ετών χωρίς δηλωμένη ανακαίνιση = πραγματικός κίνδυνος (παλιές \
+υδραυλικές/ηλεκτρικές εγκαταστάσεις, χωρίς θερμομόνωση, αντισεισμικός κανονισμός πριν το 1985). \
+Ανέφερε το έτος. Χωρίς ανακαίνιση δεν μπορεί να είναι «Αξίζει». Αν λείπει το έτος, γράψε \
+«έτος δεν δηλώνεται» και μην δώσεις «Αξίζει» χωρίς άλλο ισχυρό στοιχείο.
+2. Κατάσταση: ημιτελές/υπό κατασκευή → «Απόφυγε», εκτός αν ο αγοραστής το ζήτησε ρητά.
+3. Όροφος: ισόγειο/υπόγειο/ημιυπόγειο είναι μειονέκτημα για κατοικία (υγρασία, ασφάλεια, φως).
+4. Τιμή: σύγκρινε €/τ.μ. με τη διάμεσο της περιοχής (area_median_ppm2) ή, αν λείπει, με τη \
+διάμεσο των αποτελεσμάτων που σου δίνεται, και με την εκτίμηση μοντέλου (predicted_price, \
+value_gap_pct=πόσο κάτω από την εκτίμηση· αξιόπιστο μόνο αν value_confident=true). Μεγάλη \
+«έκπτωση» (>25%) χωρίς εξήγηση είναι προειδοποίηση (παλιό, υπόγειο, ιδιόκτητο οικόπεδο, \
+νομικό θέμα, λάθος τ.μ.) — όχι ευκαιρία. Ποτέ μην την επαινείς ως «ευκαιρία» χωρίς λόγο.
+5. Ενεργειακή κλάση (Η/Ζ = ακριβό σε θέρμανση και αναβάθμιση).
+6. Διαπραγμάτευση: πολλές μέρες στην αγορά, μείωση τιμής, ιδιώτης πωλητής → περιθώριο· \
+αν υπάρχει suggested_offer ανέφερέ το.
+7. Ταίριασμα με το αίτημα: μέγεθος/υπνοδωμάτια/τιμή σε σχέση με όσα ζήτησε.
+
+Το red_flags κάθε αγγελίας είναι ήδη επαληθευμένο από τα δεδομένα — λάβε το υπόψη.
+Κανόνες: να είσαι συγκεκριμένος με αριθμούς (έτος, €/τ.μ., % από διάμεσο, μέρες). ΜΗΝ \
+επινοείς στοιχεία που δεν υπάρχουν στα δεδομένα (π.χ. ανακαίνιση, θέα, κατάσταση)· αν κάτι \
+λείπει γράψε «δεν δηλώνεται». Ο τίτλος είναι μόνο τύπος + τ.μ., όχι περιγραφή. Αν τα \
+υπνοδωμάτια δεν δηλώνονται, μην τα παρουσιάζεις ως γεγονός από τα τ.μ. (γράψε «πιθανώς»). \
+«Αξίζει» μόνο όταν τα στοιχεία το στηρίζουν, όχι από προεπιλογή.
+
+Απάντησε στα ελληνικά, ως JSON με:
+- summary: 2–4 προτάσεις — τι αξίζει σε αυτά τα αποτελέσματα και γιατί, κύριοι κίνδυνοι.
+- verdicts: ένα για ΚΑΘΕ αγγελία, με το ακριβές key της· reason έως 140 χαρακτήρες \
+(σκληρό όριο), συγκεκριμένο."""
+
+
+def _schema() -> dict:
+    """Review's JSON schema, closed (additionalProperties: false) for structured outputs."""
+    schema = Review.model_json_schema()
+    for obj in [schema, *schema.get("$defs", {}).values()]:
+        if obj.get("type") == "object":
+            obj["additionalProperties"] = False
+    return schema
+
+
+def _payload(query: str, rows: list[dict]) -> str:
+    listings = [_compact(d) for d in rows]
+    ppm2 = [d["price_per_m2"] for d in rows if d.get("price_per_m2")]
+    ctx = {"query": query, "today": date.today().isoformat()}
+    if len(ppm2) >= 3:
+        ctx["results_median_ppm2"] = round(statistics.median(ppm2))
+    return json.dumps({"context": ctx, "listings": listings}, ensure_ascii=False)
+
+
+def _parse(resp, sent: set[str]) -> Review | None:
+    """The validated review, or None when the output is unusable (worth one retry)."""
+    try:
+        text = next(b.text for b in resp.content if b.type == "text")
+        out = Review.model_validate_json(text)
+    except Exception:  # no text block / bad JSON / schema mismatch
+        return None
+    out.verdicts = [v for v in out.verdicts if v.key in sent]
+    return out if len(out.verdicts) * 2 >= len(sent) else None
+
+
+def review(query: str, rows: list[dict], client=None, max_rows: int = 12) -> Review:
+    rows = rows[:max_rows]
+    if not rows:
+        raise AdvisorError("Δεν υπάρχουν αγγελίες για αξιολόγηση.")
+    if client is None:
+        key = get_settings().anthropic_api_key
+        if not key:
+            raise AdvisorError("Λείπει το ANTHROPIC_API_KEY (βάλ'το στο .env ή στα secrets).")
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=key)
+    sent = {key_of(d) for d in rows}
+    # Structured output (constrained JSON) rather than a tool call: Sonnet 5.5 rejects forced
+    # tool_choice, and an unforced long tool call was seen garbling its own arguments.
+    request = dict(
+        model=MODEL,
+        max_tokens=16000,
+        system=SYSTEM,
+        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": _schema()}},
+        messages=[{"role": "user", "content": _payload(query, rows)}],
+    )
+    for _ in range(2):  # one retry on unusable output; the SDK already retries API errors
+        try:
+            resp = client.messages.create(**request)
+        except Exception as e:
+            raise AdvisorError(f"Ο σύμβουλος AI δεν είναι διαθέσιμος ({type(e).__name__}).") from e
+        out = _parse(resp, sent)
+        if out is not None:
+            return out
+    raise AdvisorError("Ο σύμβουλος AI δεν έδωσε έγκυρη αξιολόγηση. Δοκίμασε ξανά.")
