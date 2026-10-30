@@ -1,26 +1,32 @@
-# Daily data refresh — everything lives in GitHub, no external database.
+# Weekly data refresh — everything lives in GitHub, no external database.
 #
 # The listings DB (SQLite) is stored as ONE file on an orphan `data` branch that is
 # force-pushed as a single commit each run, so the repo never grows. The Streamlit app
 # downloads it from raw.githubusercontent.com (see src/scout/remote_db.py).
 #
-# Each run restores the DB from the `data` branch, scrapes ONE rotating 1/5 slice of areas
-# (full coverage every 5 days), rescores the whole panel, and publishes the DB back.
+# Each run restores the DB from the `data` branch, scrapes the buyer's areas (WEEKLY_AREAS,
+# ~80 min; a manual run can name others), rescores the whole panel, and publishes the DB back.
+# Listings from areas outside the list stay in the DB as price evidence for comparables.
 # Collect is best-effort and time-boxed; rescore + publish run with `if: always()` so even a
 # blocked scrape still ships whatever fresh data we got.
-name: daily-refresh
+name: weekly-refresh
 on:
   schedule:
-    - cron: "0 4 * * *"   # 04:00 UTC = 07:00 Athens, before the workday
+    - cron: "0 4 * * 1"   # Mondays 04:00 UTC = 07:00 Athens — weekly is enough for buying
   workflow_dispatch:       # manual "Run workflow" button
     inputs:
       areas:
-        description: "Areas to scrape now, comma-separated (empty = today's rotating slice)"
+        description: "Areas to scrape now, comma-separated (empty = the weekly list)"
         required: false
         default: ""
 
 permissions:
   contents: write
+
+env:
+  WEEKLY_AREAS: >-
+    Cholargos,Papagou,Agia Paraskevi,Chalandri,Vrilissia,Marousi,Zografou,Psychiko,
+    Filothei,Irakleio,Nea Filadelfeia,Pefki,Galatsi,Ampelokipoi,Metamorfosi
 
 concurrency:
   group: daily-refresh
@@ -50,15 +56,15 @@ jobs:
             echo "no data branch yet — starting with an empty DB"
           fi
 
-      - name: Collect today's area slice (best-effort, time-boxed)
-        # ~6 min per area at polite pacing; today's slice is ~11 areas. Public repo: free minutes.
+      - name: Collect the weekly areas (best-effort, time-boxed)
+        # ~6 min per area at polite pacing; 15 areas ≈ 80 min. Public repo: free minutes.
         timeout-minutes: 110
         continue-on-error: true
         env:
           SCRAPE_DETAIL_PAGES: "false"
           SCRAPE_REQUEST_MIN_S: "4"
           SCRAPE_REQUEST_MAX_S: "7"
-          AREAS: ${{ inputs.areas }}
+          AREAS: ${{ inputs.areas || env.WEEKLY_AREAS }}
         run: python scripts/run_daily.py --shards 5 --areas "$AREAS"
 
       - name: Rescore whole panel from the DB (no network)
