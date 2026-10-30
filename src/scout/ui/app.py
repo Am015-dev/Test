@@ -22,6 +22,25 @@ from pathlib import Path
 # Allow running via `streamlit run src/scout/ui/app.py` without installing.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+
+def _drop_stale_scout_modules() -> None:
+    """Streamlit Cloud pulls new code into the RUNNING process and re-runs this script, but the
+    scout modules imported on an earlier run stay cached in sys.modules — new app.py + old
+    helpers = AttributeError. If any scout source file changed since they were loaded, forget
+    them all so this run imports the code on disk."""
+    pkg = sys.modules.get("scout")
+    loaded_at = getattr(pkg, "_loaded_at", None)
+    if loaded_at is None:
+        return
+    names = [n for n in sys.modules if n == "scout" or n.startswith("scout.")]
+    files = [getattr(sys.modules[n], "__file__", None) for n in names]
+    if any(f and Path(f).exists() and Path(f).stat().st_mtime > loaded_at for f in files):
+        for n in names:
+            del sys.modules[n]
+
+
+_drop_stale_scout_modules()
+
 import os  # noqa: E402
 
 import pandas as pd  # noqa: E402
@@ -74,18 +93,23 @@ from scout.relative_value import (  # noqa: E402
     relative_value,
     relative_yield,
 )
-from scout.scoring import (
+from scout.scoring import (  # noqa: E402
     energy_class_score,
     energy_liability_multiplier,
     newness_score,
 )  # noqa: E402
 from scout.strategy_fit import STRATEGY_LABELS, strategy_label  # noqa: E402
-from scout.ui import (
+from scout.ui import (  # noqa: E402
     buyer,  # noqa: E402
     components,  # noqa: E402
     queries,  # noqa: E402
 )
 from scout.ui import format as fmt  # noqa: E402
+
+if not hasattr(sys.modules["scout"], "_loaded_at"):
+    import time as _time
+
+    sys.modules["scout"]._loaded_at = _time.time()
 from scout.ui.theme import inject_css  # noqa: E402
 
 st.set_page_config(
