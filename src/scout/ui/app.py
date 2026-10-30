@@ -111,8 +111,20 @@ inject_css()
 # this TTL only controls the passive/background refresh cadence.
 
 
+@st.cache_resource(ttl=21600, show_spinner="Downloading the latest listings…")
+def _sync_data() -> bool:
+    """Pull the daily-published DB from the repo's `data` branch (no-op with DATABASE_URL)."""
+    from scout import remote_db
+    from scout.db import init_db
+
+    fresh = remote_db.ensure_local_db()
+    init_db()  # also creates the tables when there is no published DB yet
+    return fresh
+
+
 @st.cache_resource(ttl=10800, show_spinner="Loading listings and computing market rankings…")
 def get_listings() -> list[dict]:
+    _sync_data()
     # Market-position annotation (price/yield percentile vs comparable active listings),
     # strategy tags and the BUY/WATCH/PASS recommendation are all computed inside
     # load_listings() itself now — every caller (this page, the digest, health/data-quality
