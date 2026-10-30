@@ -2129,6 +2129,11 @@ def page_compare(listings: list[dict]) -> None:
 MAX_SEARCHES = 20  # per Streamlit session — bounds API cost
 
 
+def _db_reason(e: Exception) -> str:
+    """First line of the underlying DB error (no SQL, no parameters, no credentials)."""
+    return str(getattr(e, "orig", e)).strip().splitlines()[0][:300]
+
+
 def page_search(listings: list[dict]) -> None:
     st.subheader("🔎 Γράψε τι σπίτι ψάχνεις")
     text = st.text_area(
@@ -2155,8 +2160,11 @@ def page_search(listings: list[dict]) -> None:
     if st.button("🤖 Ο agent να ψάχνει καθημερινά γι' αυτό"):
         from scout import shortlist
 
-        shortlist.save_mandate(text.strip(), f)
-        st.success("Αποθηκεύτηκε — δες τις προτάσεις στη σελίδα Shortlist.")
+        try:
+            shortlist.save_mandate(text.strip(), f)
+            st.success("Αποθηκεύτηκε — δες τις προτάσεις στη σελίδα Shortlist.")
+        except Exception as e:
+            st.error(f"Δεν αποθηκεύτηκε: {type(e).__name__}: {_db_reason(e)}")
     hits = [(m, d, nl_search.advise(d)) for d in listings if (m := nl_search.match(d, f))]
     hits.sort(key=lambda h: (-h[0][0], -h[2]["score"], h[1]["price"]))
     st.write(f"**{len(hits)}** αγγελίες ταιριάζουν")
@@ -2202,7 +2210,11 @@ def page_shortlist(listings: list[dict]) -> None:
     st.caption(
         "Ο agent διαλέγει τις καλύτερες αγγελίες για κάθε εντολή σου. Εσύ εγκρίνεις/απορρίπτεις."
     )
-    mandates = shortlist.list_mandates()
+    try:
+        mandates = shortlist.list_mandates()
+    except Exception as e:  # DB trouble must show a readable reason, not a redacted crash
+        st.error(f"Δεν μπόρεσα να διαβάσω τις εντολές: {type(e).__name__}: {_db_reason(e)}")
+        return
     if not mandates:
         st.info(
             "Καμία εντολή ακόμα — γράψε μια αναζήτηση στη σελίδα Search και πάτα το κουμπί του agent."
