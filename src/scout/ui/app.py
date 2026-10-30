@@ -2251,11 +2251,15 @@ def page_saved_searches(listings: list[dict]) -> None:
 def page_compare(listings: list[dict]) -> None:
     """Shortlist several flats and rank them side-by-side on the numbers that decide it —
     the "which of these do I chase?" view (inspired by deal-analyzer compare tools)."""
-    from scout import metrics as _m
 
     st.subheader("⚖️ Σύγκριση")
     st.caption("Διάλεξε 2–4 αγγελίες για να δεις τους δείκτες τους δίπλα-δίπλα.")
-    elig = _eligible(listings)
+    from scout import nl_search, shortlist
+
+    starred = buyer.watch_keys()
+    elig = sorted(  # starred first — the usual "which of my favourites?" question
+        nl_search.candidates(listings), key=lambda d: shortlist.lkey(d) not in starred
+    )
     if not elig:
         st.info("Δεν υπάρχουν ακόμα αγγελίες για σύγκριση.")
         return
@@ -2266,61 +2270,68 @@ def page_compare(listings: list[dict]) -> None:
         return f"{d.get('neighborhood') or d['source_id']} · {fmt.euro(d['price'])} · #{d['id']}"
 
     by_id = {d["id"]: d for d in elig}
-    opts = {f"[{d['score']:.0f}] {_name(d)}": d["id"] for d in elig}
+    opts = {("★ " if shortlist.lkey(d) in starred else "") + _name(d): d["id"] for d in elig}
     picks = st.multiselect("Αγγελίες", list(opts.keys()), max_selections=4)
     chosen = [by_id[opts[p]] for p in picks]
     if len(chosen) < 2:
         st.info("Διάλεξε τουλάχιστον δύο αγγελίες.")
         return
 
+    from scout import market_intel
+
+    intel = market_intel.build(listings)
+
     def _metrics(d: dict) -> dict:
-        monthly = d.get("listed_rent") or d.get("est_monthly_rent")
-        annual = monthly * 12 if monthly else None
-        im = _m.investor_metrics(
-            d["price"], annual, d.get("area_m2"), is_private_seller=bool(d.get("is_private_seller"))
-        )
+        adv = buyer.buyer_view(d, intel)
+        cmp, twins, age = adv["cmp"], adv["twins"], adv["age"]
+        built = d.get("renovated_year") or d.get("year_built")
+        # Every cell is text: a mixed int/str column fails Arrow serialisation.
         return {
-            "Σκορ": f"{d['score']:.0f}",
-            "Βαθμός": d.get("deal_grade") or "—",
             "Τιμή": fmt.euro(d["price"]),
             "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")),
             "Εμβαδόν": f"{d['area_m2']:.0f} τ.μ." if d.get("area_m2") else "—",
-            "Καθαρή απόδοση": (
-                fmt.pct(d.get("net_yield")) if d.get("net_yield") is not None else "—"
+            "Υπνοδωμάτια": str(d["bedrooms"]) if d.get("bedrooms") is not None else "—",
+            "Όροφος": f"{d['floor']:g}" if d.get("floor") is not None else "—",
+            "Έτος (ηλικία)": f"{built} ({age} ετών)" if built and age is not None else "—",
+            "Vs παρόμοια": (f"{cmp['pct']:+.0%} ({cmp['n']})".replace("-", "−") if cmp else "—"),
+            "Ίδιο σπίτι αλλού": (
+                f"{len(twins)} · από {fmt.euro(twins[0]['price'])}" if twins else "—"
             ),
-            "Cap rate": f"{im['cap_rate']:.1%}" if im["cap_rate"] is not None else "—",
-            "GRM": f"{im['grm']:.0f}×" if im["grm"] is not None else "—",
-            "DSCR": f"{im['dscr']:.2f}" if im["dscr"] is not None else "—",
-            # Every cell is text: a mixed int/str column fails Arrow serialisation.
             "Μέρες στην αγορά": (
                 str(d["days_on_market"]) if d.get("days_on_market") is not None else "—"
             ),
-            "Ως το μετρό": _metro_label(d),
             "Ενεργ. κλάση": d.get("energy_class") or "—",
+            "Πωλητής": "Ιδιώτης" if d.get("is_private_seller") else "Μεσίτης",
+            "Σκορ αγοράς": str(adv["score"]),
         }
 
     table = {_name(d): _metrics(d) for d in chosen}
     st.dataframe(pd.DataFrame(table), width="stretch")
     st.caption(
-        "Καλύτερα: υψηλότερο σκορ / καθαρή απόδοση / cap rate και "
-        "χαμηλότερο GRM / λιγότερες μέρες στην αγορά."
+        "«Vs παρόμοια»: €/τ.μ. σε σχέση με τη διάμεσο ίδιας περιοχής, ηλικίας και μεγέθους "
+        "(πόσα παρόμοια). Αρνητικό = φθηνότερο."
     )
 
 
-# Buyer pages first, then the analyst tools. Labels are what the sidebar shows.
+# What a buyer uses. The older rental-investor tools (yields, cap rate, Airbnb, Golden Visa)
+# stay reachable for the owner with ?admin=1.
 NAV = {
     "🔎 Αναζήτηση": buyer.page_search,
-    "🤖 Shortlist": buyer.page_shortlist,
-    "⭐ Αγαπημένα": buyer.page_watchlist,
     "🗺 Χάρτης": page_map,
-    buyer.NAV_DETAIL: page_detail,
+    "⭐ Αγαπημένα": buyer.page_watchlist,
+    "🤖 Αποθηκευμένες αναζητήσεις": buyer.page_shortlist,
+    "⚖️ Σύγκριση": page_compare,
+    buyer.NAV_DETAIL: buyer.page_listing,
+}
+ADMIN_NAV = {  # open with ?admin=1
+    "🧮 Ανάλυση επενδυτή": page_detail,
     "📊 Αγορά": page_neighborhoods,
     "🏆 Ευκαιρίες": page_opportunities,
     "📰 Σήμερα": page_today,
     "💼 Deals": page_deals,
-    "⚖️ Σύγκριση": page_compare,
+    "⚙️ Strategy": page_strategy,
+    "🛠 Debug": page_debug,
 }
-ADMIN_NAV = {"⚙️ Strategy": page_strategy, "🛠 Debug": page_debug}  # open with ?admin=1
 
 
 def _data_status(listings: list[dict]) -> str:

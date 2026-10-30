@@ -197,14 +197,13 @@ def _card_html(d: dict, adv: dict) -> str:
     return out
 
 
-def _score_html(adv: dict, grade: str | None) -> str:
+def _score_html(adv: dict) -> str:
     s = adv["score"]
     tone = "hi" if s >= 70 else "mid" if s >= 50 else "lo"
-    g = f"<i>{html.escape(str(grade))}</i>" if grade else ""
     return (
         f'<span class="hg-score hg-score-{tone}" '
-        f'title="Σκορ 0–100: στρατηγική + αξία, μειωμένο για παλιά κτίρια">'
-        f"<small>Σκορ</small><b>{s}</b>{g}</span>"
+        f'title="Σκορ αγοράς 0–100: τιμή έναντι παρόμοιων, ηλικία κτιρίου, όροφος, περιοχή">'
+        f"<small>Σκορ</small><b>{s}</b></span>"
     )
 
 
@@ -221,9 +220,7 @@ def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list, a
             )
         with st.container(horizontal=True, vertical_alignment="center", wrap=False):
             st.markdown(f"### {eur(d['price'])}", width="stretch")
-            st.markdown(
-                _score_html(adv, d.get("deal_grade")), unsafe_allow_html=True, width="content"
-            )
+            st.markdown(_score_html(adv), unsafe_allow_html=True, width="content")
         st.markdown(_card_html(d, adv), unsafe_allow_html=True)
         if advice is not None:
             st.markdown(
@@ -245,6 +242,13 @@ def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list, a
                     type=kind[0] if kind else "secondary",
                     width="stretch",
                 )
+
+
+def buyer_view(d: dict, intel) -> dict:
+    """Score + like-for-like comparables + same-flat twins for one listing."""
+    cmp = intel.comps(d)
+    adv = nl_search.advise(d, cmp["pct"] if cmp else None)
+    return {**adv, "cmp": cmp, "twins": intel.twins(d)}
 
 
 def _star_action(d: dict) -> tuple:
@@ -431,7 +435,10 @@ def _filter_editor(f: SearchFilters, pool: list[dict]) -> SearchFilters:
 def _save_mandate(text: str, f: SearchFilters) -> None:
     try:
         shortlist.save_mandate(text, f)
-        _flash("ok", "Αποθηκεύτηκε — ο agent θα σου προτείνει αγγελίες στη σελίδα Shortlist.")
+        _flash(
+            "ok",
+            "Αποθηκεύτηκε — ο agent θα σου προτείνει αγγελίες στη σελίδα «Αποθηκευμένες αναζητήσεις».",
+        )
     except shortlist.StorageNotConfigured as e:
         _flash("error", f"Δεν αποθηκεύτηκε: {e}")
     except Exception as e:
@@ -487,12 +494,7 @@ def page_search(listings: list[dict]) -> None:
         understood.markdown(_understood_html(f), unsafe_allow_html=True)
 
     intel = market_intel.build(listings)
-    hits = []
-    for d in pool:
-        if m := nl_search.match(d, f):
-            cmp = intel.comps(d)
-            adv = nl_search.advise(d, cmp["pct"] if cmp else None)
-            hits.append((m, d, {**adv, "cmp": cmp, "twins": intel.twins(d)}))
+    hits = [(m, d, buyer_view(d, intel)) for d in pool if (m := nl_search.match(d, f))]
     n = f"{len(hits):,}".replace(",", ".")
     top = st.columns([4, 3, 3], vertical_alignment="center")
     top[0].markdown(
@@ -629,7 +631,8 @@ def _call_advisor(query: str, f: SearchFilters, rows: list[dict]):
         st.session_state["advice_err"] = "Έφτασες το όριο γνωμών για αυτή τη συνεδρία."
         return None
     st.session_state["advice_calls"] = st.session_state.get("advice_calls", 0) + 1
-    with st.spinner(f"🤖 Ο σύμβουλος εξετάζει τις {len(rows)} καλύτερες αγγελίες…"):
+    what = "την αγγελία" if len(rows) == 1 else f"τις {len(rows)} καλύτερες αγγελίες"
+    with st.spinner(f"🤖 Ο σύμβουλος εξετάζει {what}…"):
         try:
             result = advisor.review(query or nl_search.describe(f), rows)
             st.session_state["advice_err"] = ""
@@ -663,7 +666,7 @@ def _delete_mandate(mandate_id: int) -> None:
 
 
 def page_shortlist(listings: list[dict]) -> None:
-    st.markdown("## 🤖 Shortlist του agent")
+    st.markdown("## 🤖 Αποθηκευμένες αναζητήσεις")
     st.caption(
         "Ο agent κρατά τις αναζητήσεις σου και διαλέγει τις καλύτερες αγγελίες. Εσύ εγκρίνεις ή απορρίπτεις."
     )
@@ -728,11 +731,130 @@ def page_watchlist(listings: list[dict]) -> None:
     c[0].metric("Αγαπημένα", len(starred))
     c[1].metric("Σύνολο τιμών", eur(sum(prices)) if prices else "—")
     c[2].metric("Διάμεσο €/τ.μ.", eur(statistics.median(ppm)) if ppm else "—")
+    intel = market_intel.build(listings)
     for d in sorted(starred, key=lambda d: -(d.get("score") or 0)):
         result_card(
             d,
-            nl_search.advise(d),
+            buyer_view(d, intel),
             [],
             "w",
             [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)],
         )
+
+
+# ---- one listing ---------------------------------------------------------------------------
+
+
+def _listing_link_table(rows: list[dict], intel_year: int) -> None:
+    import pandas as pd
+
+    table = pd.DataFrame(
+        {
+            "Αγγελία": d.get("url") or "",
+            "Τιμή": eur(d.get("price")),
+            "€/τ.μ.": eur(d.get("price_per_m2")),
+            "τ.μ.": f"{d['area_m2']:g}" if d.get("area_m2") else "—",
+            "Όροφος": _floor(d["floor"]) if d.get("floor") is not None else "—",
+            "Έτος": str(d.get("year_built") or "—"),
+            "Περιοχή": d.get("neighborhood") or "—",
+        }
+        for d in rows
+    )
+    st.dataframe(
+        table,
+        hide_index=True,
+        width="stretch",
+        column_config={"Αγγελία": st.column_config.LinkColumn("Αγγελία", display_text="Άνοιγμα ↗")},
+    )
+
+
+def _ask_listing(d: dict, adv: dict, intel) -> None:
+    rows = [advisor.with_market(d, adv, intel)]
+    review = _call_advisor(
+        "Αξιολόγησε αυτή την αγγελία για αγορά κατοικίας.", SearchFilters(), rows
+    )
+    st.session_state.setdefault("listing_advice", {})[shortlist.lkey(d)] = review
+
+
+def page_listing(listings: list[dict]) -> None:
+    """Everything a buyer needs about one flat: facts, how it prices against like-for-like
+    flats, the same flat at other agents, its price history and what age costs in its area."""
+    from scout.ui import queries
+
+    _show_flash()
+    by_id = {d["id"]: d for d in listings}
+    wanted = st.session_state.get("detail_id")
+    starred = watch_keys()
+    picks = [d for d in listings if shortlist.lkey(d) in starred and d["id"] != wanted]
+    if wanted in by_id:
+        picks.insert(0, by_id[wanted])
+    if not picks:
+        st.markdown("## Αγγελία")
+        st.info("Άνοιξε μια αγγελία με «Λεπτομέρειες» από την Αναζήτηση ή τα Αγαπημένα.")
+        return
+    labels = {
+        f"{eur(d['price'])} · {d.get('title') or ''} · {d.get('neighborhood') or ''}": d["id"]
+        for d in picks
+    }
+    choice = st.selectbox("Αγγελία", list(labels), key=f"listing_pick_{wanted}")
+    d = by_id[labels[choice]]
+    intel = market_intel.build(listings)
+    adv = buyer_view(d, intel)
+    review = st.session_state.get("listing_advice", {}).get(shortlist.lkey(d))
+    result_card(
+        d,
+        adv,
+        [],
+        "l",
+        [("🤖 Γνώμη AI", _ask_listing, (d, adv, intel)), _star_action(d)],
+        advice=review.verdicts[0] if review and review.verdicts else None,
+    )
+    if review is None and st.session_state.get("advice_err"):
+        st.caption(f"🤖 {st.session_state['advice_err']}")
+
+    cmp = adv.get("cmp")
+    st.markdown("#### Σε σύγκριση με παρόμοια σπίτια")
+    if cmp:
+        pos = (
+            "φθηνότερο από τα 3 στα 4 παρόμοια"
+            if d["price_per_m2"] < cmp["p25"]
+            else (
+                "ακριβότερο από τα 3 στα 4 παρόμοια"
+                if d["price_per_m2"] > cmp["p75"]
+                else "μέσα στο συνηθισμένο εύρος"
+            )
+        )
+        c = st.columns(3)
+        c[0].metric("Αυτό", f"{eur(d['price_per_m2'])}/τ.μ.")
+        c[1].metric(
+            "Διάμεσος παρόμοιων",
+            f"{eur(cmp['ppm'])}/τ.μ.",
+            delta=f"{cmp['pct']:+.0%}".replace("-", "−"),
+            delta_color="inverse",
+        )
+        c[2].metric("Συνηθισμένο εύρος", f"{eur(cmp['p25'])} – {eur(cmp['p75'])}")
+        st.caption(
+            f"{cmp['n']} παρόμοια ({cmp['label']}). Αυτό είναι {pos}. "
+            "Ζητούμενες τιμές, όχι τιμές πώλησης."
+        )
+        with st.expander(f"Τα {cmp['n']} παρόμοια"):
+            _listing_link_table(cmp["rows"], intel.year)
+    else:
+        st.caption("Δεν υπάρχουν αρκετά παρόμοια (ίδια περιοχή και ηλικία) για σύγκριση.")
+
+    if twins := adv.get("twins"):
+        st.markdown("#### Το ίδιο σπίτι από άλλους μεσίτες")
+        st.caption(
+            "Ίδια περιοχή, τ.μ., όροφος και έτος, τιμή έως 10% διαφορά — πιθανότατα το ίδιο "
+            "διαμέρισμα. Η χαμηλότερη τιμή είναι το σημείο εκκίνησης της διαπραγμάτευσης."
+        )
+        _listing_link_table(twins, intel.year)
+
+    history = queries.load_price_history(d["id"])
+    if len({p for _, p in history}) > 1:
+        st.markdown("#### Ιστορικό τιμής")
+        st.markdown("  \n".join(f"{when:%d/%m/%Y}: **{eur(price)}**" for when, price in history))
+    elif history:
+        st.caption(f"Τιμή αμετάβλητη από {history[0][0]:%d/%m/%Y} που την πρωτοείδαμε.")
+
+    _market_panel(intel, [municipality(d)])
