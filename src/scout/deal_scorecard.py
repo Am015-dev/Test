@@ -133,13 +133,17 @@ def _motivated_seller_check(d: dict) -> dict:
     return _check(_L_MOTIVATED, 0, 1, "καμία ισχυρή ένδειξη κινήτρου")
 
 
+_GREEK_TO_LATIN_EPC = str.maketrans("ΑΒΓΔΕΖΗ", "ABCDEFG")
+
+
 def _energy_check(d: dict) -> dict:
     """One point for an energy-efficient class (A/B/C): no near-term EPBD retrofit liability."""
     ec = d.get("energy_class")
     if not ec or not isinstance(ec, str):
         return _check(_L_ENERGY, 0, 1, "άγνωστο — δεν δηλώνεται ενεργειακή κλάση")
     cls = ec.strip().upper()[:1]
-    if cls in _EFFICIENT_ENERGY:
+    # Greek EPC letters (Α Β Γ Δ Ε Ζ Η) are the same scale as Latin A–G; most listings use them.
+    if cls.translate(_GREEK_TO_LATIN_EPC) in _EFFICIENT_ENERGY:
         return _check(_L_ENERGY, 1, 1, f"κλάση {cls} — αποδοτική (Α/Β/Γ)")
     return _check(_L_ENERGY, 0, 1, f"κλάση {cls} — θα χρειαστεί ενεργειακή αναβάθμιση")
 

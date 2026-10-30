@@ -263,7 +263,7 @@ a:hover {{ color: var(--hg-accent-2); }}
     font-size: .74rem;
     font-weight: 600;
     letter-spacing: .04em;
-    text-transform: uppercase;
+   
     border-bottom: 1px solid var(--hg-line);
     padding: .55rem .75rem;
 }}
@@ -363,13 +363,13 @@ footer {{ visibility: hidden; height: 0; }}
     border: 1px solid hsl(var(--hue), 55%, 84%);
 }}
 .ph-score span {{ font-size: 1.25rem; font-weight: 750; line-height: 1; }}
-.ph-score small {{ font-size: .56rem; text-transform: uppercase; letter-spacing: .06em; opacity: .8; }}
+.ph-score small {{ font-size: .56rem; letter-spacing: .06em; opacity: .8; }}
 .ph-price-wrap {{ flex: 1 1 auto; min-width: 0; }}
 .ph-price {{ font-size: 1.5rem; font-weight: 750; color: var(--hg-ink); line-height: 1.1; }}
 .ph-ppm2 {{ font-size: .82rem; color: var(--hg-muted); margin-top: 2px; }}
 .ph-arch {{
     flex: 0 0 auto; font-size: .68rem; font-weight: 650; padding: 4px 9px; border-radius: 999px;
-    text-transform: uppercase; letter-spacing: .03em; white-space: nowrap;
+    letter-spacing: .03em; white-space: nowrap;
 }}
 .ph-arch-new {{ background: #DCFCE7; color: #15803D; }}
 .ph-arch-reno {{ background: #DBEAFE; color: #1D4ED8; }}
@@ -391,7 +391,7 @@ footer {{ visibility: hidden; height: 0; }}
     border-bottom: 1px solid var(--hg-line-2); padding: 10px 0; }}
 .ph-sig {{ flex: 1; display: flex; flex-direction: column; gap: 1px; }}
 .ph-sig b {{ font-size: 1rem; font-weight: 700; color: var(--hg-ink); }}
-.ph-sig span {{ font-size: .66rem; color: var(--hg-muted); text-transform: uppercase; letter-spacing: .03em; }}
+.ph-sig span {{ font-size: .66rem; color: var(--hg-muted); letter-spacing: .03em; }}
 .ph-sig-pos b {{ color: #15803D; }}
 .ph-sig-neg b {{ color: #B91C1C; }}
 .ph-grade {{ font-size: 1rem; font-weight: 800; color: #fff; border-radius: 8px;
@@ -402,7 +402,7 @@ footer {{ visibility: hidden; height: 0; }}
 .ph-grade-D {{ background: #9CA3AF; }}
 .ph-conf {{ display: flex; flex-direction: column; align-items: center; font-size: .8rem;
     font-weight: 700; color: var(--hg-muted); align-self: center; line-height: 1; }}
-.ph-conf small {{ font-size: .55rem; text-transform: uppercase; letter-spacing: .03em; }}
+.ph-conf small {{ font-size: .55rem; letter-spacing: .03em; }}
 .ph-thesis {{ font-size: .8rem; line-height: 1.35; color: var(--hg-ink);
     background: #FFF7ED; border: 1px solid #FED7AA; border-radius: 9px;
     padding: 8px 10px; margin: 2px 0; }}

@@ -34,3 +34,11 @@ def test_status_badges_are_greek():
     out = fmt.badges({"relist_count": 2, "is_private_seller": True, "is_currently_rented": True})
     assert out == [fmt.BADGE_RELISTED, fmt.BADGE_PRIVATE, fmt.BADGE_RENTED]
     assert not any(c.isascii() and c.isalpha() for b in out for c in b)
+
+
+def test_scorecard_energy_check_reads_greek_epc_letters():
+    from scout.deal_scorecard import _energy_check
+
+    assert _energy_check({"energy_class": "Α+"})["points"] == 1  # Greek capital alpha
+    assert _energy_check({"energy_class": "A"})["points"] == 1
+    assert _energy_check({"energy_class": "Η"})["points"] == 0
