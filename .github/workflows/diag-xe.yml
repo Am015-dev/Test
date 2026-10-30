@@ -1,0 +1,48 @@
+# Temporary: capture one real XE sale page + show what parse_card extracts. Deleted after use.
+name: diag-xe
+on:
+  push:
+    branches: [diag/xe]
+permissions:
+  contents: write
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e .
+      - name: Fetch a sale page and parse it
+        run: |
+          mkdir -p /tmp/sample
+          python - <<'PY'
+          import json, requests
+          from selectolax.lexbor import LexborHTMLParser as P
+          from scout.collectors.xe import XeCollector, BROWSER_HEADERS
+          from scout.config import load_strategy
+          st = load_strategy()
+          c = XeCollector.__new__(XeCollector); c.strategy = st; c.save_raw = False
+          s = requests.Session(); s.headers.update(BROWSER_HEADERS)
+          s.get("https://www.xe.gr/property/", timeout=30)
+          url = c.search_urls(st)[0]
+          r = s.get(url, timeout=30)
+          html = r.text
+          open("/tmp/sample/buy.html", "w").write(html)
+          cards = P(html).css(XeCollector.CARD_SELECTOR)
+          print("status", r.status_code, "bytes", len(html), "cards", len(cards), url[:120])
+          out = []
+          for card in cards[:3]:
+              raw = c.parse_card(card.html, base_url=url)
+              out.append(raw)
+              print("PARSED:", json.dumps(raw, ensure_ascii=False, default=str)[:600])
+          if cards:
+              open("/tmp/sample/card0.html", "w").write(cards[0].html)
+          PY
+      - name: Publish the sample to branch diag-sample
+        if: always()
+        run: |
+          cd /tmp/sample && git init -q -b diag-sample && git config user.name diag && git config user.email diag@example.com
+          git add . && git commit -q -m "xe sample" && git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" diag-sample
