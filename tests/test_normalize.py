@@ -240,3 +240,16 @@ def test_xe_area_anchored_and_url_cleaned():
     assert raw["source_id"] == "abc-uuid-1"
     assert "?" not in raw["url"] and " " not in raw["url"]
     assert raw["url"] == "https://www.xe.gr/property/d/poliseis-katoikion/abc-uuid-1/cholargos"
+
+
+def test_parse_xe_card_current_markup():
+    """XE now labels card fields with data-testid (real card captured from a GitHub runner)."""
+    html = (FIXTURES / "xe_card_v2.html").read_text(encoding="utf-8")
+    raw = XeCollector.__new__(XeCollector).parse_card(html, base_url="https://www.xe.gr")
+    assert raw["source_id"] == "aa35718c-2b0d-4cc6-94c9-58b783417fdb"
+    assert raw["price"] == 365_000 and raw["area_m2"] == 86
+    assert raw["floor"] == 4 and raw["bedrooms"] == 2 and raw["year_built"] == 1979
+    assert (
+        raw["neighborhood"] == "Παπάγου (Υπουργείο Μεταφορών)" and raw["is_private_seller"] is True
+    )
+    assert normalize(raw) is not None

@@ -287,16 +287,17 @@ class XeCollector(Collector):
     BASE = "https://www.xe.gr"
     CARD_SELECTOR = "div.common-ad-body"
 
-    # Class-based selectors: these classes are present in BOTH the server-rendered
-    # HTML (what `requests` receives) and the JS-hydrated DOM, so the parser works
-    # without a browser. (The `data-testid` attributes only appear after hydration.)
+    # Each field has a `data-testid` selector (the markup XE serves now, present in the raw
+    # HTML) and the older class selector as a fallback, so either layout parses.
     SEL_LINK = "a[href*='/property/']"
-    SEL_TITLE = ".common-property-ad-title"
-    SEL_PRICE = ".property-ad-price"
+    SEL_TITLE = "[data-testid='property_ad_title'], .common-property-ad-title"
+    SEL_PRICE = "[data-testid='property_ad_price'], .property-ad-price"
     SEL_PPSQM = ".property-ad-price-per-sqm"
-    SEL_FLOOR = ".property-ad-level-container"
-    SEL_ADDRESS = ".common-property-ad-address"
+    SEL_FLOOR = "[data-testid='property_ad_icon_levels_new'], .property-ad-level-container"
+    SEL_ADDRESS = "[data-testid='property_ad_address'], .common-property-ad-address"
     SEL_DETAIL = ".property-ad-detail-container"
+    SEL_BEDROOMS = "[data-testid='property_ad_icon_bedroom']"
+    SEL_YEAR = "[data-testid='property_ad_icon_house_construction']"
 
     AUTOCOMPLETE_URL = "https://www.xe.gr/services/places/autocomplete"
 
@@ -654,12 +655,14 @@ class XeCollector(Collector):
                     return span.text(strip=True) if span else None
             return None
 
-        bedrooms = parse_int(detail_by_icon("xe-bedroom"))  # "×4" -> 4
-        year = parse_int(detail_by_icon("xe-house-construction"))
+        bedrooms = parse_int(text(self.SEL_BEDROOMS) or detail_by_icon("xe-bedroom"))  # "2 υ/δ"
+        year = parse_int(text(self.SEL_YEAR) or detail_by_icon("xe-house-construction"))
 
         # Search cards carry no description; rent/private-seller surface on detail pages.
         rented, listed_rent = parse_rent(title)
-        private = parse_private_seller(title)
+        # The card footer says "Αγγελία ιδιώτη" for a private seller (agencies show a logo).
+        footer = text(".common-ad-body-footer")
+        private = parse_private_seller(title) or parse_private_seller(footer)
 
         return {
             "source": self.source,
