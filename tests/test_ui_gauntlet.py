@@ -141,6 +141,19 @@ def env(tmp_path, monkeypatch):
         "parse_query",
         lambda text, client=None: SearchFilters(areas=["Χολαργός", "Cholargos"], price_max=400_000),
     )
+    import scout.advisor as adv
+
+    def fake_review(query, rows, client=None, max_rows=12):
+        labels = ["Αξίζει", "Με επιφύλαξη", "Απόφυγε"]
+        return adv.Review(
+            summary="Δοκιμαστική γνώμη συμβούλου.",
+            verdicts=[
+                adv.Verdict(key=adv.key_of(r), label=labels[i % 3], reason="δοκιμή")
+                for i, r in enumerate(rows[:max_rows])
+            ],
+        )
+
+    monkeypatch.setattr(adv, "review", fake_review)
     return fake
 
 
@@ -172,6 +185,9 @@ def test_buyer_journey(env):
     at.button(key="ex0").click().run()
     ok(at, "example")
     assert any("Κατάλαβα" in m.value for m in at.markdown)
+    # the AI advisor reviewed the results and its verdicts are on the cards
+    assert any("Γνώμη συμβούλου" in m.value for m in at.markdown)
+    assert any("🤖 Αξίζει" in m.value for m in at.markdown)
     # star the first result
     next(b for b in at.button if b.label == "☆ Αγαπημένο").click().run()
     ok(at, "star")

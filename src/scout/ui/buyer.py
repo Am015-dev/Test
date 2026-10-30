@@ -13,10 +13,13 @@ import statistics
 
 import streamlit as st
 
-from scout import nl_search, shortlist
+from scout import advisor, nl_search, shortlist
 from scout.nl_search import SearchFilters
 
 PAGE_SIZE = 12
+MAX_ADVICE = 25  # Claude reviews per browser session — bounds API cost
+ADVICE_TONE = {"Αξίζει": "good", "Με επιφύλαξη": "warn", "Απόφυγε": "bad"}
+ADVICE_RANK = {"Αξίζει": 0, "Με επιφύλαξη": 1, "Απόφυγε": 2}
 MAX_SEARCHES = 30  # per browser session — bounds API cost
 NAV_DETAIL = "🏠 Αγγελία"  # label of the listing-detail page (cards link to it)
 
@@ -151,6 +154,9 @@ def _card_html(d: dict, adv: dict) -> str:
         badges.append(("warn", f"Παλιό κτίριο — {age} ετών"))
     elif age is None:
         badges.append(("muted", "Έτος κατασκευής: δεν δηλώνεται"))
+    for flag in advisor.red_flags(d):
+        if not flag.startswith(("Κτίριο", "Χωρίς έτος", "Ημιτελές")):
+            badges.append(("warn", flag))
     if adv["gap"] and adv["gap"] > 0:
         badges.append(("good", f"▼ {adv['gap']:.0%} κάτω από την εκτίμηση"))
     if d.get("price_dropped"):
@@ -184,7 +190,7 @@ def _score_html(adv: dict, grade: str | None) -> str:
     )
 
 
-def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list) -> None:
+def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list, advice=None) -> None:
     """One listing. ``actions`` = [(label, callback, args[, type])], each rendered as a button."""
     key = shortlist.lkey(d)
     uid = f"{k}-{d['id']}"
@@ -201,6 +207,12 @@ def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list) -
                 _score_html(adv, d.get("deal_grade")), unsafe_allow_html=True, width="content"
             )
         st.markdown(_card_html(d, adv), unsafe_allow_html=True)
+        if advice is not None:
+            st.markdown(
+                f'<div class="hg-advice hg-advice-{ADVICE_TONE[advice.label]}">'
+                f"<b>🤖 {html.escape(advice.label)}</b> — {html.escape(advice.reason)}</div>",
+                unsafe_allow_html=True,
+            )
         if reasons:
             st.caption("✓ Ταιριάζει: " + _greek_numbers(", ".join(reasons)))
         with st.container(key=f"act-{uid}"):
@@ -449,10 +461,31 @@ def page_search(listings: list[dict]) -> None:
             f"💡 Οι πιο υποτιμημένες αγγελίες είναι στο **{area}** "
             f"(διάμεσα {statistics.median(gaps):.0%} κάτω από την εκτιμώμενη αξία, {len(gaps)} αγγελίες)."
         )
+    verdicts = {}
+    if asked:
+        review = _advice(st.session_state.get("nl_text", ""), f, [h[1] for h in hits[:12]])
+        if review is not None:
+            verdicts = {v.key: v for v in review.verdicts}
+            with st.container(border=True, key="advice-box"):
+                st.markdown("**🤖 Γνώμη συμβούλου**")
+                st.write(review.summary)
+            if sort == "Καλύτερη αντιστοιχία":
+                hits.sort(
+                    key=lambda h: ADVICE_RANK.get(
+                        getattr(verdicts.get(shortlist.lkey(h[1])), "label", ""), 3
+                    )
+                )
+        elif st.session_state.get("advice_err"):
+            st.caption(f"🤖 {st.session_state['advice_err']}")
     limit = st.session_state.get("limit", PAGE_SIZE)
     for (_pct, reasons), d, adv in hits[:limit]:
         result_card(
-            d, adv, reasons, "s", [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)]
+            d,
+            adv,
+            reasons,
+            "s",
+            [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)],
+            advice=verdicts.get(shortlist.lkey(d)),
         )
     if len(hits) > limit:
         st.button(
@@ -461,6 +494,29 @@ def page_search(listings: list[dict]) -> None:
             on_click=_more,
             width="stretch",
         )
+
+
+def _advice(query: str, f: SearchFilters, rows: list[dict]):
+    """Claude's review of the top results, once per search (cached in the session)."""
+    if not rows:
+        return None
+    cache = st.session_state.setdefault("advice", {})
+    ck = (query, f.model_dump_json(), tuple(shortlist.lkey(d) for d in rows))
+    if ck in cache:
+        return cache[ck]
+    if st.session_state.get("advice_calls", 0) >= MAX_ADVICE:
+        st.session_state["advice_err"] = "Έφτασες το όριο γνωμών για αυτή τη συνεδρία."
+        return None
+    st.session_state["advice_calls"] = st.session_state.get("advice_calls", 0) + 1
+    with st.spinner(f"🤖 Ο σύμβουλος εξετάζει τις {len(rows)} καλύτερες αγγελίες…"):
+        try:
+            result = advisor.review(query or nl_search.describe(f), rows)
+            st.session_state["advice_err"] = ""
+        except advisor.AdvisorError as e:
+            result = None
+            st.session_state["advice_err"] = str(e)
+    cache[ck] = result
+    return result
 
 
 # ---- shortlist -----------------------------------------------------------------------------
