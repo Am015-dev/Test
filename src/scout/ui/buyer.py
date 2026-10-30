@@ -22,7 +22,7 @@ NAV_DETAIL = "🏠 Αγγελία"  # label of the listing-detail page (cards li
 
 EXAMPLES = {
     "Δυάρι στον Χολαργό": "δυάρι στον Χολαργό έως 180Χ με ανελκυστήρα",
-    "Τριάρι Παπάγος / Αγ. Παρασκευή": "τριάρι στο Παπάγου ή στην Αγία Παρασκευή κάτω από 250.000€ με πάρκινγκ",
+    "Τριάρι Παπάγος": "τριάρι στο Παπάγου ή στην Αγία Παρασκευή κάτω από 250.000€ με πάρκινγκ",
     "Έχω 200.000 €": "έχω 200 χιλιάδες να επενδύσω στον Χολαργό",
     "Γκαρσονιέρα ≤ 90.000 €": "γκαρσονιέρα μέχρι 90 χιλιάδες",
 }
@@ -88,7 +88,17 @@ def open_detail(listing_id: int) -> None:
 
 
 def _reason(e: Exception) -> str:
-    return str(getattr(e, "orig", e)).strip().splitlines()[0][:200] or type(e).__name__
+    """A short, friendly reason — never a raw URL or traceback."""
+    status = getattr(getattr(e, "response", None), "status_code", None)
+    if status in (401, 403):
+        return "το GitHub αρνήθηκε την πρόσβαση — έλεγξε ότι το token έχει δικαίωμα Gists"
+    if status == 404:
+        return "το GitHub δεν βρήκε το αρχείο αποθήκευσης"
+    if status is not None:
+        return f"σφάλμα GitHub ({status}) — δοκίμασε ξανά σε λίγο"
+    if isinstance(e, OSError | TimeoutError):
+        return "δεν υπάρχει σύνδεση με το GitHub — δοκίμασε ξανά σε λίγο"
+    return type(e).__name__
 
 
 def _flash(kind: str, msg: str) -> None:
@@ -184,9 +194,7 @@ def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list) -
             st.caption("✓ Ταιριάζει: " + _greek_numbers(", ".join(reasons)))
         with st.container(key=f"act-{uid}"):
             cols = st.columns(len(actions) + 1, gap="small")
-            cols[0].link_button(
-                f"Άνοιγμα στο {d['source'].upper()} ↗", d["url"], use_container_width=True
-            )
+            cols[0].link_button(f"Άνοιγμα στο {d['source'].upper()} ↗", d["url"], width="stretch")
             for i, (label, cb, args, *kind) in enumerate(actions, start=1):
                 cols[i].button(
                     label,
@@ -194,7 +202,7 @@ def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list) -
                     on_click=cb,
                     args=args,
                     type=kind[0] if kind else "secondary",
-                    use_container_width=True,
+                    width="stretch",
                 )
 
 
@@ -343,7 +351,7 @@ def page_search(listings: list[dict]) -> None:
                 placeholder="π.χ. δυάρι στον Χολαργό έως 180.000€, από 60 τ.μ., με ανελκυστήρα",
                 label_visibility="collapsed",
             )
-            submitted = c2.form_submit_button("Αναζήτηση", type="primary", use_container_width=True)
+            submitted = c2.form_submit_button("Αναζήτηση", type="primary", width="stretch")
         with st.container(key="examples", horizontal=True, gap="small"):
             st.markdown(
                 '<span class="hg-try">Δοκίμασε:</span>', unsafe_allow_html=True, width="content"
@@ -363,7 +371,7 @@ def page_search(listings: list[dict]) -> None:
     if asked:
         c1, c2 = st.columns([5, 1], vertical_alignment="center")
         understood = c1.empty()
-        c2.button("✖ Καθαρισμός", key="clear_q", on_click=_clear_query, use_container_width=True)
+        c2.button("✖ Καθαρισμός", key="clear_q", on_click=_clear_query, width="stretch")
         f = _filter_editor(base)
         understood.markdown(_understood_html(f), unsafe_allow_html=True)
     else:
@@ -389,7 +397,7 @@ def page_search(listings: list[dict]) -> None:
             key="save_mandate",
             on_click=_save_mandate,
             args=(st.session_state.get("nl_text", ""), f),
-            use_container_width=True,
+            width="stretch",
         )
     if not hits:
         st.info(
@@ -419,7 +427,7 @@ def page_search(listings: list[dict]) -> None:
             f"Δείξε περισσότερες ({len(hits) - limit} ακόμα)",
             key="more",
             on_click=_more,
-            use_container_width=True,
+            width="stretch",
         )
 
 
