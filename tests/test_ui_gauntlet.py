@@ -232,6 +232,7 @@ def test_search_filter_editor_sort_and_clear(env):
     at = fresh(SEARCH)
     at.button(key="ex0").click().run()
     ver = at.session_state["f_ver"]
+    calls = at.session_state["advice_calls"]
     at.number_input(key=f"fe_pmax_{ver}").set_value(150_000).run()
     ok(at, "price filter")
     at.selectbox(key="sort").set_value("Χαμηλότερη τιμή").run()
@@ -240,6 +241,11 @@ def test_search_filter_editor_sort_and_clear(env):
     assert prices, "no result cards shown"
     nums = [int(p.replace("### ", "").replace(" €", "").replace(".", "")) for p in prices]
     assert nums == sorted(nums) and all(n <= 150_000 for n in nums)
+    # filter and sort tweaks reuse the search's AI review instead of a new ~15 s call
+    assert at.session_state["advice_calls"] == calls
+    at.button(key="advice_again").click().run()
+    ok(at, "new advice")
+    assert at.session_state["advice_calls"] == calls + 1
     at.button(key="clear_q").click().run()
     ok(at, "clear")
     assert "nl_filters" not in at.session_state

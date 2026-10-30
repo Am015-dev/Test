@@ -463,12 +463,27 @@ def page_search(listings: list[dict]) -> None:
         )
     verdicts = {}
     if asked:
-        review = _advice(st.session_state.get("nl_text", ""), f, [h[1] for h in hits[:12]])
+        # One review per search (not per sort/filter tweak — each call takes ~15 s): the 12 best
+        # matches of this search. Tweaks keep the verdicts of listings already reviewed.
+        ver = st.session_state.get("f_ver", 0)
+        store = st.session_state.setdefault("advice_v", {})
+        force = st.session_state.pop("advice_force", False)
+        if ver not in store or force:
+            best = sorted(hits, key=lambda h: SORTS["Καλύτερη αντιστοιχία"](h[0][0], h[2], h[1]))
+            store[ver] = _call_advisor(
+                st.session_state.get("nl_text", ""), f, [h[1] for h in best[:12]]
+            )
+        review = store.get(ver)
         if review is not None:
             verdicts = {v.key: v for v in review.verdicts}
             with st.container(border=True, key="advice-box"):
                 st.markdown("**🤖 Γνώμη συμβούλου**")
                 st.write(review.summary)
+                st.button(
+                    "🔄 Νέα γνώμη για τα τρέχοντα αποτελέσματα",
+                    key="advice_again",
+                    on_click=_advice_again,
+                )
             if sort == "Καλύτερη αντιστοιχία":
                 hits.sort(
                     key=lambda h: ADVICE_RANK.get(
@@ -500,14 +515,8 @@ def page_search(listings: list[dict]) -> None:
         )
 
 
-def _advice(query: str, f: SearchFilters, rows: list[dict]):
-    """Claude's review of the top results, once per search (cached in the session)."""
-    if not rows:
-        return None
-    cache = st.session_state.setdefault("advice", {})
-    ck = (query, f.model_dump_json(), tuple(shortlist.lkey(d) for d in rows))
-    if ck in cache:
-        return cache[ck]
+def _call_advisor(query: str, f: SearchFilters, rows: list[dict]):
+    """One Claude review of ``rows`` (errors and the per-session cap become a caption)."""
     if st.session_state.get("advice_calls", 0) >= MAX_ADVICE:
         st.session_state["advice_err"] = "Έφτασες το όριο γνωμών για αυτή τη συνεδρία."
         return None
@@ -516,11 +525,14 @@ def _advice(query: str, f: SearchFilters, rows: list[dict]):
         try:
             result = advisor.review(query or nl_search.describe(f), rows)
             st.session_state["advice_err"] = ""
+            return result
         except advisor.AdvisorError as e:
-            result = None
             st.session_state["advice_err"] = str(e)
-    cache[ck] = result
-    return result
+            return None
+
+
+def _advice_again() -> None:
+    st.session_state["advice_force"] = True
 
 
 # ---- shortlist -----------------------------------------------------------------------------
