@@ -242,16 +242,19 @@ def age_factor(age: int | None) -> float:
     return 0.45
 
 
-def advise(d: dict) -> dict:
+def advise(d: dict, comp_pct: float | None = None) -> dict:
     """Buyer view of one listing: a 0-100 score plus the facts behind it.
 
-    Score = 60% the thesis score already on the listing + 40% buy-value (how far the price sits
-    under the model value — 20% under = full marks — seller motivation, a price drop), then
-    discounted by building age (see ``age_factor``). Without a confident model value the
-    buy-value part is skipped. Unfinished buildings score 0.
+    Score = 60% the thesis score already on the listing + 40% buy-value, then discounted by
+    building age (see ``age_factor``). Buy-value comes from ``comp_pct`` — this flat's €/m²
+    against like-for-like listings (same area, age band, size; see ``market_intel``): 20%
+    under = full marks — plus seller motivation and a price cut. Without comparables it falls
+    back to a confident model value, else it is skipped. Unfinished buildings score 0.
     """
     base = d.get("score") or 0
-    gap = d.get("value_gap_pct") if d.get("value_confident") else None
+    gap = -comp_pct if comp_pct is not None else None
+    if gap is None and d.get("value_confident"):
+        gap = d.get("value_gap_pct")
     if gap is None:
         score = base
     else:

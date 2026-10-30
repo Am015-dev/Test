@@ -14,7 +14,8 @@ from datetime import date
 
 import streamlit as st
 
-from scout import advisor, nl_search, shortlist
+from scout import advisor, market_intel, nl_search, shortlist
+from scout.market_intel import municipality
 from scout.nl_search import SearchFilters
 
 PAGE_SIZE = 12
@@ -36,8 +37,8 @@ SORTS = {
     "Σκορ αγοράς": lambda pct, adv, d: (-adv["score"], d["price"]),
     "Χαμηλότερη τιμή": lambda pct, adv, d: (d["price"], -adv["score"]),
     "Χαμηλότερο €/τ.μ.": lambda pct, adv, d: (d.get("price_per_m2") or 1e9, d["price"]),
-    "Φθηνότερο από την περιοχή": lambda pct, adv, d: (
-        adv["cmp"][0] if adv.get("cmp") else 9,
+    "Φθηνότερο από παρόμοια": lambda pct, adv, d: (
+        adv["cmp"]["pct"] if adv.get("cmp") else 9,
         d["price"],
     ),
 }
@@ -129,24 +130,6 @@ def _floor(f: float) -> str:
     return "Ισόγειο" if f == 0 else f"{f:g}ος όροφος"
 
 
-def _ppm_medians(pool: list[dict]) -> dict[str, tuple[float, int]]:
-    """Median asking €/m² per municipality (only where at least 5 listings back it)."""
-    by: dict[str, list[float]] = {}
-    for d in pool:
-        if d.get("price_per_m2") and (m := municipality(d)):
-            by.setdefault(m, []).append(d["price_per_m2"])
-    return {m: (statistics.median(v), len(v)) for m, v in by.items() if len(v) >= 5}
-
-
-def _vs_median(d: dict, medians: dict) -> tuple[float, str, int] | None:
-    """(this €/m² vs the municipality median, municipality, how many listings) or None."""
-    m = municipality(d)
-    if not d.get("price_per_m2") or m not in medians:
-        return None
-    med, n = medians[m]
-    return d["price_per_m2"] / med - 1, m, n
-
-
 def _card_html(d: dict, adv: dict) -> str:
     """Title/location, the key facts in a fixed order and coloured badges — one small block."""
     e = html.escape
@@ -179,13 +162,24 @@ def _card_html(d: dict, adv: dict) -> str:
         if not flag.startswith(("Κτίριο", "Χωρίς έτος", "Ημιτελές")):
             badges.append(("warn", flag))
     if cmp := adv.get("cmp"):
-        pct, m, n = cmp
+        pct = cmp["pct"]
         tone = "good" if pct <= -0.1 else "bad" if pct >= 0.1 else "muted"
-        word = "κάτω" if pct < 0 else "πάνω"
+        word = "φθηνότερο" if pct < 0 else "ακριβότερο"
         badges.append(
-            (tone, f"€/τ.μ. {abs(pct):.0%} {word} από τη διάμεση τιμή {m} ({n} αγγελίες)")
+            (
+                tone,
+                f"{abs(pct):.0%} {word} από {cmp['n']} παρόμοια "
+                f"({cmp['label']}: διάμεσος {eur(cmp['ppm'])}/τ.μ.)",
+            )
         )
-    if d.get("price_dropped"):
+    if twins := adv.get("twins"):
+        low = twins[0]["price"]
+        cheaper = f", φθηνότερη {eur(low)}" if low < d["price"] else ""
+        badges.append(("warn", f"Ίδιο σπίτι σε {len(twins)} ακόμα αγγελίες{cheaper}"))
+    first = d.get("first_price")
+    if d.get("price_dropped") and first and first > d["price"]:
+        badges.append(("drop", f"Μείωση από {eur(first)} (−{1 - d['price'] / first:.0%})"))
+    elif d.get("price_dropped"):
         badges.append(("drop", "Μειώθηκε η τιμή"))
     if d.get("is_private_seller"):
         badges.append(("priv", "Ιδιώτης"))
@@ -314,11 +308,6 @@ AGES = {
 }
 DEFAULT_FLOOR = 1  # ground floors and basements are not what this buyer wants
 DEFAULT_AGE = 40  # a 50-60-year-old block is not shown unless asked for
-
-
-def municipality(d: dict) -> str:
-    """'Αργυρούπολη (Κέντρο)' → 'Αργυρούπολη'."""
-    return (d.get("neighborhood") or "").split(" (")[0].strip()
 
 
 def _municipality_counts(pool: list[dict]) -> dict[str, int]:
@@ -497,10 +486,13 @@ def page_search(listings: list[dict]) -> None:
     if asked:
         understood.markdown(_understood_html(f), unsafe_allow_html=True)
 
-    hits = [(m, d, nl_search.advise(d)) for d in pool if (m := nl_search.match(d, f))]
-    medians = _ppm_medians(pool)
-    for _, d, adv in hits:
-        adv["cmp"] = _vs_median(d, medians)
+    intel = market_intel.build(listings)
+    hits = []
+    for d in pool:
+        if m := nl_search.match(d, f):
+            cmp = intel.comps(d)
+            adv = nl_search.advise(d, cmp["pct"] if cmp else None)
+            hits.append((m, d, {**adv, "cmp": cmp, "twins": intel.twins(d)}))
     n = f"{len(hits):,}".replace(",", ".")
     top = st.columns([4, 3, 3], vertical_alignment="center")
     top[0].markdown(
@@ -536,6 +528,7 @@ def page_search(listings: list[dict]) -> None:
                 f"Για «{a}» δεν έχω πρόσφατες αγγελίες{when} — ανανεώνεται στο επόμενο "
                 "κατέβασμα δεδομένων. Μέχρι τότε τσέκαρε «Δείξε και παλαιότερες αγγελίες»."
             )
+    _market_panel(intel, named[:3])
     if not hits:
         st.info("Καμία αγγελία δεν ταιριάζει. Χαλάρωσε κάποιο φίλτρο (π.χ. τιμή, ηλικία ή όροφο).")
         return
@@ -550,14 +543,7 @@ def page_search(listings: list[dict]) -> None:
     force = st.session_state.pop("advice_force", False)
     if (asked and ver not in store) or force:
         best = sorted(hits, key=lambda h: SORTS["Καλύτερη αντιστοιχία"](h[0][0], h[2], h[1]))
-        rows = [
-            (
-                {**d, "area_median_ppm2": round(medians[m][0])}
-                if (m := municipality(d)) in medians
-                else d
-            )
-            for _, d, _ in best[:12]
-        ]
+        rows = [advisor.with_market(d, adv, intel) for _, d, adv in best[:12]]
         store[ver] = _call_advisor(
             st.session_state.get("nl_text") or nl_search.describe(f), f, rows
         )
@@ -607,6 +593,34 @@ def page_search(listings: list[dict]) -> None:
             on_click=_more,
             width="stretch",
         )
+
+
+def _market_panel(intel, areas: list[str]) -> None:
+    """Median €/m² by building age for the chosen areas, against the newest band."""
+    lines = []
+    for a in areas:
+        table = intel.age_table(a)
+        if len(table) < 2:
+            continue
+        top = table[0]["ppm"]
+        cells = [
+            f"{r['band']} **{eur(r['ppm'])}**"
+            + (f" (−{1 - r['ppm'] / top:.0%})" if i and r["ppm"] < top else "")
+            for i, r in enumerate(table)
+        ]
+        lines.append(f"**{a}** · " + " · ".join(cells))
+        young = [r for r in table[1:] if not r["band"].startswith(("31", "46"))]
+        if young:
+            best = min(young, key=lambda r: r["ppm"])
+            lines.append(
+                f"↳ Κτίρια {best['band']} κοστίζουν {1 - best['ppm'] / top:.0%} λιγότερο από τα "
+                f"{table[0]['band']} ({best['n']} αγγελίες) — εκεί είναι η αξία, αν το κτίριο "
+                "είναι συντηρημένο."
+            )
+    if lines:
+        with st.container(border=True, key="market-panel"):
+            st.markdown("**📊 Τιμή ανά ηλικία κτιρίου (διάμεσο €/τ.μ. ζητούμενης τιμής)**")
+            st.markdown("  \n".join(lines))
 
 
 def _call_advisor(query: str, f: SearchFilters, rows: list[dict]):
