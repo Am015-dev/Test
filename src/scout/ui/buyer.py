@@ -477,6 +477,10 @@ def page_search(listings: list[dict]) -> None:
                 )
         elif st.session_state.get("advice_err"):
             st.caption(f"🤖 {st.session_state['advice_err']}")
+    if st.toggle("🗺 Χάρτης αποτελεσμάτων", key="show_map"):
+        from scout.ui import components
+
+        components.results_map([h[1] for h in hits], key="search-map", height=380)
     limit = st.session_state.get("limit", PAGE_SIZE)
     for (_pct, reasons), d, adv in hits[:limit]:
         result_card(

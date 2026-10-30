@@ -1407,7 +1407,7 @@ def page_map(listings: list[dict]) -> None:
         help=f"Στο {MAP_AGE_ANY} = χωρίς όριο.",
     )
     unknown_age = c7.checkbox(
-        "Με άγνωστο έτος",
+        "Και χωρίς έτος",
         value=True,
         key="map_age_unknown",
         help="Κράτα και αγγελίες χωρίς έτος κατασκευής όταν βάζεις όριο ηλικίας.",
