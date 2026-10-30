@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     # Optional alert sinks (disabled when blank).
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    # Natural-language search (dashboard). Optional: the NL box is hidden/disabled when empty.
+    # Set ANTHROPIC_API_KEY in .env; never commit it.
+    anthropic_api_key: str = ""
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""

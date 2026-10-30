@@ -37,6 +37,8 @@ try:
         # present in the container's environment must never silently win over the
         # secret the user actually configured.
         os.environ["DATABASE_URL"] = st.secrets["DATABASE_URL"]
+    if "ANTHROPIC_API_KEY" in st.secrets:
+        os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
 except Exception:
     pass
 
@@ -51,6 +53,7 @@ from scout import (  # noqa: E402
     investment,
     liquidity,
     listing_report,
+    nl_search,
     projection,
     score_explain,
     sensitivity,
@@ -2123,10 +2126,121 @@ def page_compare(listings: list[dict]) -> None:
     st.caption("Higher score/net yield/cap rate & lower GRM/days-on-market is better.")
 
 
+MAX_SEARCHES = 20  # per Streamlit session — bounds API cost
+
+
+def page_search(listings: list[dict]) -> None:
+    st.subheader("🔎 Γράψε τι σπίτι ψάχνεις")
+    text = st.text_area(
+        "Με δικά σου λόγια",
+        max_chars=nl_search.MAX_CHARS,
+        placeholder=(
+            "δυάρι στον Χολαργό έως 180.000€, από 60 τ.μ., με ανελκυστήρα, μόνο από ιδιώτη"
+        ),
+    )
+    used = st.session_state.get("nl_calls", 0)
+    if st.button("Αναζήτηση", disabled=not text.strip() or used >= MAX_SEARCHES):
+        try:
+            st.session_state["nl_filters"] = nl_search.parse_query(text)
+            st.session_state["nl_calls"] = used + 1
+        except nl_search.SearchParseError as e:
+            st.session_state.pop("nl_filters", None)
+            st.error(str(e))
+    if used >= MAX_SEARCHES:
+        st.warning("Έφτασες το όριο αναζητήσεων για αυτή τη συνεδρία — κάνε refresh σελίδας.")
+    f = st.session_state.get("nl_filters")
+    if f is None:
+        return
+    st.caption("Κατάλαβα: " + nl_search.describe(f))
+    if st.button("🤖 Ο agent να ψάχνει καθημερινά γι' αυτό"):
+        from scout import shortlist
+
+        shortlist.save_mandate(text.strip(), f)
+        st.success("Αποθηκεύτηκε — δες τις προτάσεις στη σελίδα Shortlist.")
+    hits = [(m, d, nl_search.advise(d)) for d in listings if (m := nl_search.match(d, f))]
+    hits.sort(key=lambda h: (-h[0][0], -h[2]["score"], h[1]["price"]))
+    st.write(f"**{len(hits)}** αγγελίες ταιριάζουν")
+    if not hits:
+        return
+    by_area: dict[str, list[float]] = {}
+    for _, d, adv in hits:
+        if adv["gap"] is not None and d.get("neighborhood"):
+            by_area.setdefault(d["neighborhood"], []).append(adv["gap"])
+    if by_area:
+        area, gaps = max(by_area.items(), key=lambda kv: statistics.median(kv[1]))
+        st.info(
+            f"💡 Πού: οι πιο υποτιμημένες αγγελίες είναι στο **{area}** "
+            f"(διάμεσα {statistics.median(gaps):.0%} κάτω από την εκτιμώμενη αξία, "
+            f"{len(gaps)} αγγελίες). Top επιλογή: **{hits[0][1]['price']:,} €**."
+        )
+    for (pct, reasons), d, adv in hits[:50]:
+        with st.container(border=True):
+            st.markdown(
+                f"**Σκορ {adv['score']}** · ταίριασμα {pct}% · "
+                f"[{d.get('title') or d['source_id']}]({d['url']}) — "
+                f"{d['price']:,} € · {d.get('area_m2') or '?'} τ.μ. · "
+                f"{d.get('price_per_m2') or 0:,.0f} €/τ.μ. · {d['source'].upper()}"
+            )
+            gap = adv["gap"]
+            offer = d.get("suggested_offer")
+            st.caption(
+                "Αξία: "
+                + (f"{gap:.0%} κάτω από την εκτιμώμενη αξία" if gap and gap > 0 else "—")
+                + (" · 📉 μειώθηκε η τιμή" if d.get("price_dropped") else "")
+                + (f" · {d['days_on_market']} μέρες στην αγορά" if d.get("days_on_market") else "")
+                + (f" · Προσφορά: {offer:,.0f} €" if offer else "")
+                + f" · Βαθμός: {d.get('deal_grade') or '—'}"
+            )
+            if reasons:
+                st.caption("Γιατί ταιριάζει: " + ", ".join(reasons))
+
+
+def page_shortlist(listings: list[dict]) -> None:
+    from scout import shortlist
+
+    st.subheader("🤖 Shortlist του agent")
+    st.caption(
+        "Ο agent διαλέγει τις καλύτερες αγγελίες για κάθε εντολή σου. Εσύ εγκρίνεις/απορρίπτεις."
+    )
+    mandates = shortlist.list_mandates()
+    if not mandates:
+        st.info(
+            "Καμία εντολή ακόμα — γράψε μια αναζήτηση στη σελίδα Search και πάτα το κουμπί του agent."
+        )
+    for m in mandates:
+        with st.expander(
+            f"**{m.text}** — ✅ {len(m.approved)} · ❌ {len(m.rejected)}", expanded=True
+        ):
+            if st.button("🗑 Διαγραφή εντολής", key=f"del{m.id}"):
+                shortlist.delete_mandate(m.id)
+                st.rerun()
+            picks = shortlist.pick(m.filters, listings, m.approved | m.rejected)
+            if not picks:
+                st.write("Καμία νέα πρόταση αυτή τη στιγμή.")
+            for d, adv, reasons in picks:
+                with st.container(border=True):
+                    st.markdown(
+                        f"**Σκορ {adv['score']}** · [{d.get('title') or d['source_id']}]({d['url']}) — "
+                        f"{d['price']:,} € · {d.get('area_m2') or '?'} τ.μ."
+                    )
+                    if reasons:
+                        st.caption(", ".join(reasons))
+                    a, r = st.columns(2)
+                    if a.button("✅ Έγκριση (στο Watchlist)", key=f"ok{m.id}-{d['id']}"):
+                        shortlist.decide(m.id, d["id"], True)
+                        st.cache_data.clear()
+                        st.rerun()
+                    if r.button("❌ Απόρριψη", key=f"no{m.id}-{d['id']}"):
+                        shortlist.decide(m.id, d["id"], False)
+                        st.rerun()
+
+
 # Everyday pages first, secondary tools after — so the nav reads top-to-bottom by how
 # often it's used, instead of an 11-item jumble.
 PAGES = {
     "Opportunities": page_opportunities,
+    "Search": page_search,
+    "Shortlist": page_shortlist,
     "Today": page_today,
     "Map": page_map,
     "Neighborhoods": page_neighborhoods,

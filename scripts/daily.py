@@ -103,6 +103,14 @@ def run_daily(enrich_limit: int = 300, rent_areas: int = 6) -> dict:
 
     metrics["alerts"] = _safe("alerts", _alerts)
 
+    # 6. Agent shortlist: send each buying mandate's new top picks (no-op without mandates).
+    def _shortlist():
+        from scout.shortlist import run_shortlists
+
+        return {"sent": run_shortlists()}
+
+    metrics["shortlist"] = _safe("shortlist", _shortlist)
+
     # Run-metrics summary (observability).
     a = _safe("audit", audit) or {}
     metrics["summary"] = {
