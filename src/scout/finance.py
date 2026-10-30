@@ -199,8 +199,9 @@ def leverage_oneliner(
     coc = s["cash_on_cash"] * 100
     monthly_cf = s["annual_cashflow_after_debt"] / 12
     sign = "+" if monthly_cf >= 0 else "−"
+    cf = f"{abs(monthly_cf):,.0f}".replace(",", ".")
     return (
-        f"At {int(_DEFAULT_DEPOSIT_PCT * 100)}% down "
-        f"({_DEFAULT_RATE * 100:.1f}%, {_DEFAULT_TERM_YEARS}y): "
-        f"~{coc:.1f}% cash-on-cash, {sign}€{abs(monthly_cf):,.0f}/mo"
+        f"Με {int(_DEFAULT_DEPOSIT_PCT * 100)}% προκαταβολή "
+        f"({_DEFAULT_RATE * 100:.1f}%, {_DEFAULT_TERM_YEARS} έτη): "
+        f"~{coc:.1f}% απόδοση ιδίων κεφαλαίων, {sign}{cf} €/μήνα"
     )

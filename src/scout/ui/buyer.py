@@ -149,7 +149,7 @@ def _card_html(d: dict, adv: dict) -> str:
     if d.get("suggested_offer"):
         badges.append(("offer", f"Προσφορά ~{eur(d['suggested_offer'])}"))
     if d.get("days_on_market"):
-        badges.append(("muted", f"{d['days_on_market']} μέρες online"))
+        badges.append(("muted", f"{d['days_on_market']} μέρες στην αγορά"))
     out = f'<div class="hg-head"><span class="hg-title">{title}</span>{loc}</div>'
     if facts:
         out += '<div class="hg-facts">' + "".join(f"<span>{f}</span>" for f in facts) + "</div>"

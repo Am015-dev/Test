@@ -53,8 +53,8 @@ def test_renovation_accepts_greek_epc_letters():
     # "Εξαιρείται" (exempt) starts with Ε but must NOT be read as class E.
     assert renovation_subsidy("Εξαιρείται", 1970).candidate is False
     # pre-1980 bonus text appears only for old builds
-    assert "Pre-1980" in renovation_subsidy("F", 1970).detail
-    assert "Pre-1980" not in renovation_subsidy("F", 2000).detail
+    assert "πριν το 1980" in renovation_subsidy("F", 1970).detail
+    assert "πριν το 1980" not in renovation_subsidy("F", 2000).detail
 
 
 if __name__ == "__main__":

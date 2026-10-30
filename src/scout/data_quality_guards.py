@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from .ui.format import euro_per_m2
+
 # Apartment-BUILDING / building words in a title. A "Πολυκατοικία" (apartment block) or
 # "Κτίριο" (building) priced and measured as ONE unit produces a fake €/m² and yield — the
 # exact artifact that topped the ranking. Deliberately NOT here: "Μονοκατοικία" (a detached
@@ -61,17 +63,26 @@ def _ppm2(listing: dict) -> float | None:
     return ppm2
 
 
+# Greek display names for the fields the reason strings mention.
+_FIELD_GR = {
+    "year_built": "Έτος κατασκευής",
+    "renovated_year": "Έτος ανακαίνισης",
+    "gross_yield": "Μικτή απόδοση",
+    "net_yield": "Καθαρή απόδοση",
+}
+
+
 def whole_building_flag(listing: dict) -> str | None:
     """Fires when the listing is (or looks like) a whole building priced as one flat."""
     title = (listing.get("title") or "").lower()
     if any(w in title for w in _BUILDING_WORDS):
-        return "titled as a building, not a flat — its €/m² and yield are for the whole block"
+        return "ο τίτλος λέει κτίριο, όχι διαμέρισμα — €/τ.μ. και απόδοση αφορούν όλο το κτίριο"
     area = listing.get("area_m2")
     if area and area > _MAX_FLAT_AREA_M2:
-        return f"{area:.0f} m² is too large for a flat — likely a whole building"
+        return f"{area:.0f} τ.μ. είναι πολλά για διαμέρισμα — μάλλον ολόκληρο κτίριο"
     ppm2 = _ppm2(listing)
     if area and ppm2 and area > _BIG_AREA_M2 and ppm2 < _CHEAP_PPM2:
-        return "large and very cheap per m² — likely a whole building priced as one unit"
+        return "μεγάλο και πολύ φθηνό ανά τ.μ. — μάλλον ολόκληρο κτίριο σε μία τιμή"
     return None
 
 
@@ -81,7 +92,7 @@ def future_year_flag(listing: dict, current_year: int | None = None) -> str | No
     for field in ("year_built", "renovated_year"):
         y = listing.get(field)
         if y and y > current_year:
-            return f"{field.replace('_', ' ')} {y} is in the future — data error"
+            return f"{_FIELD_GR.get(field, field)} {y} είναι στο μέλλον — λάθος στα στοιχεία"
     return None
 
 
@@ -90,7 +101,10 @@ def implausible_yield_flag(listing: dict) -> str | None:
     for field in ("gross_yield", "net_yield"):
         y = listing.get(field)
         if y is not None and (y > _YIELD_MAX or y < _YIELD_MIN):
-            return f"{y * 100:.1f}% {field.replace('_', ' ')} looks wrong for Athens residential"
+            return (
+                f"{_FIELD_GR.get(field, field)} {y * 100:.1f}% δεν είναι λογική "
+                "για κατοικία στην Αθήνα"
+            )
     return None
 
 
@@ -98,7 +112,7 @@ def implausible_ppm2_flag(listing: dict) -> str | None:
     """Fires when €/m² is outside the plausible Athens residential range."""
     ppm2 = _ppm2(listing)
     if ppm2 is not None and (ppm2 < _PPM2_MIN or ppm2 > _PPM2_MAX):
-        return f"€{ppm2:,.0f}/m² is outside the plausible range — verify area and price"
+        return f"{euro_per_m2(ppm2)} είναι εκτός λογικού εύρους — έλεγξε εμβαδόν και τιμή"
     return None
 
 

@@ -35,13 +35,32 @@ _PRIME_METRO_M = 500
 # scores 0.0, same as G) is never mistaken for a poor one.
 _POOR_ENERGY = {"D", "Δ", "E", "Ε", "F", "Ζ", "G", "Η", "H"}
 
-STRATEGY_DESCRIPTIONS: dict[str, str] = {
-    "Cashflow": "Strong real net yield — buy it for the rent it throws off.",
-    "Value-add": "Poor energy or old un-renovated stock — renovation upside (EU EPBD).",
-    "Underpriced": "Cheaper per m² than most comparable active listings for sale.",
-    "Motivated seller": "Negotiable seller or long time on market — room to bargain.",
-    "Prime location": "Exact address within a short walk of a metro station.",
+# Tag ids (the dict keys) are stable codes that logic and tests compare against — never
+# translate them. What the buyer SEES is the Greek label / description below.
+STRATEGY_LABELS: dict[str, str] = {
+    "Cashflow": "Ταμειακή ροή",
+    "Value-add": "Αναβάθμιση αξίας",
+    "Underpriced": "Υποτιμημένο",
+    "Motivated seller": "Πρόθυμος πωλητής",
+    "Prime location": "Προνομιακή θέση",
 }
+
+STRATEGY_DESCRIPTIONS: dict[str, str] = {
+    "Cashflow": "Υψηλή πραγματική καθαρή απόδοση — το αγοράζεις για το ενοίκιο.",
+    "Value-add": (
+        "Χαμηλή ενεργειακή κλάση ή παλιό, μη ανακαινισμένο — περιθώριο ανακαίνισης (EPBD)."
+    ),
+    "Underpriced": ("Φθηνότερο ανά τ.μ. από τις περισσότερες συγκρίσιμες αγγελίες προς πώληση."),
+    "Motivated seller": (
+        "Διαπραγματεύσιμος πωλητής ή πολύς καιρός στην αγορά — περιθώριο παζαριού."
+    ),
+    "Prime location": "Ακριβής διεύθυνση σε απόσταση λίγων λεπτών με τα πόδια από μετρό.",
+}
+
+
+def strategy_label(tag: str) -> str:
+    """Greek display label for a strategy tag id (unknown strings pass through unchanged)."""
+    return STRATEGY_LABELS.get(tag, tag)
 
 
 def _num(value) -> float | None:

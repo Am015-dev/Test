@@ -42,6 +42,16 @@ _STRONG_PCT = 70.0
 _FAIR_PCT = 45.0
 
 
+# Greek display labels for the checks and for investor_metrics' verdict codes. Labels and
+# notes are display-only; the verdict codes ("good"/"ok"/"weak", "Strong"/"Fair"/"Pass")
+# stay English because callers compare against them.
+_L_NET_YIELD = "Καθαρή απόδοση"
+_L_VALUE_GAP = "Απόκλιση από εκτιμώμενη αξία"
+_L_MOTIVATED = "Πρόθυμος πωλητής"
+_L_ENERGY = "Ενεργειακή απόδοση"
+_METRIC_VERDICT_GR = {"good": "καλό", "ok": "μέτριο", "weak": "αδύναμο"}
+
+
 def _check(label: str, points: int, max_points: int, note: str) -> dict:
     return {"label": label, "points": points, "max_points": max_points, "note": note}
 
@@ -75,24 +85,25 @@ def _net_yield_check(d: dict) -> dict:
     deterministic inverse of €/m², so it earns 0 with an honest note, never a positive."""
     # Match the Listing default: rent is treated as estimated unless proven otherwise.
     if d.get("rent_estimated", True):
-        return _check("Net yield", 0, 2, "rent estimated — yield not counted (0)")
+        return _check(_L_NET_YIELD, 0, 2, "ενοίκιο κατ' εκτίμηση — η απόδοση δεν μετράει (0)")
     ny = _num(d.get("net_yield"))
     if ny is None:
-        return _check("Net yield", 0, 2, "unknown — no net yield on this listing")
+        return _check(_L_NET_YIELD, 0, 2, "άγνωστο — δεν υπάρχει καθαρή απόδοση")
     pct = ny * 100
     if ny >= _NET_YIELD_GOOD:
-        return _check("Net yield", 2, 2, f"{pct:.1f}% net — strong for Athens (≥4.5%)")
+        return _check(_L_NET_YIELD, 2, 2, f"{pct:.1f}% καθαρή — υψηλή για Αθήνα (≥4,5%)")
     if ny >= _NET_YIELD_OK:
-        return _check("Net yield", 1, 2, f"{pct:.1f}% net — acceptable (≥3.5%)")
-    return _check("Net yield", 0, 2, f"{pct:.1f}% net — thin (<3.5%)")
+        return _check(_L_NET_YIELD, 1, 2, f"{pct:.1f}% καθαρή — αποδεκτή (≥3,5%)")
+    return _check(_L_NET_YIELD, 0, 2, f"{pct:.1f}% καθαρή — χαμηλή (<3,5%)")
 
 
 def _metric_check(label: str, value: float | None, verdict: str | None, fmt: str) -> dict:
     """A generic 0/1/2 check off an investor_metrics value + its Athens-calibrated verdict."""
     if value is None or verdict is None:
-        return _check(label, 0, 2, "unknown — needs a real rent to compute")
+        return _check(label, 0, 2, "άγνωστο — χρειάζεται πραγματικό ενοίκιο")
     pts = _pts_from_verdict(verdict)
-    return _check(label, pts, 2, fmt.format(value=value, verdict=verdict))
+    shown = _METRIC_VERDICT_GR.get(verdict, verdict)
+    return _check(label, pts, 2, fmt.format(value=value, verdict=shown))
 
 
 def _value_gap_check(d: dict) -> dict:
@@ -100,13 +111,13 @@ def _value_gap_check(d: dict) -> dict:
     still earns partial credit (1); absent gap is unknown (0), never assumed favourable."""
     gap = _num(d.get("value_gap_pct"))
     if gap is None:
-        return _check("Value gap", 0, 2, "unknown — no hedonic value gap modelled")
+        return _check(_L_VALUE_GAP, 0, 2, "άγνωστο — δεν υπάρχει εκτίμηση αξίας από το μοντέλο")
     pct = gap * 100
     if gap >= _VALUE_GAP_SIGNIFICANT:
-        return _check("Value gap", 2, 2, f"{pct:.0f}% below model — significant (≥10%)")
+        return _check(_L_VALUE_GAP, 2, 2, f"{pct:.0f}% κάτω από το μοντέλο — σημαντικό (≥10%)")
     if gap > 0:
-        return _check("Value gap", 1, 2, f"{pct:.0f}% below model — modest")
-    return _check("Value gap", 0, 2, f"{pct:.0f}% — at/above model, no discount")
+        return _check(_L_VALUE_GAP, 1, 2, f"{pct:.0f}% κάτω από το μοντέλο — μικρό")
+    return _check(_L_VALUE_GAP, 0, 2, f"{pct:.0f}% — στο ή πάνω από το μοντέλο, χωρίς έκπτωση")
 
 
 def _motivated_seller_check(d: dict) -> dict:
@@ -114,23 +125,23 @@ def _motivated_seller_check(d: dict) -> dict:
     neg = _num(d.get("negotiation_score"))
     dom = _num(d.get("days_on_market"))
     if neg is not None and neg >= _MOTIVATED_NEGOTIATION:
-        return _check("Motivated seller", 1, 1, f"negotiation score {neg:.0f} (≥45)")
+        return _check(_L_MOTIVATED, 1, 1, f"σκορ διαπραγμάτευσης {neg:.0f} (≥45)")
     if dom is not None and dom >= _MOTIVATED_DOM:
-        return _check("Motivated seller", 1, 1, f"on market {dom:.0f} days (≥180)")
+        return _check(_L_MOTIVATED, 1, 1, f"{dom:.0f} μέρες στην αγορά (≥180)")
     if neg is None and dom is None:
-        return _check("Motivated seller", 0, 1, "unknown — no motivation signal")
-    return _check("Motivated seller", 0, 1, "no strong motivation tell")
+        return _check(_L_MOTIVATED, 0, 1, "άγνωστο — καμία ένδειξη κινήτρου")
+    return _check(_L_MOTIVATED, 0, 1, "καμία ισχυρή ένδειξη κινήτρου")
 
 
 def _energy_check(d: dict) -> dict:
     """One point for an energy-efficient class (A/B/C): no near-term EPBD retrofit liability."""
     ec = d.get("energy_class")
     if not ec or not isinstance(ec, str):
-        return _check("Energy efficiency", 0, 1, "unknown — no energy class reported")
+        return _check(_L_ENERGY, 0, 1, "άγνωστο — δεν δηλώνεται ενεργειακή κλάση")
     cls = ec.strip().upper()[:1]
     if cls in _EFFICIENT_ENERGY:
-        return _check("Energy efficiency", 1, 1, f"class {cls} — efficient (A/B/C)")
-    return _check("Energy efficiency", 0, 1, f"class {cls} — retrofit liability")
+        return _check(_L_ENERGY, 1, 1, f"κλάση {cls} — αποδοτική (Α/Β/Γ)")
+    return _check(_L_ENERGY, 0, 1, f"κλάση {cls} — θα χρειαστεί ενεργειακή αναβάθμιση")
 
 
 def scorecard(d: dict) -> dict:
@@ -162,16 +173,20 @@ def scorecard(d: dict) -> dict:
     checks = [
         _net_yield_check(d),
         _metric_check(
-            "Cap rate", m["cap_rate"], v["cap_rate"], "{value:.1%} NOI/price ({verdict})"
+            "Cap rate", m["cap_rate"], v["cap_rate"], "{value:.1%} καθαρό έσοδο/τιμή ({verdict})"
         ),
-        _metric_check("DSCR", m["dscr"], v["dscr"], "{value:.2f}× debt cover ({verdict})"),
         _metric_check(
-            "Break-even occupancy",
+            "DSCR", m["dscr"], v["dscr"], "{value:.2f}× κάλυψη δόσης από ενοίκιο ({verdict})"
+        ),
+        _metric_check(
+            "Πληρότητα νεκρού σημείου",
             m["break_even_occupancy"],
             v["break_even_occupancy"],
-            "{value:.0%} occupancy to break even ({verdict})",
+            "{value:.0%} πληρότητα για να μη χάνεις ({verdict})",
         ),
-        _metric_check("GRM", m["grm"], v["grm"], "{value:.1f}× gross rent multiple ({verdict})"),
+        _metric_check(
+            "GRM", m["grm"], v["grm"], "{value:.1f}× τιμή / ετήσιο μικτό ενοίκιο ({verdict})"
+        ),
         _value_gap_check(d),
         _motivated_seller_check(d),
         _energy_check(d),

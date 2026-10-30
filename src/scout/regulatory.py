@@ -19,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from unicodedata import category, normalize
 
+from .ui.format import euro as _euro
+
 # --- neighborhood normalization (matches enrich.py: lowercase + NFD accent strip) -------
 
 
@@ -62,34 +64,39 @@ def str_legality(neighborhood: str | None) -> StrLegality:
     key = _norm(neighborhood)
     if key is None:
         return StrLegality(
-            "UNKNOWN", None, "Short-let status unknown", "Neighborhood not resolved.", _STR_SOURCE
+            "UNKNOWN",
+            None,
+            "Άγνωστο αν επιτρέπεται",
+            "Δεν εντοπίστηκε η γειτονιά.",
+            _STR_SOURCE,
         )
     if key in _STR_FROZEN:
         return StrLegality(
             "FROZEN",
             False,
-            "❌ New short-let not possible",
-            "Inside the Athens district freeze (through 2026). A new AMA (Airbnb) licence "
-            "cannot be issued, and any existing licence is deleted on sale (Law 5170/2025) — "
-            "so a buyer cannot run this as a new short-let. Underwrite as long-let only.",
+            "❌ Δεν επιτρέπεται νέα βραχυχρόνια μίσθωση",
+            "Εντός του «παγώματος» των κεντρικών διαμερισμάτων της Αθήνας (έως το 2026). Δεν "
+            "εκδίδεται νέο ΑΜΑ (Airbnb) και όποιο υπάρχει διαγράφεται με την πώληση "
+            "(ν. 5170/2025) — ο αγοραστής δεν μπορεί να το νοικιάσει βραχυχρόνια. "
+            "Υπολόγισέ το μόνο για μακροχρόνια μίσθωση.",
             _STR_SOURCE,
         )
     if key in _STR_EXPANDING_RISK:
         return StrLegality(
             "EXPANDING_RISK",
             True,
-            "⚠️ Short-let allowed — but elevated risk",
-            "Legally permitted today, but this is inside the Municipality of Athens near the "
-            "frozen central districts; the freeze could extend. Factor regulatory risk into "
-            "any short-let plan.",
+            "⚠️ Επιτρέπεται — αλλά με αυξημένο κίνδυνο",
+            "Επιτρέπεται σήμερα, αλλά βρίσκεται στον Δήμο Αθηναίων κοντά στα «παγωμένα» "
+            "κεντρικά διαμερίσματα και το πάγωμα μπορεί να επεκταθεί. Υπολόγισε τον "
+            "ρυθμιστικό κίνδυνο σε κάθε σχέδιο βραχυχρόνιας μίσθωσης.",
             _STR_SOURCE,
         )
     return StrLegality(
         "ALLOWED",
         True,
-        "✓ Short-let currently permitted",
-        "Separate municipality, outside the Athens central-district freeze. Short-letting is "
-        "currently allowed (register the AMA before letting).",
+        "✓ Επιτρέπεται σήμερα",
+        "Άλλος δήμος, εκτός του παγώματος του κέντρου της Αθήνας. Η βραχυχρόνια μίσθωση "
+        "επιτρέπεται σήμερα (με εγγραφή ΑΜΑ πριν τη μίσθωση).",
         _STR_SOURCE,
     )
 
@@ -116,27 +123,27 @@ class GoldenVisa:
 def golden_visa_status(price: float | None, area_m2: float | None) -> GoldenVisa:
     """Golden Visa eligibility for a single property in Attica (all coverage is €800k zone)."""
     if not isinstance(price, (int, float)) or price <= 0:
-        return GoldenVisa("UNKNOWN", None, "Golden Visa: price unknown", "", _GV_SOURCE)
+        return GoldenVisa("UNKNOWN", None, "άγνωστη τιμή", "", _GV_SOURCE)
     reasons = []
     price_ok = price >= GV_THRESHOLD_ATTICA
     area_ok = isinstance(area_m2, (int, float)) and area_m2 >= GV_MIN_AREA_M2
     if not price_ok:
-        reasons.append(f"price below €{GV_THRESHOLD_ATTICA:,.0f} Attica floor")
+        reasons.append(f"τιμή κάτω από το όριο των {_euro(GV_THRESHOLD_ATTICA)} για την Αττική")
     if area_m2 is None:
-        reasons.append("area unknown (≥120 m² required)")
+        reasons.append("άγνωστο εμβαδόν (απαιτούνται ≥120 τ.μ.)")
     elif not area_ok:
-        reasons.append(f"{area_m2:.0f} m² < 120 m² minimum")
+        reasons.append(f"{area_m2:.0f} τ.μ. < 120 τ.μ. ελάχιστο")
     if price_ok and area_ok:
         return GoldenVisa(
             "QUALIFIES",
             True,
-            "🛂 Golden Visa eligible",
-            "Meets the €800k / ≥120 m² single-property threshold for Attica. Note: the "
-            "Golden Visa property cannot be short-let.",
+            "🛂 Επιλέξιμο",
+            "Καλύπτει το όριο 800.000 € / ≥120 τ.μ. ανά ακίνητο για την Αττική. Σημείωση: "
+            "ακίνητο Golden Visa δεν επιτρέπεται να νοικιαστεί βραχυχρόνια.",
             _GV_SOURCE,
         )
     status = "TOO_SMALL" if price_ok and not area_ok else "BELOW_THRESHOLD"
-    return GoldenVisa(status, False, "Golden Visa: not eligible", "; ".join(reasons), _GV_SOURCE)
+    return GoldenVisa(status, False, "Μη επιλέξιμο", "; ".join(reasons), _GV_SOURCE)
 
 
 # --- RENOVATION SUBSIDY (Exoikonomo 2026) candidate ------------------------------------
@@ -147,6 +154,7 @@ def golden_visa_status(price: float | None, area_m2: float | None) -> GoldenVisa
 _SUBSIDY_CLASSES = {"c", "d", "e", "f", "g", "h"}  # EPC C or lower = eligible starting point
 # Greek EPC bands map straight onto the Latin scale: Α+ Α Β+ Β Γ Δ Ε Ζ Η → A+ A B+ B C D E F G.
 _EPC_GREEK_TO_LATIN = {"α": "a", "β": "b", "γ": "c", "δ": "d", "ε": "e", "ζ": "f", "η": "g"}
+_EPC_LATIN_TO_GREEK = {v: k for k, v in _EPC_GREEK_TO_LATIN.items()}  # for display
 _RENO_SOURCE = "Exoikonomo 2026 (provisional — final decree pending)"
 
 
@@ -183,11 +191,12 @@ def renovation_subsidy(energy_class: str | None, build_year: int | None) -> Reno
             _RENO_SOURCE,
         )
     old = isinstance(build_year, int) and build_year and build_year < 1980
-    bonus = " Pre-1980 build scores higher in the means-test points." if old else ""
+    bonus = " Κτίριο πριν το 1980 παίρνει περισσότερους πόντους στη μοριοδότηση." if old else ""
     return RenovationSubsidy(
         True,
-        "🔧 Renovation-subsidy candidate",
-        f"EPC class {cls.upper()} qualifies for Exoikonomo 2026 (50–80% of upgrade cost, "
-        f"requires jumping ≥3 energy classes).{bonus} Rates provisional until the final decree.",
+        "🔧 Πιθανός δικαιούχος επιδότησης",
+        f"Η ενεργειακή κλάση {_EPC_LATIN_TO_GREEK.get(cls, cls).upper()} πληροί το «Εξοικονομώ 2026» (50–80% του κόστους "
+        f"αναβάθμισης, απαιτεί άνοδο ≥3 ενεργειακών κλάσεων).{bonus} Τα ποσοστά είναι "
+        "προσωρινά μέχρι την τελική ΚΥΑ.",
         _RENO_SOURCE,
     )

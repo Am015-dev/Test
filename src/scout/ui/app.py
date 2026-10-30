@@ -78,6 +78,7 @@ from scout.scoring import (
     energy_liability_multiplier,
     newness_score,
 )  # noqa: E402
+from scout.strategy_fit import STRATEGY_LABELS, strategy_label  # noqa: E402
 from scout.ui import (
     buyer,  # noqa: E402
     components,  # noqa: E402
@@ -354,9 +355,10 @@ def _kpi_header(listings: list[dict]) -> None:
     c = st.columns(4)
     c[0].metric("Αγγελίες", len(eligible), help="Ενεργές αγγελίες που περνούν τα φίλτρα")
     c[1].metric(
-        "🟢 Προτάσεις BUY",
+        "🟢 Προτάσεις αγοράς",
         buys,
-        help="Αγγελίες που περνούν το αυστηρό κριτήριο BUY — η επιλεγμένη λίστα, όχι όλο το απόθεμα",
+        help="Αγγελίες που περνούν το αυστηρό κριτήριο «Αγορά» — η επιλεγμένη λίστα, "
+        "όχι όλο το απόθεμα",
     )
     c[2].metric("Διάμεσο €/τ.μ.", fmt.euro_per_m2(statistics.median(ppm)) if ppm else "—")
     c[3].metric("📉 Μειώσεις τιμής", drops)
@@ -912,7 +914,7 @@ def _sensitivity_block(d: dict) -> None:
             )
             st.markdown("**Αν αλλάξει το ενοίκιο**")
             st.dataframe(
-                rdf.style.format({"Καθαρή απόδοση": "{:.1%}", "Ταμειακή ροή/μήνα": "€{:.0f}"}),
+                rdf.style.format({"Καθαρή απόδοση": "{:.1%}", "Ταμειακή ροή/μήνα": "{:.0f} €"}),
                 width="stretch",
                 hide_index=True,
             )
@@ -1068,7 +1070,8 @@ def page_opportunities(listings: list[dict]) -> None:
                     "Στρατηγική",
                     present_strats,
                     default=[],
-                    help="Cashflow · Value-add · Underpriced · Motivated seller · Prime location",
+                    format_func=strategy_label,
+                    help=" · ".join(STRATEGY_LABELS.values()),
                 )
                 if present_strats
                 else []
@@ -1159,7 +1162,7 @@ def page_opportunities(listings: list[dict]) -> None:
         )
     with fcol:
         buys_only = st.checkbox(
-            "🟢 Μόνο BUY", value=False, help="Μόνο επιβεβαιωμένες προτάσεις BUY"
+            "🟢 Μόνο αγορά", value=False, help="Μόνο επιβεβαιωμένες προτάσεις αγοράς"
         )
     inner = sort_opts[sort_by]
     rows = sorted(
@@ -1177,7 +1180,7 @@ def page_opportunities(listings: list[dict]) -> None:
     n_buys = sum(1 for d in rows if d.get("rec_verdict") == "BUY")
     st.markdown(
         f"**{len(rows)}** αγγελίες ταιριάζουν στα φίλτρα (από {len(eligible)}) · "
-        f"**{n_buys}** στη λίστα BUY"
+        f"**{n_buys}** με σύσταση «Αγορά»"
     )
     if rows:
         # Cap the card grid to the top N by score — rendering all ~9k cards ships a
@@ -1209,7 +1212,7 @@ def page_today(listings: list[dict]) -> None:
 
     # Counts strip — the "what changed since yesterday" a subscriber opens the tool for.
     c = st.columns(3)
-    c[0].metric("🟢 Νέα BUY (24 ώρες)", len(new_buys))
+    c[0].metric("🟢 Νέες προτάσεις αγοράς (24 ώρες)", len(new_buys))
     c[1].metric("💸 Μειώσεις τιμής (24 ώρες)", len(drops))
     c[2].metric("🆕 Νέες αγγελίες (24 ώρες)", len(new))
     # Honest framing when the 24h feed is empty: the change-signals (new listings, price
@@ -1228,7 +1231,7 @@ def page_today(listings: list[dict]) -> None:
     # Lead with the actual decisions: BUY-verdict listings that appeared today. This is the
     # feed a paying user wants — not "here's everything new", but "here's what to act on".
     if new_buys:
-        st.markdown("#### 🟢 Νέες προτάσεις BUY σήμερα")
+        st.markdown("#### 🟢 Νέες προτάσεις αγοράς σήμερα")
         components.listing_grid(new_buys[:cap])
         st.divider()
 
@@ -1239,14 +1242,14 @@ def page_today(listings: list[dict]) -> None:
             # Surface the cut as a lead strategy pill (the recommendation line owns the
             # thesis slot, so a deal_thesis here would never render). €old→€new is the
             # actionable bit — a fresh cut is the classic motivated-seller trigger.
-            pill = f"💸 −{d['drop_pct'] * 100:.0f}% σήμερα (€{d['new_price']:,.0f})"
+            pill = f"💸 −{d['drop_pct'] * 100:.0f}% σήμερα ({fmt.euro(d['new_price'])})"
             d["strategy_tags"] = [pill, *(d.get("strategy_tags") or [])]
         components.listing_grid(sorted(drops, key=lambda d: d["drop_pct"], reverse=True)[:cap])
         st.divider()
 
     if new and not new_buys:
         st.markdown(
-            f"#### 🆕 {len(new)} νέες το τελευταίο 24ωρο (καμία δεν πέρασε το κριτήριο BUY)"
+            f"#### 🆕 {len(new)} νέες το τελευταίο 24ωρο " "(καμία δεν πέρασε το κριτήριο «Αγορά»)"
         )
         components.listing_grid(new[:cap])
         st.divider()
@@ -1522,7 +1525,8 @@ def page_detail(listings: list[dict]) -> None:
 
     # --- top metrics row ---
     fp = d.get("first_price")
-    price_delta = fmt.euro(d["price"] - fp) if fp else None
+    # Only show a delta when the price actually moved — a red "↑ 0 €" reads like a rise.
+    price_delta = fmt.euro(d["price"] - fp) if fp and fp != d["price"] else None
     cols = st.columns(5)
     cols[0].metric("Τιμή", fmt.euro(d["price"]), delta=price_delta, delta_color="inverse")
     cols[1].metric("€/τ.μ.", fmt.euro_per_m2(d["price_per_m2"]))
@@ -1551,8 +1555,8 @@ def page_detail(listings: list[dict]) -> None:
     # below as a secondary, clearly-labelled estimate.
     rv = relative_value(d)
     vc[3].metric(
-        "Έναντι αγοράς",
-        f"φθηνότερο από {rv.percentile * 100:.0f}%" if rv else "—",
+        "Φθηνότερο από (% παρόμοιων)",
+        f"{rv.percentile * 100:.0f}%" if rv else "—",
         help="Ποσοστό συγκρίσιμων ενεργών αγγελιών (ίδια περιοχή, ±30% εμβαδόν) με "
         "υψηλότερο €/τ.μ.",
     )
@@ -1561,20 +1565,20 @@ def page_detail(listings: list[dict]) -> None:
     # against comparable ACTIVE listings in the SAME area, instead of a flat national band.
     ry = relative_yield(d)
     vc[4].metric(
-        "Απόδοση έναντι περιοχής",
-        f"καλύτερη από {ry.percentile * 100:.0f}%" if ry else "—",
+        "Υψηλότερη απόδοση από (% παρόμοιων)",
+        f"{ry.percentile * 100:.0f}%" if ry else "—",
         help="Ποσοστό συγκρίσιμων ενεργών αγγελιών (ίδια περιοχή, ±30% εμβαδόν) με "
         "χαμηλότερη απόδοση.",
     )
     if d.get("strategy_tags"):
-        st.write(" ".join(f"`{t}`" for t in d["strategy_tags"]))
+        st.write(" ".join(f"`{strategy_label(t)}`" for t in d["strategy_tags"]))
     # The recommendation — the decision, up front: verdict + concrete action + why + risks.
-    from scout.recommendation import verdict_emoji
+    from scout.recommendation import verdict_emoji, verdict_label
 
     rv, rh = d.get("rec_verdict"), d.get("rec_headline")
     if rv and rh:
         box = {"BUY": st.success, "WATCH": st.info, "PASS": st.error}.get(rv, st.info)
-        box(f"{verdict_emoji(rv)} **{rv} — {rh}**")
+        box(f"{verdict_emoji(rv)} **{verdict_label(rv)} — {rh}**")
         rc = st.columns(2)
         if d.get("rec_rationale"):
             rc[0].markdown("**Γιατί:**\n" + "\n".join(f"- {x}" for x in d["rec_rationale"]))

@@ -36,7 +36,7 @@ def _good_listing() -> dict:
 
 def test_empty_dict_returns_empty_list():
     assert explain_score({}) == []
-    assert summarize_score({}) == "No signals available"
+    assert summarize_score({}) == "Δεν υπάρχουν διαθέσιμα σήματα"
 
 
 def test_row_shape_and_effect_domain():
@@ -51,12 +51,12 @@ def test_row_shape_and_effect_domain():
 
 def test_real_undervaluation_and_yield_are_positive():
     rows = explain_score(_good_listing())
-    assert _effect(rows, "below area model") == "positive"
-    assert _effect(rows, "net yield") == "positive"
+    assert _effect(rows, "κάτω από το μοντέλο περιοχής") == "positive"
+    assert _effect(rows, "Καθαρή απόδοση") == "positive"
     # And the numbers are rendered honestly.
     labels = " | ".join(r["label"] for r in rows)
-    assert "12% below area model" in labels
-    assert "4.8% net yield" in labels
+    assert "Τιμή 12% κάτω από το μοντέλο περιοχής" in labels
+    assert "Καθαρή απόδοση 4.8%" in labels
 
 
 def test_yield_row_prefers_area_percentile_over_flat_floor():
@@ -67,22 +67,22 @@ def test_yield_row_prefers_area_percentile_over_flat_floor():
     d = _good_listing()
     d["yield_percentile"] = 0.2
     rows = explain_score(d)
-    assert _effect(rows, "net yield") == "negative"
+    assert _effect(rows, "Καθαρή απόδοση") == "negative"
     details = " | ".join(r["detail"] for r in rows)
-    assert "better than 20% of comparable listings" in details
+    assert "καλύτερη από το 20% των συγκρίσιμων αγγελιών" in details
 
     # And the reverse: below the flat floor but locally the best available → positive.
     d2 = _good_listing()
     d2["net_yield"] = 0.01  # below flat net_yield_floor (0.015)
     d2["yield_percentile"] = 0.9
-    assert _effect(explain_score(d2), "net yield") == "positive"
+    assert _effect(explain_score(d2), "Καθαρή απόδοση") == "positive"
 
 
 def test_good_energy_and_modern_build_are_positive():
     rows = explain_score(_good_listing())
-    assert _effect(rows, "Energy class B") == "positive"
-    assert _effect(rows, "Modern stock") == "positive"
-    assert _effect(rows, "to metro") == "positive"
+    assert _effect(rows, "Ενεργειακή κλάση B") == "positive"
+    assert _effect(rows, "Σύγχρονο ακίνητο") == "positive"
+    assert _effect(rows, "ως το μετρό") == "positive"
 
 
 def test_missing_energy_and_year_are_unknown_not_negative():
@@ -91,18 +91,18 @@ def test_missing_energy_and_year_are_unknown_not_negative():
     d["year_built"] = None
     d["renovated_year"] = None
     rows = explain_score(d)
-    assert _effect(rows, "Energy class not reported") == "unknown"
-    assert _effect(rows, "Build year not reported") == "unknown"
+    assert _effect(rows, "Δεν δηλώνεται ενεργειακή κλάση") == "unknown"
+    assert _effect(rows, "Δεν δηλώνεται έτος κατασκευής") == "unknown"
     # An unknown signal must be flagged as not-scored, never dressed up as a positive.
-    for label in ("Energy class not reported", "Build year not reported"):
+    for label in ("Δεν δηλώνεται ενεργειακή κλάση", "Δεν δηλώνεται έτος κατασκευής"):
         row = next(r for r in rows if r["label"] == label)
-        assert "not scored" in row["detail"].lower()
+        assert "δεν βαθμολογείται" in row["detail"].lower()
 
 
 def test_poor_energy_class_is_negative():
     d = _good_listing()
     d["energy_class"] = "E"
-    assert _effect(explain_score(d), "Energy class E") == "negative"
+    assert _effect(explain_score(d), "Ενεργειακή κλάση E") == "negative"
 
 
 def test_estimated_rent_is_not_a_positive_yield():
@@ -110,9 +110,9 @@ def test_estimated_rent_is_not_a_positive_yield():
     d["rent_estimated"] = True  # imputed rent — not a real comp
     rows = explain_score(d)
     # The yield row must be unknown, and NO row may claim a yield as positive.
-    assert _effect(rows, "estimated rent") == "unknown"
+    assert _effect(rows, "εκτιμώμενο ενοίκιο") == "unknown"
     for r in rows:
-        if "yield" in r["label"].lower():
+        if "απόδοση" in r["label"].lower():
             assert r["effect"] != "positive"
 
 
@@ -122,27 +122,27 @@ def test_missing_rent_key_defaults_to_estimated():
     d.pop("net_yield")
     d.pop("gross_yield")
     rows = explain_score(d)
-    assert _effect(rows, "yield") == "unknown"
+    assert _effect(rows, "απόδοση") == "unknown"
 
 
 def test_centroid_location_metro_is_unknown():
     d = _good_listing()
     d["location_precision"] = "area"  # not a per-listing point
     rows = explain_score(d)
-    assert _effect(rows, "Location approximate") == "unknown"
+    assert _effect(rows, "Κατά προσέγγιση τοποθεσία") == "unknown"
 
 
 def test_above_model_price_is_negative():
     d = _good_listing()
     d["value_gap_pct"] = -0.05  # priced above fair value
-    assert _effect(explain_score(d), "above area model") == "negative"
+    assert _effect(explain_score(d), "πάνω από το μοντέλο περιοχής") == "negative"
 
 
 def test_summary_mentions_score_strengths_and_concerns():
     d = _good_listing()
     d["energy_class"] = "E"  # a concern
     summary = summarize_score(d)
-    assert summary.startswith("Score 78")
-    assert "strengths:" in summary
-    assert "concerns:" in summary
-    assert "Energy class E" in summary
+    assert summary.startswith("Σκορ 78")
+    assert "δυνατά σημεία:" in summary
+    assert "αδυναμίες:" in summary
+    assert "Ενεργειακή κλάση E" in summary

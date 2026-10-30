@@ -173,8 +173,14 @@ hr, [data-testid="stDivider"] {{
 /* Wrap long values ("cheaper than area") instead of truncating them to "chea…". */
 [data-testid="stMetric"] {{ min-width: 0; }}
 [data-testid="stMetricValue"], [data-testid="stMetricValue"] * {{
-    white-space: normal !important; text-overflow: clip !important; overflow-wrap: normal;
+    white-space: normal !important; text-overflow: clip !important;
+    overflow-wrap: normal !important; word-break: normal !important; hyphens: none;
     min-width: 0; max-width: 100%;
+}}
+/* Same for labels: Greek labels are long ("Μέρες στην αγορά"); wrap, never "Μέρες στην αγ…". */
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * {{
+    white-space: normal !important; text-overflow: clip !important;
+    overflow: visible !important; word-break: normal !important;
 }}
 /* Metrics that live inside a card shouldn't double up borders/shadows. */
 [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stMetric"] {{

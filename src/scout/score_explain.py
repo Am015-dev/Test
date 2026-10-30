@@ -30,6 +30,9 @@ _NEWNESS_GOOD = 0.5
 
 Row = dict[str, str]
 
+# Display text is Greek; the ``effect`` codes ("positive"/"negative"/"unknown") stay English.
+_NOT_SCORED = "εκτός σκορ, δεν βαθμολογείται ως 0."
+
 
 def _row(label: str, effect: str, detail: str) -> Row:
     return {"label": label, "effect": effect, "detail": detail}
@@ -41,21 +44,22 @@ def _undervaluation_row(d: dict) -> Row:
     gap = d.get("value_gap_pct")
     if gap is None:
         return _row(
-            "Undervaluation not modeled",
+            "Η υποτίμηση δεν εκτιμήθηκε",
             "unknown",
-            "No hedonic value gap for this listing — dropped from the score, not scored as 0.",
+            f"Δεν υπάρχει εκτίμηση αξίας από το μοντέλο — {_NOT_SCORED}",
         )
     pct = round(gap * 100)
     if gap > 0:
         return _row(
-            f"Priced {pct}% below area model",
+            f"Τιμή {pct}% κάτω από το μοντέλο περιοχής",
             "positive",
-            f"Hedonic fair-value gap; {round(_REF.target_undervaluation * 100)}% below earns full credit.",
+            "Απόκλιση από την εκτιμώμενη αξία· στο "
+            f"{round(_REF.target_undervaluation * 100)}% κάτω παίρνει πλήρη βαθμό.",
         )
     return _row(
-        f"Priced {abs(pct)}% above area model" if gap < 0 else "At area-model price",
+        f"Τιμή {abs(pct)}% πάνω από το μοντέλο περιοχής" if gap < 0 else "Στην τιμή του μοντέλου",
         "negative",
-        "Asking price is at or above the model's fair value — no undervaluation.",
+        "Η ζητούμενη τιμή είναι ίση ή πάνω από την εκτιμώμενη αξία — καμία υποτίμηση.",
     )
 
 
@@ -70,9 +74,9 @@ def _yield_row(d: dict) -> Row:
 
     if rent_estimated:
         return _row(
-            "Yield from estimated rent",
+            "Απόδοση από εκτιμώμενο ενοίκιο",
             "unknown",
-            "Rent is imputed, not a real comp — yield is not counted as a signal.",
+            "Το ενοίκιο είναι εκτίμηση, όχι πραγματικό συγκρίσιμο — η απόδοση δεν βαθμολογείται.",
         )
     if net is not None:
         pct = round(net * 100, 1)
@@ -84,27 +88,25 @@ def _yield_row(d: dict) -> Row:
         if local_pct is not None:
             effect = "positive" if local_pct >= 0.5 else "negative"
             detail = (
-                f"Net of Greek acquisition/holding costs and vacancy — better than "
-                f"{round(local_pct * 100)}% of comparable listings in this area."
+                "Μετά από κόστη αγοράς/κατοχής και κενότητα — καλύτερη από το "
+                f"{round(local_pct * 100)}% των συγκρίσιμων αγγελιών της περιοχής."
             )
         else:
             effect = "positive" if net >= _REF.net_yield_floor else "negative"
-            detail = (
-                "Net of Greek acquisition/holding costs and vacancy — the honest headline return."
-            )
-        return _row(f"{pct}% net yield", effect, detail)
+            detail = "Μετά από κόστη αγοράς/κατοχής και κενότητα — η πραγματική απόδοση."
+        return _row(f"Καθαρή απόδοση {pct}%", effect, detail)
     if gross:
         pct = round(gross * 100, 1)
         effect = "positive" if gross >= _REF.yield_floor else "negative"
         return _row(
-            f"{pct}% gross yield",
+            f"Μικτή απόδοση {pct}%",
             effect,
-            "Gross (net yield unavailable) — overstates the return an investor keeps.",
+            "Μικτή (δεν υπάρχει καθαρή) — υπερεκτιμά ό,τι μένει τελικά στον επενδυτή.",
         )
     return _row(
-        "Yield not computed",
+        "Η απόδοση δεν υπολογίστηκε",
         "unknown",
-        "No rent to derive a yield from — dropped from the score, not scored as 0.",
+        f"Δεν υπάρχει ενοίκιο για να βγει απόδοση — {_NOT_SCORED}",
     )
 
 
@@ -115,23 +117,24 @@ def _newness_row(d: dict) -> Row:
     ry = d.get("renovated_year")
     if not (yb or ry):
         return _row(
-            "Build year not reported",
+            "Δεν δηλώνεται έτος κατασκευής",
             "unknown",
-            "No build or renovation year — dropped from the score, not scored as 0.",
+            f"Ούτε έτος κατασκευής ούτε ανακαίνισης — {_NOT_SCORED}",
         )
     year = max(y for y in (yb, ry) if y)
     val = newness_score(yb, ry, _REF)
-    kind = "renovated" if ry and ry >= (yb or 0) else "built"
+    kind = "ανακαίνιση" if ry and ry >= (yb or 0) else "κατασκευή"
+    band = f"{_REF.build_year_floor}-{_REF.build_year_ceiling}"
     if val >= _NEWNESS_GOOD:
         return _row(
-            f"Modern stock ({kind} {year})",
+            f"Σύγχρονο ακίνητο ({kind} {year})",
             "positive",
-            f"Newer than the {_REF.build_year_floor}-{_REF.build_year_ceiling} newness band midpoint.",
+            f"Νεότερο από τη μέση της κλίμακας παλαιότητας {band}.",
         )
     return _row(
-        f"Older stock ({kind} {year})",
+        f"Παλαιότερο ακίνητο ({kind} {year})",
         "negative",
-        f"Below the {_REF.build_year_floor}-{_REF.build_year_ceiling} newness band midpoint.",
+        f"Κάτω από τη μέση της κλίμακας παλαιότητας {band}.",
     )
 
 
@@ -141,19 +144,21 @@ def _energy_row(d: dict) -> Row:
     ec = (d.get("energy_class") or "").strip()
     if not ec or ec.upper() not in _ENERGY_SCORE:
         return _row(
-            "Energy class not reported",
+            "Δεν δηλώνεται ενεργειακή κλάση",
             "unknown",
-            "No (or exempt) energy class — dropped from the score, not scored as 0.",
+            f"Καμία (ή εξαιρούμενη) ενεργειακή κλάση — {_NOT_SCORED}",
         )
-    label = f"Energy class {ec.upper()}"
+    label = f"Ενεργειακή κλάση {ec.upper()}"
     if energy_class_score(ec) >= _ENERGY_GOOD:
         return _row(
-            label, "positive", "Efficient class — rents higher and future-proof under EU rules."
+            label,
+            "positive",
+            "Αποδοτική κλάση — ακριβότερο ενοίκιο και ασφαλής απέναντι στους κανόνες της ΕΕ.",
         )
     return _row(
         label,
         "negative",
-        "Inefficient class — EU EPBD renovation mandate / capex liability demotes the score.",
+        "Ενεργοβόρα κλάση — η υποχρεωτική ανακαίνιση EPBD / το κόστος αναβάθμισης ρίχνει το σκορ.",
     )
 
 
@@ -164,27 +169,27 @@ def _metro_row(d: dict) -> Row:
     metro = d.get("metro_distance_m")
     if metro is None:
         return _row(
-            "Metro distance unknown",
+            "Άγνωστη απόσταση από μετρό",
             "unknown",
-            "Listing couldn't be located — no proximity points, and not penalized either.",
+            "Η αγγελία δεν εντοπίστηκε — ούτε πόντοι ούτε ποινή για την εγγύτητα.",
         )
     if d.get("location_precision") != "exact":
         return _row(
-            "Location approximate",
+            "Κατά προσέγγιση τοποθεσία",
             "unknown",
-            "Only an area centroid, not a per-listing point — proximity not scored.",
+            "Μόνο το κέντρο της περιοχής, όχι το ακριβές σημείο — η εγγύτητα δεν βαθμολογείται.",
         )
     ceiling = _REF.metro_distance_ceiling_m
     if metro < ceiling:
         return _row(
-            f"{int(metro)} m to metro",
+            f"{int(metro)} m ως το μετρό",
             "positive",
-            f"Within the {ceiling} m walk-to-metro band (closer = more points).",
+            f"Εντός {ceiling} m με τα πόδια από μετρό (πιο κοντά = περισσότεροι πόντοι).",
         )
     return _row(
-        f"{int(metro)} m to metro",
+        f"{int(metro)} m ως το μετρό",
         "negative",
-        f"At or beyond the {ceiling} m proximity ceiling — no walk-to-metro bonus.",
+        f"Στο ή πέρα από το όριο των {ceiling} m — χωρίς μπόνους εγγύτητας στο μετρό.",
     )
 
 
@@ -215,18 +220,18 @@ def explain_score(d: dict) -> list[Row]:
 def summarize_score(d: dict) -> str:
     """A one-line summary: the score plus its strengths and concerns (unknowns omitted)."""
     if not d:
-        return "No signals available"
+        return "Δεν υπάρχουν διαθέσιμα σήματα"
     rows = explain_score(d)
     strengths = [r["label"] for r in rows if r["effect"] == "positive"]
     concerns = [r["label"] for r in rows if r["effect"] == "negative"]
 
     score = d.get("score")
-    head = f"Score {round(float(score))}" if score is not None else "Unscored"
+    head = f"Σκορ {round(float(score))}" if score is not None else "Χωρίς σκορ"
     parts = [head]
     if strengths:
-        parts.append("strengths: " + ", ".join(strengths))
+        parts.append("δυνατά σημεία: " + ", ".join(strengths))
     if concerns:
-        parts.append("concerns: " + ", ".join(concerns))
+        parts.append("αδυναμίες: " + ", ".join(concerns))
     if len(parts) == 1:
-        return f"{head} — no notable signals"
+        return f"{head} — κανένα αξιοσημείωτο σήμα"
     return " — ".join(parts)

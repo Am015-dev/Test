@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .scoring import _ENERGY_SCORE, energy_class_score
+from .ui.format import euro
 
 # Indicative deep-energy-retrofit cost (€/m²) to lift a dwelling to a compliant class.
 # A worst-class (G/Η) flat needs the full retrofit; a class-E flat needs less. Deliberately
@@ -50,8 +51,8 @@ def epbd_flag(energy_class: str | None, area_m2: float | None) -> EpbdFlag:
     if area_m2 and area_m2 > 0:
         capex = int(round(_FULL_RETROFIT_EUR_PER_M2 * area_m2 * (0.5 + 0.5 * gap) / 500) * 500)
     note = (
-        f"Energy class {energy_class}: EU-EPBD minimum-performance rules will likely require "
-        "a deep-energy renovation this decade"
-        + (f" — indicative retrofit ≈ €{capex:,}." if capex else ".")
+        f"Ενεργειακή κλάση {energy_class}: οι ελάχιστες απαιτήσεις της οδηγίας EPBD της ΕΕ "
+        "πιθανότατα θα απαιτήσουν ριζική ενεργειακή ανακαίνιση μέσα στη δεκαετία"
+        + (f" — ενδεικτικό κόστος ≈ {euro(capex)}." if capex else ".")
     )
     return EpbdFlag(True, energy_class, capex, note)

@@ -70,9 +70,9 @@ def test_imputed_rent_scores_zero_on_yield_with_honest_note():
     d = _strong_listing()
     d["rent_estimated"] = True  # same numbers, but the rent is now imputed
     card = scorecard(d)
-    ny = _find(card, "Net yield")
+    ny = _find(card, "Καθαρή απόδοση")
     assert ny["points"] == 0
-    assert "estimated" in ny["note"].lower()
+    assert "εκτίμηση" in ny["note"].lower()
 
 
 def test_missing_everything_is_low_and_does_not_crash():
@@ -81,7 +81,7 @@ def test_missing_everything_is_low_and_does_not_crash():
     assert card["pct"] < 45.0
     # Every unknown input is honestly labelled, never scored as good.
     assert all(c["points"] == 0 for c in card["checks"])
-    assert any("unknown" in c["note"].lower() for c in card["checks"])
+    assert any("άγνωστο" in c["note"].lower() for c in card["checks"])
 
 
 def test_missing_keys_never_raise():
@@ -101,6 +101,6 @@ def test_points_never_exceed_max_points():
 def test_unknown_value_gap_is_not_credited():
     d = _strong_listing()
     d["value_gap_pct"] = None
-    gap = _find(scorecard(d), "Value gap")
+    gap = _find(scorecard(d), "Απόκλιση από εκτιμώμενη αξία")
     assert gap["points"] == 0
-    assert "unknown" in gap["note"].lower()
+    assert "άγνωστο" in gap["note"].lower()

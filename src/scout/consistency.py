@@ -10,6 +10,8 @@ unusual-but-plausible values.
 
 from __future__ import annotations
 
+from .ui.format import euro_per_m2
+
 # Athens apartment €/m² realistically spans ~€900 (far/old) to ~€9,000 (prime new). Outside a
 # generous band, the listing is probably a whole building, a plot, or a data error.
 _PPM2_LOW = 700.0
@@ -35,24 +37,26 @@ def consistency_flags(d: dict) -> list[str]:
     median = d.get("area_median_ppm2")
     if ppm2 is not None:
         if ppm2 < _PPM2_LOW:
-            flags.append("unusually low €/m² — may be a whole building, plot, or data error")
+            flags.append(
+                "ασυνήθιστα χαμηλό €/τ.μ. — ίσως ολόκληρο κτίριο, οικόπεδο ή λάθος στα στοιχεία"
+            )
         elif median and ppm2 < _PPM2_REL_LOW * median:
             flags.append(
-                f"€/m² is under half the area's median (€{median:,.0f}/m²) — "
-                "may be a whole building, plot, or data error"
+                f"€/τ.μ. κάτω από το μισό της διάμεσης τιμής της περιοχής "
+                f"({euro_per_m2(median)}) — ίσως ολόκληρο κτίριο, οικόπεδο ή λάθος στα στοιχεία"
             )
         elif ppm2 > _PPM2_HIGH:
-            flags.append("unusually high €/m² — verify the area is correct")
+            flags.append("ασυνήθιστα υψηλό €/τ.μ. — έλεγξε ότι το εμβαδόν είναι σωστό")
 
     area = d.get("area_m2")
     if area is not None and area < _MIN_AREA_M2:
-        flags.append("very small floor area — verify it's a full residence")
+        flags.append("πολύ μικρό εμβαδόν — έλεγξε ότι είναι ολόκληρη κατοικία")
     if area is not None and area > _MAX_AREA_M2:
-        flags.append("very large for a flat — may be a whole building or maisonette")
+        flags.append("πολύ μεγάλο για διαμέρισμα — ίσως ολόκληρο κτίριο ή μεζονέτα")
 
     price = d.get("price")
     if price is not None and price < _MIN_PRICE:
-        flags.append("unusually low price — verify it's the full sale price")
+        flags.append("ασυνήθιστα χαμηλή τιμή — έλεγξε ότι είναι η πλήρης τιμή πώλησης")
 
     # A top energy certificate on an old build with no stated renovation is contradictory:
     # pre-1995 blocks don't earn A/B ratings unless they were substantially upgraded.
@@ -60,6 +64,8 @@ def consistency_flags(d: dict) -> list[str]:
     year = d.get("year_built")
     reno = d.get("renovated_year")
     if energy in _GOOD_ENERGY and year and year < _OLD_BUILD_YEAR and not reno:
-        flags.append(f"top energy rating on a {year} build with no stated renovation — verify")
+        flags.append(
+            f"κορυφαία ενεργειακή κλάση σε κτίριο του {year} χωρίς δηλωμένη ανακαίνιση — έλεγξέ το"
+        )
 
     return flags

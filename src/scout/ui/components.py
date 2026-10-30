@@ -14,6 +14,8 @@ import re as _re
 
 import streamlit as st
 
+from ..recommendation import MISSING_MARKER, verdict_label
+from ..strategy_fit import strategy_label
 from . import format as fmt
 
 # Energy class -> pill colour bucket (good / mid / poor / liability).
@@ -163,11 +165,10 @@ def _card_html(d: dict, metric: str = "score") -> str:
     # Keep only temporal/status badges (NEW, PRICE ↓, RELISTED, RENTED, PRIVATE). Archetype
     # has its own pill, and OPPORTUNITY / NEGOTIABLE now duplicate the Underpriced / Motivated
     # strategy tags above — drop them so the card isn't double-signalling the same thing.
-    _drop = ("NEW BUILD", "RENOVATED", "MODERN", "DATED", "LIABILITY", "OPPORTUNITY", "NEGOTIABLE")
     badges = "".join(
         f'<span class="ph-badge">{_esc(b)}</span>'
         for b in fmt.badges(d)
-        if not any(x in b for x in _drop)
+        if b not in fmt.CARD_HIDDEN_BADGES
     )
     url = _esc(d.get("url") or "#")
 
@@ -176,7 +177,7 @@ def _card_html(d: dict, metric: str = "score") -> str:
     strat = d.get("strategy_tags") or []
     strat_html = (
         '<div class="ph-strats">'
-        + "".join(f'<span class="ph-strat">{_esc(t)}</span>' for t in strat)
+        + "".join(f'<span class="ph-strat">{_esc(strategy_label(t))}</span>' for t in strat)
         + "</div>"
         if strat
         else ""
@@ -201,7 +202,7 @@ def _card_html(d: dict, metric: str = "score") -> str:
     if rec_v and rec_h:
         thesis_html = (
             f'<div class="ph-rec ph-rec-{_esc(rec_v)}">'
-            f'<span class="ph-rec-badge">{_esc(rec_v)}</span> {_esc(rec_h)}</div>'
+            f'<span class="ph-rec-badge">{_esc(verdict_label(rec_v))}</span> {_esc(rec_h)}</div>'
         )
     elif d.get("deal_thesis"):
         thesis_html = f'<div class="ph-thesis">💡 {_esc(d["deal_thesis"])}</div>'
@@ -210,9 +211,9 @@ def _card_html(d: dict, metric: str = "score") -> str:
 
     # Honest data-completeness note: say plainly what we DON'T know for this listing rather
     # than dressing gaps up as confident numbers (the single biggest trust fix from review).
-    # Skip it when the recommendation headline is a "Verify first — … missing …" cap: that
+    # Skip it when the recommendation headline is a "Έλεγξε πρώτα — … λείπουν: …" cap: that
     # headline already carries the exact same list, and saying it twice reads as clutter.
-    rec_says_missing = bool(rec_h) and "missing" in rec_h
+    rec_says_missing = bool(rec_h) and MISSING_MARKER in rec_h
     missing = d.get("data_missing") or []
     completeness_html = (
         f'<div class="ph-incomplete">⚠ Ελλιπή στοιχεία — λείπουν: {_esc(", ".join(missing))}. '
