@@ -6,8 +6,10 @@ new listings for it, sends a digest, and the owner approves or rejects them in t
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 
 from .nl_search import SearchFilters, advise, match
@@ -91,13 +93,21 @@ def _find_or_create_gist() -> str:
     return _gist_id
 
 
+_recent: tuple[float, list[dict]] | None = None
+_FRESH_S = 60  # GitHub can serve the pre-write gist for a few seconds after a PATCH
+
+
 def _read() -> list[dict]:
+    if _recent and time.monotonic() - _recent[0] < _FRESH_S:
+        return copy.deepcopy(_recent[1])
     return json.loads(_gh("GET", f"/gists/{_find_or_create_gist()}")["files"][GIST_FILE]["content"])
 
 
 def _write(rows: list[dict]) -> None:
+    global _recent
     body = {"files": {GIST_FILE: {"content": json.dumps(rows, ensure_ascii=False)}}}
     _gh("PATCH", f"/gists/{_find_or_create_gist()}", json=body)
+    _recent = (time.monotonic(), copy.deepcopy(rows))
 
 
 def _to_mandate(row: dict) -> Mandate:
