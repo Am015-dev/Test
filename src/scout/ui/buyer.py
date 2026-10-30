@@ -7,6 +7,8 @@ Starred listings and saved searches live in a private GitHub Gist (see ``shortli
 
 from __future__ import annotations
 
+import html
+import re
 import statistics
 
 import streamlit as st
@@ -101,59 +103,110 @@ def _show_flash() -> None:
 # ---- the listing card ----------------------------------------------------------------------
 
 
-def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list) -> None:
-    """One listing. ``actions`` = [(label, callback, args)], each rendered as a button."""
-    key = shortlist.lkey(d)
-    with st.container(border=True):
-        left, right = st.columns([4, 1])
-        with left:
-            st.markdown(f"### {eur(d['price'])}")
-            st.markdown(f"[{d.get('title') or 'Αγγελία'}]({d['url']})")
-            facts = []
-            if d.get("area_m2"):
-                facts.append(f"{d['area_m2']:g} τ.μ.")
-            if d.get("price_per_m2"):
-                facts.append(f"{eur(d['price_per_m2'])}/τ.μ.")
-            if d.get("bedrooms") is not None:
-                facts.append(f"{d['bedrooms']} υ/δ")
-            if d.get("floor") is not None:
-                facts.append(f"{d['floor']:g}ος όροφος")
-            if d.get("neighborhood"):
-                facts.append(d["neighborhood"])
-            st.caption(" · ".join(facts))
-            badges = []
-            if adv["gap"] and adv["gap"] > 0:
-                badges.append(f"🟢 {adv['gap']:.0%} κάτω από την εκτιμώμενη αξία")
-            if d.get("price_dropped"):
-                badges.append("📉 Μειώθηκε η τιμή")
-            if d.get("is_private_seller"):
-                badges.append("👤 Ιδιώτης")
-            if d.get("days_on_market"):
-                badges.append(f"⏱ {d['days_on_market']} μέρες")
-            if d.get("suggested_offer"):
-                badges.append(f"💬 Προσφορά ~{eur(d['suggested_offer'])}")
-            if badges:
-                st.markdown("  ·  ".join(badges))
-            if reasons:
-                st.caption("Ταιριάζει: " + ", ".join(reasons))
-        with right:
-            st.metric("Σκορ", adv["score"], help="0–100: 60% ταίριασμα στη στρατηγική, 40% αξία")
-            if d.get("deal_grade"):
-                st.caption(f"Βαθμός {d['deal_grade']}")
-        cols = st.columns(len(actions) + 1)
-        cols[0].link_button(
-            f"Άνοιγμα στο {d['source'].upper()} ↗", d["url"], use_container_width=True
+def _greek_numbers(s: str) -> str:
+    """'180,000' / '170000' → '180.000' (Greek thousands separator) in free text."""
+    s = re.sub(r"(?<=\d),(?=\d{3}\b)", ".", s)
+    return re.sub(r"\b\d{5,}\b", lambda m: f"{int(m.group()):,}".replace(",", "."), s)
+
+
+def _floor(f: float) -> str:
+    if f < 0:
+        return "Υπόγειο"
+    return "Ισόγειο" if f == 0 else f"{f:g}ος όροφος"
+
+
+def _card_html(d: dict, adv: dict) -> str:
+    """Title/location, the key facts in a fixed order and coloured badges — one small block."""
+    e = html.escape
+    title = e(d.get("title") or "Αγγελία")
+    loc = f'<span class="hg-loc">📍 {e(d["neighborhood"])}</span>' if d.get("neighborhood") else ""
+    facts = []
+    if d.get("area_m2"):
+        facts.append(f"<b>{d['area_m2']:g}</b> τ.μ.")
+    if d.get("bedrooms") is not None:
+        facts.append("Γκαρσονιέρα" if d["bedrooms"] == 0 else f"<b>{d['bedrooms']}</b> υ/δ")
+    if d.get("floor") is not None:
+        facts.append(_floor(d["floor"]))
+    if d.get("price_per_m2"):
+        facts.append(f"{eur(d['price_per_m2'])}/τ.μ.")
+    badges = []
+    if adv["gap"] and adv["gap"] > 0:
+        badges.append(("good", f"▼ {adv['gap']:.0%} κάτω από την εκτίμηση"))
+    if d.get("price_dropped"):
+        badges.append(("drop", "Μειώθηκε η τιμή"))
+    if d.get("is_private_seller"):
+        badges.append(("priv", "Ιδιώτης"))
+    if d.get("suggested_offer"):
+        badges.append(("offer", f"Προσφορά ~{eur(d['suggested_offer'])}"))
+    if d.get("days_on_market"):
+        badges.append(("muted", f"{d['days_on_market']} μέρες online"))
+    out = f'<div class="hg-head"><span class="hg-title">{title}</span>{loc}</div>'
+    if facts:
+        out += '<div class="hg-facts">' + "".join(f"<span>{f}</span>" for f in facts) + "</div>"
+    if badges:
+        out += (
+            '<div class="hg-badges">'
+            + "".join(f'<span class="hg-b hg-b-{c}">{e(t)}</span>' for c, t in badges)
+            + "</div>"
         )
-        for i, (label, cb, args) in enumerate(actions, start=1):
-            cols[i].button(
-                label, key=f"{k}-{i}-{key}", on_click=cb, args=args, use_container_width=True
+    return out
+
+
+def _score_html(adv: dict, grade: str | None) -> str:
+    s = adv["score"]
+    tone = "hi" if s >= 70 else "mid" if s >= 50 else "lo"
+    g = f"<i>{html.escape(str(grade))}</i>" if grade else ""
+    return (
+        f'<span class="hg-score hg-score-{tone}" '
+        f'title="Σκορ 0–100: 60% ταίριασμα στη στρατηγική, 40% αξία">'
+        f"<small>Σκορ</small><b>{s}</b>{g}</span>"
+    )
+
+
+def result_card(d: dict, adv: dict, reasons: list[str], k: str, actions: list) -> None:
+    """One listing. ``actions`` = [(label, callback, args[, type])], each rendered as a button."""
+    key = shortlist.lkey(d)
+    uid = f"{k}-{d['id']}"
+    with st.container(border=True, key=f"card-{uid}"):
+        if d.get("image_url"):
+            st.markdown(
+                f'<img class="hg-photo" src="{html.escape(d["image_url"])}" alt="" '
+                'loading="lazy">',
+                unsafe_allow_html=True,
             )
+        with st.container(horizontal=True, vertical_alignment="center", wrap=False):
+            st.markdown(f"### {eur(d['price'])}", width="stretch")
+            st.markdown(
+                _score_html(adv, d.get("deal_grade")), unsafe_allow_html=True, width="content"
+            )
+        st.markdown(_card_html(d, adv), unsafe_allow_html=True)
+        if reasons:
+            st.caption("✓ Ταιριάζει: " + _greek_numbers(", ".join(reasons)))
+        with st.container(key=f"act-{uid}"):
+            cols = st.columns(len(actions) + 1, gap="small")
+            cols[0].link_button(
+                f"Άνοιγμα στο {d['source'].upper()} ↗", d["url"], use_container_width=True
+            )
+            for i, (label, cb, args, *kind) in enumerate(actions, start=1):
+                cols[i].button(
+                    label,
+                    key=f"{k}-{i}-{key}",
+                    on_click=cb,
+                    args=args,
+                    type=kind[0] if kind else "secondary",
+                    use_container_width=True,
+                )
 
 
 def _star_action(d: dict) -> tuple:
     key = shortlist.lkey(d)
-    label = "★ Αφαίρεση" if key in watch_keys() else "☆ Αγαπημένο"
-    return (label, toggle_watch, (key,))
+    on = key in watch_keys()
+    return (
+        "★ Αφαίρεση" if on else "☆ Αγαπημένο",
+        toggle_watch,
+        (key,),
+        "primary" if on else "secondary",
+    )
 
 
 # ---- search (home) -------------------------------------------------------------------------
@@ -269,52 +322,66 @@ def _save_mandate(text: str, f: SearchFilters) -> None:
         _flash("error", f"Δεν αποθηκεύτηκε: {_reason(e)}")
 
 
+def _understood_html(f: SearchFilters) -> str:
+    chips = "".join(
+        f"<span>{html.escape(p)}</span>" for p in _greek_numbers(nl_search.describe(f)).split(" · ")
+    )
+    return f'<div class="hg-understood"><b>Κατάλαβα:</b>{chips}</div>'
+
+
 def page_search(listings: list[dict]) -> None:
-    st.markdown("## Βρες το σπίτι που ψάχνεις")
-    st.caption("Γράψε το όπως το λες. Θα βρω τις πιο αξιόλογες αγγελίες και θα σου πω γιατί.")
     _show_flash()
-    with st.form("search_form", border=False):
-        c1, c2 = st.columns([5, 1], vertical_alignment="bottom")
-        text = c1.text_input(
-            "Τι ψάχνεις;",
-            key="q_text",
-            max_chars=nl_search.MAX_CHARS,
-            placeholder="π.χ. δυάρι στον Χολαργό έως 180.000€, από 60 τ.μ., με ανελκυστήρα",
-        )
-        submitted = c2.form_submit_button("Αναζήτηση", type="primary", use_container_width=True)
+    with st.container(key="hero"):
+        st.markdown("## Βρες το σπίτι που ψάχνεις")
+        st.caption("Γράψε το όπως το λες. Θα βρω τις πιο αξιόλογες αγγελίες και θα σου πω γιατί.")
+        with st.form("search_form", border=False):
+            c1, c2 = st.columns([5, 1], vertical_alignment="bottom")
+            text = c1.text_input(
+                "Τι ψάχνεις;",
+                key="q_text",
+                max_chars=nl_search.MAX_CHARS,
+                placeholder="π.χ. δυάρι στον Χολαργό έως 180.000€, από 60 τ.μ., με ανελκυστήρα",
+                label_visibility="collapsed",
+            )
+            submitted = c2.form_submit_button("Αναζήτηση", type="primary", use_container_width=True)
+        with st.container(key="examples", horizontal=True, gap="small"):
+            st.markdown(
+                '<span class="hg-try">Δοκίμασε:</span>', unsafe_allow_html=True, width="content"
+            )
+            for i, (label, q) in enumerate(EXAMPLES.items()):
+                st.button(label, key=f"ex{i}", on_click=_example_clicked, args=(q,))
     if submitted:
         if text.strip():
             _run_query(text)
         else:
             st.session_state["nl_error"] = "Γράψε πρώτα τι σπίτι ψάχνεις."
-    cols = st.columns(len(EXAMPLES))
-    for i, (label, q) in enumerate(EXAMPLES.items()):
-        cols[i].button(
-            label, key=f"ex{i}", on_click=_example_clicked, args=(q,), use_container_width=True
-        )
     if st.session_state.get("nl_error"):
         st.error(st.session_state["nl_error"])
 
     base = st.session_state.get("nl_filters")
     asked = base is not None
-    f = _filter_editor(base) if asked else SearchFilters()
     if asked:
-        c1, c2 = st.columns([4, 1])
-        c1.markdown("**Κατάλαβα:** " + nl_search.describe(f))
+        c1, c2 = st.columns([5, 1], vertical_alignment="center")
+        understood = c1.empty()
         c2.button("✖ Καθαρισμός", key="clear_q", on_click=_clear_query, use_container_width=True)
+        f = _filter_editor(base)
+        understood.markdown(_understood_html(f), unsafe_allow_html=True)
+    else:
+        f = SearchFilters()
 
     hits = [
         (m, d, nl_search.advise(d))
         for d in listings
         if not d.get("is_suspect") and (m := nl_search.match(d, f))
     ]
+    n = f"{len(hits):,}".replace(",", ".")
     heading = (
-        f"{len(hits)} αγγελίες ταιριάζουν"
+        f"<b>{n}</b> αγγελίες ταιριάζουν"
         if asked
-        else f"Οι καλύτερες αγγελίες τώρα · {len(hits)} συνολικά"
+        else f"<b>{n}</b> αγγελίες · πρώτα οι πιο αξιόλογες"
     )
-    top = st.columns([3, 2, 2], vertical_alignment="center")
-    top[0].markdown(f"**{heading}**")
+    top = st.columns([4, 3, 3], vertical_alignment="center")
+    top[0].markdown(f'<div class="hg-count">{heading}</div>', unsafe_allow_html=True)
     sort = top[1].selectbox("Ταξινόμηση", list(SORTS), key="sort", label_visibility="collapsed")
     if asked:
         top[2].button(
@@ -439,7 +506,7 @@ def page_watchlist(listings: list[dict]) -> None:
     ppm = [d["price_per_m2"] for d in starred if d.get("price_per_m2")]
     c = st.columns(3)
     c[0].metric("Αγαπημένα", len(starred))
-    c[1].metric("Συνολική ζητούμενη τιμή", eur(sum(prices)) if prices else "—")
+    c[1].metric("Σύνολο τιμών", eur(sum(prices)) if prices else "—")
     c[2].metric("Διάμεσο €/τ.μ.", eur(statistics.median(ppm)) if ppm else "—")
     for d in sorted(starred, key=lambda d: -(d.get("score") or 0)):
         result_card(
