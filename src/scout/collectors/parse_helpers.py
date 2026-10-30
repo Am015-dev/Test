@@ -11,13 +11,13 @@ import re
 import unicodedata
 
 # Greek floor labels -> numeric floor. ground=0, semi-basement=-1, mezzanine=0.5.
-_FLOOR_WORD_MAP = {
-    "ισογειο": 0.0,
-    "ημιυπογειο": -1.0,
-    "υπογειο": -1.0,
-    "ημιωροφος": 0.5,
-    "ημιοροφος": 0.5,
-    "πατάρι": 0.5,
+_FLOOR_WORD_MAP = {  # prefixes: XE cards abbreviate ("Ισόγ.", "Υπόγ.", "Ημιυπ.")
+    "ισογ": 0.0,
+    "ημιυπ": -1.0,
+    "υπογ": -1.0,
+    "ημιωρ": 0.5,
+    "ημιορ": 0.5,
+    "παταρ": 0.5,
 }
 _ORDINAL_RE = re.compile(r"(\d+)\s*ο[υς]?", re.IGNORECASE)  # "1ος", "3ου"
 
