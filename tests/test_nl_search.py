@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -40,8 +41,14 @@ def test_hard_bounds_exclude():
 
 
 def test_unknown_fields_do_not_exclude():
-    d = {**BASE, "area_m2": None, "bedrooms": None, "floor": None}
-    assert match(d, SearchFilters(area_min=70, bedrooms_min=2, floor_min=4)) is not None
+    d = {**BASE, "area_m2": None, "bedrooms": None}
+    assert match(d, SearchFilters(area_min=70, bedrooms_min=2)) is not None
+
+
+def test_floor_filter_drops_unstated_floor():
+    # XE omits the floor label on ground/basement flats, so "from 1st floor" must hide them.
+    assert match({**BASE, "floor": None}, SearchFilters(floor_min=1)) is None
+    assert match({**BASE, "floor": None}, SearchFilters()) is not None
 
 
 def test_wants_raise_score_and_report_reasons():
@@ -165,9 +172,11 @@ def test_old_buildings_are_discounted_and_unfinished_score_zero():
     old = {**BASE, "score": 80, "year_built": 1965}
     renovated = {**old, "renovated_year": 2021}
     assert advise(new)["score"] == 80
-    assert advise(old)["score"] == 48 and advise(old)["age"] >= 60
+    assert advise(old)["score"] == 36 and advise(old)["age"] >= 60
     assert advise(renovated)["score"] == 80
     assert advise({**new, "is_unfinished": True})["score"] == 0
+    this_year = {**new, "year_built": date.today().year}  # maybe still a shell, sold off-plan
+    assert advise(this_year)["score"] == 48
 
 
 def test_unfinished_hidden_unless_asked_and_year_min_filters():

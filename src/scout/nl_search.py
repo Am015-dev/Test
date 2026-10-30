@@ -135,7 +135,15 @@ def _stem(word: str) -> str:
 def _area_in(area: str, where: str) -> bool:
     """Every word of ``area`` (stemmed) appears in the listing's normalised location text."""
     words = _norm(area).replace("-", " ").split()
-    return bool(words) and all(_stem(w) in where for w in words)
+    return bool(words) and (
+        all(_stem(w) in where for w in words) or all(_stem(_latin(w)) in where for w in words)
+    )
+
+
+def area_matches(area: str, place: str) -> bool:
+    """Whether a typed/selected ``area`` names ``place`` (any case ending, Greek or Latin)."""
+    where = _norm(place)
+    return _area_in(area, f"{where} {_latin(where)}")
 
 
 def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
@@ -147,7 +155,9 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
     # Match on where the listing IS. `search_area` is only the area XE was searched for, and XE's
     # area search also returns neighbouring places (a Χαλάνδρι flat under "Cholargos"), so it is a
     # fallback for listings that carry no location of their own.
-    where = _norm(" ".join(str(d.get(k) or "") for k in ("neighborhood", "address")))
+    # Only the municipality part: "Παπάγου (Σύνορα με Χολαργό)" is in Παπάγου, not Χολαργός.
+    place = d.get("neighborhood") or d.get("address") or ""
+    where = _norm(place.split(" (")[0])
     if where.strip():
         where = f"{where} {_latin(where)}"  # so "Cholargos" also finds "Χολαργός"
     else:
@@ -166,6 +176,10 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
     for key, lo, hi, label in bounds:
         v = d.get(key)
         if v is None:
+            # An unstated floor is usually a ground/basement flat (XE omits the label), so a floor
+            # filter must not let it through.
+            if key == "floor" and lo is not None:
+                return None
             continue
         if (lo is not None and v < lo) or (hi is not None and v > hi):
             return None
@@ -222,10 +236,10 @@ def age_factor(age: int | None) -> float:
     if age <= 30:
         return 0.95
     if age <= 40:
-        return 0.85
+        return 0.8
     if age <= 50:
-        return 0.72
-    return 0.6
+        return 0.6
+    return 0.45
 
 
 def advise(d: dict) -> dict:
@@ -246,6 +260,8 @@ def advise(d: dict) -> dict:
         score = 0.6 * base + 0.4 * value
     age = building_age(d)
     score *= age_factor(age)
+    if (d.get("year_built") or 0) >= date.today().year:
+        score *= 0.6  # built "this year": often still a shell sold off-plan — unconfirmed
     if d.get("is_unfinished"):
         score = 0
     return {"score": round(score), "gap": gap, "age": age}

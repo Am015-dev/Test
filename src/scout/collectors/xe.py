@@ -319,7 +319,11 @@ class XeCollector(Collector):
     SEL_TITLE = "[data-testid='property_ad_title'], .common-property-ad-title"
     SEL_PRICE = "[data-testid='property_ad_price'], .property-ad-price"
     SEL_PPSQM = ".property-ad-price-per-sqm"
-    SEL_FLOOR = "[data-testid='property_ad_icon_levels_new'], .property-ad-level-container"
+    # The level container first: XE gives ground/basement flats a different icon test-id.
+    SEL_FLOOR = (
+        "[data-testid='property_ad_level_container'], "
+        "[data-testid='property_ad_icon_levels_new'], .property-ad-level-container"
+    )
     SEL_ADDRESS = "[data-testid='property_ad_address'], .common-property-ad-address"
     SEL_DETAIL = ".property-ad-detail-container"
     SEL_BEDROOMS = "[data-testid='property_ad_icon_bedroom']"

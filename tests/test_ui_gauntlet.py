@@ -12,6 +12,7 @@ store and the Claude parser are replaced by in-memory fakes, and no network is t
 from __future__ import annotations
 
 import os
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -93,6 +94,7 @@ def _seed(db_path) -> None:
                 bedrooms=1 + i % 3,
                 metro_distance_m=300 + (i % 6) * 60,
                 neighborhood=hoods[i % 3],
+                address=hoods[i % 3],
                 search_area=areas[i % 3],
                 is_private_seller=bool(i % 2),
                 price_per_m2=price / a,
@@ -233,14 +235,16 @@ def test_search_filter_editor_sort_and_clear(env):
     at.button(key="ex0").click().run()
     ver = at.session_state["f_ver"]
     calls = at.session_state["advice_calls"]
-    at.number_input(key=f"fe_pmax_{ver}").set_value(150_000).run()
+    at.selectbox(key=f"fe_age_{ver}").set_value("Οποιαδήποτε").run()
+    at.selectbox(key=f"fe_floor_{ver}").set_value("Οποιοσδήποτε").run()
+    at.number_input(key=f"fe_pmax_{ver}").set_value(200_000).run()
     ok(at, "price filter")
     at.selectbox(key="sort").set_value("Χαμηλότερη τιμή").run()
     ok(at, "sort")
     prices = [m.value for m in at.markdown if m.value.startswith("### ") and m.value.endswith(" €")]
     assert prices, "no result cards shown"
     nums = [int(p.replace("### ", "").replace(" €", "").replace(".", "")) for p in prices]
-    assert nums == sorted(nums) and all(n <= 150_000 for n in nums)
+    assert nums == sorted(nums) and all(n <= 200_000 for n in nums)
     # filter and sort tweaks reuse the search's AI review instead of a new ~15 s call
     assert at.session_state["advice_calls"] == calls
     at.button(key="advice_again").click().run()
@@ -365,3 +369,32 @@ def _variants(el, kind: str):
         hi = 1_000_000 if hi is None else hi
         return [("min", lambda w: w.set_value(lo)), ("max", lambda w: w.set_value(hi))]
     return [("text", lambda w: w.set_value("Χολαργός δυάρι"))]
+
+
+def test_floor_and_age_filters_are_on_screen_without_a_search(env):
+    """The home page shows every filter up front; the defaults hide 40+-year-old buildings and
+    flats with no stated floor, and loosening them brings more listings back."""
+    import re
+
+    at = fresh(SEARCH)
+
+    def count():
+        m = next(m.value for m in at.markdown if 'class="hg-count"' in m.value)
+        return int(re.search(r"<b>([\d.]+)</b>", m).group(1).replace(".", ""))
+
+    def years():
+        return [
+            int(y) for m in at.markdown for y in re.findall(r"κατασκευή <b>(\d{4})</b>", m.value)
+        ]
+
+    assert at.selectbox(key="fe_age_0").value == "Έως 40 ετών"
+    assert at.selectbox(key="fe_floor_0").value == "Από 1ο"
+    strict = count()
+    assert all(y >= date.today().year - 40 for y in years())
+    at.selectbox(key="fe_age_0").set_value("Οποιαδήποτε").run()
+    at.selectbox(key="fe_floor_0").set_value("Οποιοσδήποτε").run()
+    ok(at, "loosen")
+    assert count() > strict
+    at.selectbox(key="fe_age_0").set_value("Έως 10 ετών").run()
+    ok(at, "new builds")
+    assert all(y >= date.today().year - 10 for y in years())

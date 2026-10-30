@@ -12,7 +12,12 @@ name: daily-refresh
 on:
   schedule:
     - cron: "0 4 * * *"   # 04:00 UTC = 07:00 Athens, before the workday
-  workflow_dispatch: {}    # manual "Run workflow" button
+  workflow_dispatch:       # manual "Run workflow" button
+    inputs:
+      areas:
+        description: "Areas to scrape now, comma-separated (empty = today's rotating slice)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -53,7 +58,8 @@ jobs:
           SCRAPE_DETAIL_PAGES: "false"
           SCRAPE_REQUEST_MIN_S: "4"
           SCRAPE_REQUEST_MAX_S: "7"
-        run: python scripts/run_daily.py --shards 5
+          AREAS: ${{ inputs.areas }}
+        run: python scripts/run_daily.py --shards 5 --areas "$AREAS"
 
       - name: Rescore whole panel from the DB (no network)
         if: always()
