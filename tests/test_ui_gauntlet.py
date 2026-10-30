@@ -229,12 +229,67 @@ def test_search_filter_editor_sort_and_clear(env):
     assert "nl_filters" not in at.session_state
 
 
+def test_compare_lines_up_every_picked_listing(env):
+    """Two flats in the same neighbourhood used to share one column (the later overwrote it),
+    and the mixed int/"—" days-on-market row broke Arrow serialisation."""
+    at = fresh("⚖️ Σύγκριση")
+    picks = at.multiselect[0].options[:4]
+    at.multiselect[0].set_value(picks).run()
+    ok(at, "compare")
+    cols = list(at.dataframe[0].value.columns)
+    assert len(cols) == len(set(cols)) == 4, cols
+
+
+ADMIN_PAGES = ["⚙️ Strategy", "🛠 Debug"]  # only listed with ?admin=1
+
+
+def fresh_admin(page: str):
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["admin"] = "1"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    at.radio(key="page").set_value(page).run()
+    return at
+
+
 @pytest.mark.skipif(not os.environ.get("GAUNTLET"), reason="slow: set GAUNTLET=1")
-def test_every_widget_on_every_page(env):
+def test_every_widget_on_every_page(env, tmp_path, monkeypatch):
+    import copy
+    import shutil
+
+    import scout.config as cfg
+    import scout.shortlist as sl
+
+    # The Strategy page's "Save & re-score" writes strategy.yaml — point it at a scratch copy.
+    strat = tmp_path / "strategy.yaml"
+    shutil.copy(cfg.DEFAULT_STRATEGY_PATH, strat)
+    monkeypatch.setattr(cfg, "DEFAULT_STRATEGY_PATH", strat)
+    pristine_strategy = strat.read_text(encoding="utf-8")
+
+    # Give Favourites / Shortlist / Detail something to act on: two starred listings and one
+    # saved search. Every interaction then starts from this SAME persisted state — otherwise a
+    # click in one run (e.g. "★ Αφαίρεση") changes what the next fresh run renders and the
+    # widget indices drift (spurious IndexErrors that are the crawler's fault, not the app's).
+    sl.set_watch("xe:g-0", True)
+    sl.set_watch("xe:g-1", True)
+    sl.save_mandate("Χολαργός έως 400.000", SearchFilters(areas=["Cholargos"], price_max=400_000))
+    snapshot = copy.deepcopy(env.gists)
+
+    def reset() -> None:
+        env.gists = copy.deepcopy(snapshot)
+        sl._gist_id = None
+        sl._recent = None
+        strat.write_text(pristine_strategy, encoding="utf-8")
+
+    def start(page: str):
+        reset()
+        return fresh_admin(page) if page in ADMIN_PAGES else fresh(page)
+
     failures = []
     runs = 0
-    for page in PAGES:
-        base = fresh(page)
+    for page in PAGES + ADMIN_PAGES:
+        base = start(page)
+        print(page, {k: len(getattr(base, k)) for k in KINDS if len(getattr(base, k))})
         for kind in KINDS:
             for i, el in enumerate(getattr(base, kind)):
                 if getattr(el, "key", None) == "page":
@@ -242,7 +297,7 @@ def test_every_widget_on_every_page(env):
                 label = getattr(el, "label", "")
                 for tag, act in _variants(el, kind):
                     try:
-                        at = fresh(page)
+                        at = start(page)
                         act(getattr(at, kind)[i])
                         at.run()
                         runs += 1
@@ -254,6 +309,7 @@ def test_every_widget_on_every_page(env):
                         failures.append(
                             f"{page} | {kind}[{i}] '{label}' {tag}: {type(e).__name__}: {str(e)[:200]}"
                         )
+    print(f"{runs} interactions, {len(failures)} failures")
     assert not failures, f"{len(failures)} failures in {runs} interactions:\n" + "\n".join(failures)
 
 
@@ -271,12 +327,19 @@ def _variants(el, kind: str):
     if kind == "multiselect":
         opts = list(el.options)
         return [("some", lambda w: w.set_value(opts[:3])), ("none", lambda w: w.set_value([]))]
+    if kind == "slider" and isinstance(el.value, (list, tuple)):
+        # A range slider always sends two handles; drive it like a user would (both ends
+        # pushed to one extreme) instead of a scalar a real browser can never produce.
+        lo, hi = el.min, el.max
+        return [
+            ("min", lambda w: w.set_range(lo, lo)),
+            ("max", lambda w: w.set_range(hi, hi)),
+            ("full", lambda w: w.set_range(lo, hi)),
+        ]
     if kind in ("slider", "number_input"):
         lo, hi = getattr(el, "min", None), getattr(el, "max", None)
-        out = []
-        if lo is not None:
-            out.append(("min", lambda w: w.set_value(lo)))
-        if hi is not None:
-            out.append(("max", lambda w: w.set_value(hi)))
-        return out
+        # An unbounded number_input accepts anything the user types: try 0 / a huge value.
+        lo = 0 if lo is None else lo
+        hi = 1_000_000 if hi is None else hi
+        return [("min", lambda w: w.set_value(lo)), ("max", lambda w: w.set_value(hi))]
     return [("text", lambda w: w.set_value("Χολαργός δυάρι"))]

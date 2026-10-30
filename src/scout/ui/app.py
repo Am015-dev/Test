@@ -2064,14 +2064,16 @@ def page_compare(listings: list[dict]) -> None:
     if not elig:
         st.info("No listings to compare yet.")
         return
-    opts = {
-        f"[{d['score']:.0f}] {d.get('neighborhood') or d['source_id']} · {fmt.euro(d['price'])}": d[
-            "id"
-        ]
-        for d in elig
-    }
+
+    def _name(d: dict) -> str:
+        # Unique per listing: two flats in one neighbourhood at the same score/price must not
+        # collapse into one option (or overwrite each other's column in the table below).
+        return f"{d.get('neighborhood') or d['source_id']} · {fmt.euro(d['price'])} · #{d['id']}"
+
+    by_id = {d["id"]: d for d in elig}
+    opts = {f"[{d['score']:.0f}] {_name(d)}": d["id"] for d in elig}
     picks = st.multiselect("Listings", list(opts.keys()), max_selections=4)
-    chosen = [next(x for x in elig if x["id"] == opts[p]) for p in picks]
+    chosen = [by_id[opts[p]] for p in picks]
     if len(chosen) < 2:
         st.info("Select at least two listings.")
         return
@@ -2092,17 +2094,15 @@ def page_compare(listings: list[dict]) -> None:
             "Cap rate": f"{im['cap_rate']:.1%}" if im["cap_rate"] is not None else "—",
             "GRM": f"{im['grm']:.0f}×" if im["grm"] is not None else "—",
             "DSCR": f"{im['dscr']:.2f}" if im["dscr"] is not None else "—",
+            # Every cell is text: a mixed int/str column fails Arrow serialisation.
             "Days on market": (
-                d.get("days_on_market") if d.get("days_on_market") is not None else "—"
+                str(d["days_on_market"]) if d.get("days_on_market") is not None else "—"
             ),
             "To metro": _metro_label(d),
             "Energy": d.get("energy_class") or "—",
         }
 
-    table = {}
-    for d in chosen:
-        label = f"{d.get('neighborhood') or d['source_id']}"
-        table[label] = _metrics(d)
+    table = {_name(d): _metrics(d) for d in chosen}
     st.dataframe(pd.DataFrame(table), use_container_width=True)
     st.caption("Higher score/net yield/cap rate & lower GRM/days-on-market is better.")
 
