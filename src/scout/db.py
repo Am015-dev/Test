@@ -54,6 +54,7 @@ _SNAPSHOT_FIELDS = (
     "is_private_seller",
     "is_currently_rented",
     "listed_rent",
+    "is_unfinished",
     "listed_date",
     "metro_distance_m",
     "nearest_metro",
@@ -99,9 +100,12 @@ def init_db() -> None:
             "net_yield": "DOUBLE PRECISION",
             "location_precision": "VARCHAR(16)",
             "detail_checked_at": "TIMESTAMP",
-            # DEFAULT 1 so legacy rows (all scored on baseline/imputed rent) read as
+            # DEFAULT TRUE so legacy rows (all scored on baseline/imputed rent) read as
             # estimated — a NULL would break the Pydantic bool field in _row_to_listing.
-            "rent_estimated": "BOOLEAN DEFAULT 1",
+            # TRUE/FALSE literals (not 1/0): Postgres rejects an integer boolean default.
+            "rent_estimated": "BOOLEAN DEFAULT TRUE",
+            # Legacy rows have no description to judge from → not flagged.
+            "is_unfinished": "BOOLEAN DEFAULT FALSE",
         },
     )
     _ensure_index(engine, "ix_listing_search_area", "listing", "search_area")

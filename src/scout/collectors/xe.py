@@ -126,6 +126,32 @@ def _condition_from_text(text: str | None) -> str | None:
     return None
 
 
+# Unfinished / under-construction building. Run on accent-stripped, lower-cased text, so
+# literals are unaccented. "νεοδμητο"/"ανακαινισμενο" deliberately don't match.
+_UNFINISHED_RE = re.compile(
+    r"ημι[\s-]?τελ"  # ημιτελής / ημι-τελές
+    r"|υπο\s+κατασκευ"  # υπό κατασκευή
+    r"|αποπερατω"  # (προς) αποπεράτωση
+    r"|φαση\s+κατασκευ"  # σε φάση κατασκευής
+    r"|\bσκελετ"  # σκελετός / σε σκελετό
+    r"|under\s+construction|unfinished"
+)
+# A negation shortly before the match ("δεν είναι ημιτελές") cancels it.
+_NEGATION_RE = re.compile(r"\b(?:δεν|μη|μην|ουτε|not|no)\b")
+
+
+def is_unfinished_text(*texts: str | None) -> bool:
+    """True when any text describes an unfinished building / one under construction."""
+    for text in texts:
+        if not text:
+            continue
+        norm = _strip_accents(text).lower()
+        for m in _UNFINISHED_RE.finditer(norm):
+            if not _NEGATION_RE.search(norm[max(0, m.start() - 25) : m.start()]):
+                return True
+    return False
+
+
 def _feature_value(name: str) -> tuple[str, str] | None:
     """Split a JSON-LD feature string 'Έτος κατασκευής: 1984' into (key, value)."""
     if ":" not in name:
@@ -298,6 +324,7 @@ class XeCollector(Collector):
     SEL_DETAIL = ".property-ad-detail-container"
     SEL_BEDROOMS = "[data-testid='property_ad_icon_bedroom']"
     SEL_YEAR = "[data-testid='property_ad_icon_house_construction']"
+    SEL_DESCRIPTION = "#property-ad-description"
 
     AUTOCOMPLETE_URL = "https://www.xe.gr/services/places/autocomplete"
 
@@ -538,6 +565,8 @@ class XeCollector(Collector):
                 raw["listed_rent"] = listed_rent
             if parse_private_seller(desc):
                 raw["is_private_seller"] = True
+            if is_unfinished_text(desc):
+                raw["is_unfinished"] = True
 
     def collect_rent_rows(self) -> Iterator[dict]:
         """Scrape RENTAL cards (no detail fetch) for rent comps: yields
@@ -658,7 +687,10 @@ class XeCollector(Collector):
         bedrooms = parse_int(text(self.SEL_BEDROOMS) or detail_by_icon("xe-bedroom"))  # "2 υ/δ"
         year = parse_int(text(self.SEL_YEAR) or detail_by_icon("xe-house-construction"))
 
-        # Search cards carry no description; rent/private-seller surface on detail pages.
+        # The card's (truncated-by-CSS but complete-in-HTML) description is the only place
+        # an unfinished building is stated ("ημιτελής", "υπό κατασκευή").
+        description = text(self.SEL_DESCRIPTION)
+        # Rent/private-seller surface on detail pages.
         rented, listed_rent = parse_rent(title)
         # The card footer says "Αγγελία ιδιώτη" for a private seller (agencies show a logo).
         footer = text(".common-ad-body-footer")
@@ -679,4 +711,5 @@ class XeCollector(Collector):
             "is_currently_rented": rented,
             "listed_rent": listed_rent,
             "is_private_seller": private,
+            "is_unfinished": is_unfinished_text(title, description),
         }

@@ -58,6 +58,10 @@ class Listing(BaseModel):
     is_private_seller: bool = False
     is_currently_rented: bool = False
     listed_rent: int | None = None  # if "currently rented for EUR X"
+    # Unfinished building / under construction ("ημιτελής", "υπό κατασκευή", "σε σκελετό")
+    # detected from the card title + description. A home buyer can't move in, so the UI
+    # must not recommend these as ready homes.
+    is_unfinished: bool = False
 
     # The portal's own posting date (XE detail-page ``datePosted``). This is the
     # listing's REAL market age, known on first sight — so days-on-market and the
@@ -153,6 +157,8 @@ class ListingRow(Base):
     is_private_seller: Mapped[bool] = mapped_column(Boolean, default=False)
     is_currently_rented: Mapped[bool] = mapped_column(Boolean, default=False)
     listed_rent: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # See Listing.is_unfinished. Added by forward migration (DEFAULT FALSE) on old DBs.
+    is_unfinished: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Portal posting date — the listing's real market age (see Listing.listed_date).
     listed_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

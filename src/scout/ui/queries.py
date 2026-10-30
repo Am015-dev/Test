@@ -35,6 +35,31 @@ def _market_age_days(row: ListingRow) -> int | None:
     return max((datetime.utcnow() - min(anchors)).days, 0)
 
 
+def _building_age(year_built: int | None, renovated_year: int | None) -> int | None:
+    """Years since construction (or renovation, which resets the clock). None when unknown
+    or implausible (before 1850 / in the future — data errors, not ages)."""
+    year = renovated_year or year_built
+    now = datetime.utcnow().year
+    if not year or year < 1850 or year > now:
+        return None
+    return now - year
+
+
+# A listing not re-seen within this many days of the newest scrape is probably sold.
+FRESH_DAYS = 10
+
+
+def _annotate_freshness(rows: list[dict]) -> None:
+    """Set ``is_fresh`` relative to the NEWEST ``last_seen`` in the set (not wall-clock), so
+    an old snapshot still shows its latest scrape as fresh instead of hiding everything."""
+    seen = [d["last_seen"] for d in rows if d.get("last_seen") is not None]
+    if not seen:
+        return
+    cutoff = max(seen) - timedelta(days=FRESH_DAYS)
+    for d in rows:
+        d["is_fresh"] = d.get("last_seen") is not None and d["last_seen"] >= cutoff
+
+
 def _data_completeness(row: ListingRow) -> list[str]:
     """Which trust-critical fields are still MISSING for this listing (empty = complete).
 
@@ -180,6 +205,9 @@ def _row_to_dict(
     # doesn't trust it. (Ingest guards new data at the source in normalize.py; this handles
     # rows already stored with a future year.)
     d["year_built"], d["renovated_year"] = clean_future_years(row.year_built, row.renovated_year)
+    d["building_age"] = _building_age(d["year_built"], d["renovated_year"])
+    d["is_unfinished"] = bool(row.is_unfinished)
+    d["is_fresh"] = True  # load_listings re-derives it against the whole loaded set
     d["strategy_tags"] = _strategy_tags(d)
     rec = _recommend(d)
     d["rec_verdict"] = rec.verdict
@@ -279,6 +307,7 @@ def _collapse_relistings(rows: list[dict]) -> list[dict]:
         if dates:
             rep["listed_date"] = min(dates)
         rep["relist_count"] = len(members)
+        rep["is_fresh"] = any(m.get("is_fresh", True) for m in members)
         out.append(rep)
     return out
 
@@ -327,6 +356,7 @@ def load_listings(
             )
             d["is_new"] = r.first_seen is not None and r.first_seen >= cutoff
             out.append(d)
+        _annotate_freshness(out)
         if collapse_relistings:
             out = _collapse_relistings(out)
         # Honest market-position ranks (price and yield percentile vs comparable active
