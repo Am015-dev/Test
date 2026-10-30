@@ -543,6 +543,8 @@ footer {{ visibility: hidden; height: 0; }}
 .hg-b-priv {{ background: #EDE9FE; color: #5B21B6; }}
 .hg-b-offer {{ background: #E0F2FE; color: #075985; }}
 .hg-b-muted {{ background: #F1F5F9; color: #475569; }}
+.hg-b-warn {{ background: #FEF3C7; color: #92400E; }}
+.hg-b-bad {{ background: #FEE2E2; color: #991B1B; }}
 .hg-score {{ display: inline-flex; align-items: baseline; gap: 5px; border-radius: 10px;
     padding: 5px 10px; border: 1px solid; white-space: nowrap; cursor: help; }}
 .hg-score small {{ font-size: .7rem; font-weight: 600; opacity: .85; }}

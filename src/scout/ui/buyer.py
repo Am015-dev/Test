@@ -139,7 +139,18 @@ def _card_html(d: dict, adv: dict) -> str:
         facts.append(_floor(d["floor"]))
     if d.get("price_per_m2"):
         facts.append(f"{eur(d['price_per_m2'])}/τ.μ.")
+    age = adv.get("age")
+    if d.get("renovated_year"):
+        facts.append(f"ανακαίνιση <b>{d['renovated_year']}</b>")
+    elif d.get("year_built"):
+        facts.append(f"κατασκευή <b>{d['year_built']}</b>" + (f" ({age} ετών)" if age else ""))
     badges = []
+    if d.get("is_unfinished"):
+        badges.append(("bad", "Ημιτελές"))
+    if age is not None and age >= 40 and not d.get("renovated_year"):
+        badges.append(("warn", f"Παλιό κτίριο — {age} ετών"))
+    elif age is None:
+        badges.append(("muted", "Έτος κατασκευής: δεν δηλώνεται"))
     if adv["gap"] and adv["gap"] > 0:
         badges.append(("good", f"▼ {adv['gap']:.0%} κάτω από την εκτίμηση"))
     if d.get("price_dropped"):
@@ -168,7 +179,7 @@ def _score_html(adv: dict, grade: str | None) -> str:
     g = f"<i>{html.escape(str(grade))}</i>" if grade else ""
     return (
         f'<span class="hg-score hg-score-{tone}" '
-        f'title="Σκορ 0–100: 60% ταίριασμα στη στρατηγική, 40% αξία">'
+        f'title="Σκορ 0–100: στρατηγική + αξία, μειωμένο για παλιά κτίρια">'
         f"<small>Σκορ</small><b>{s}</b>{g}</span>"
     )
 
@@ -305,6 +316,19 @@ def _filter_editor(f: SearchFilters) -> SearchFilters:
             key=f"fe_wants_{ver}",
         )
         priv = c6.checkbox("Μόνο από ιδιώτη", f.private_only, key=f"fe_priv_{ver}")
+        c7, c8 = st.columns(2)
+        ymin = c7.number_input(
+            "Κατασκευή ή ανακαίνιση από (έτος)",
+            0,
+            2030,
+            int(f.year_min or 0),
+            5,
+            key=f"fe_ymin_{ver}",
+            help="0 = οποιοδήποτε. Αγγελίες χωρίς δηλωμένο έτος δεν εμφανίζονται όταν βάλεις έτος.",
+        )
+        unfinished = c8.checkbox(
+            "Να δείχνει και ημιτελή κτίρια", f.include_unfinished, key=f"fe_unf_{ver}"
+        )
     bmin, bmax = BEDROOMS[beds]
     return f.model_copy(
         update={
@@ -316,6 +340,8 @@ def _filter_editor(f: SearchFilters) -> SearchFilters:
             "kinds": kinds,
             "wants": wants,
             "private_only": priv,
+            "year_min": int(ymin) or None,
+            "include_unfinished": unfinished,
         }
     )
 
@@ -377,11 +403,9 @@ def page_search(listings: list[dict]) -> None:
     else:
         f = SearchFilters()
 
-    hits = [
-        (m, d, nl_search.advise(d))
-        for d in listings
-        if not d.get("is_suspect") and (m := nl_search.match(d, f))
-    ]
+    stale_ok = st.session_state.get("include_stale", False)
+    pool = nl_search.candidates(listings, include_stale=stale_ok)
+    hits = [(m, d, nl_search.advise(d)) for d in pool if (m := nl_search.match(d, f))]
     n = f"{len(hits):,}".replace(",", ".")
     heading = (
         f"<b>{n}</b> αγγελίες ταιριάζουν"
@@ -398,6 +422,14 @@ def page_search(listings: list[dict]) -> None:
             on_click=_save_mandate,
             args=(st.session_state.get("nl_text", ""), f),
             width="stretch",
+        )
+    stale = sum(1 for d in listings if not d.get("is_fresh", True))
+    if stale:
+        st.checkbox(
+            f"Δείξε και {stale:,} παλαιότερες αγγελίες (μπορεί να έχουν ήδη πουληθεί)".replace(
+                ",", "."
+            ),
+            key="include_stale",
         )
     if not hits:
         st.info(
