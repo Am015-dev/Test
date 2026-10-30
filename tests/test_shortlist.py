@@ -28,3 +28,7 @@ def test_digest_lists_picks():
     f = SearchFilters()
     txt = digest(Mandate(1, "δυάρι", f), pick(f, [L(1, 100_000)], set()))
     assert "δυάρι" in txt and "100,000" in txt and "u1" in txt
+
+
+def test_seen_covers_sent_approved_rejected():
+    assert Mandate(1, "x", SearchFilters(), {1}, {2}, {3}).seen == {1, 2, 3}

@@ -24,6 +24,10 @@ class Mandate:
     approved: set[int] = field(default_factory=set)
     rejected: set[int] = field(default_factory=set)
 
+    @property
+    def seen(self) -> set[int]:
+        return self.sent | self.approved | self.rejected
+
 
 def pick(
     filters: SearchFilters, listings: list[dict], skip: set[int], n: int = TOP_N
@@ -130,7 +134,7 @@ def run_shortlists(settings=None) -> int:
     listings = load_listings()
     sent = 0
     for m in list_mandates():
-        picks = pick(m.filters, listings, m.sent | m.rejected)
+        picks = pick(m.filters, listings, m.seen)
         if picks and send_alert(
             digest(m, picks), subject="Holargos — shortlist", settings=settings
         ):
