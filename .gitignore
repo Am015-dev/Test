@@ -31,3 +31,4 @@ scratch_qa/
 
 # Isolated agent worktrees (temporary, not deliverables)
 .claude/worktrees/
+docs/qa/speed/scratch.json
