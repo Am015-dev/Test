@@ -201,16 +201,25 @@ def rent_index(rent_rows: list[dict]) -> dict[str, tuple[float, int]]:
     }
 
 
-def area_rent(d: dict, rents: dict[str, tuple[float, int]]) -> tuple[float, int, str] | None:
-    """Rent €/m² for the listing's own neighbourhood, else the median over its area."""
+def listing_rent(d: dict) -> float | None:
+    """The one rent figure for a flat: the rent its own ad states, else the estimate the
+    pipeline stored on the row (``est_monthly_rent``: the neighbourhood's median asking rent
+    €/m² × m², else the area's). Every card, the map, compare, the listing page and the
+    assistant read this same field, so the guide must too — no second rent model here."""
+    return d.get("listed_rent") or d.get("est_monthly_rent")
+
+
+def rent_basis(d: dict, rents: dict[str, tuple[float, int]]) -> tuple[float, int, str] | None:
+    """(€/m², samples, where) behind ``listing_rent(d)``: ``where`` is the neighbourhood when
+    a rent row exists for it (the pipeline used that row), else its area; ``samples`` 0 when
+    not recorded. The €/m² is the stored rent ÷ m², so it always matches the number shown."""
+    rent, m2 = listing_rent(d), d.get("area_m2")
+    if not rent or not m2:
+        return None
     hood = d.get("neighborhood") or ""
     if hood in rents:
-        return rents[hood][0], rents[hood][1], hood
-    area = area_name(hood)
-    near = [v[0] for k, v in rents.items() if area_name(k) == area]
-    if len(near) >= 2:
-        return statistics.median(near), 0, area
-    return None
+        return rent / m2, rents[hood][1], hood
+    return rent / m2, 0, area_name(hood)
 
 
 @dataclass
@@ -334,13 +343,12 @@ def _build(
     area_facts: dict | None = None,
 ) -> Pick | None:
     """Everything about one listing that does not depend on the buyer's filters or goal."""
-    rent_basis = area_rent(d, rents)
-    if rent_basis is None:
+    basis = rent_basis(d, rents)
+    if basis is None:
         return None
-    per_m2, _samples, where = rent_basis
+    rent = listing_rent(d)
+    per_m2, samples, where = basis
     built = d.get("renovated_year") or d.get("year_built")
-    new_premium = 1.1 if built and year - built <= 5 else 1.0  # new stock rents higher
-    rent = per_m2 * d["area_m2"] * new_premium
     gross = 12 * rent / d["price"]
     costs = acquisition_costs(d["price"], bool(d.get("is_private_seller"))) or 0
     # Net (Greek practice: the tenant pays κοινόχρηστα): 1 month empty a year, 15% rental
@@ -397,10 +405,19 @@ def _build(
     }
     rank = score(parts, "yield")
     inst = instalment(d["price"])
+    if d.get("listed_rent"):
+        rent_line = f"Ενοίκιο (από την αγγελία) {_eur(_r(rent, 10))}/μήνα"
+    else:
+        if where == d.get("neighborhood"):
+            src = "τα διπλανά" + (f" ({samples} αγγελίες)" if samples else "")
+        else:
+            src = f"στην περιοχή ({where})"
+        rent_line = (
+            f"Ενοίκιο (εκτίμηση) ~{_eur(_r(rent, 10))}/μήνα: {src} ζητούν {gr_num(per_m2)} "
+            f"€/τ.μ. × {d['area_m2']:g} τ.μ."
+        )
     lines = [
-        f"Ενοίκιο (εκτίμηση) ~{_eur(_r(rent, 10))}/μήνα: τα διπλανά ζητούν {gr_num(per_m2)} "
-        f"€/τ.μ. × {d['area_m2']:g} τ.μ."
-        + (", και 10 % παραπάνω γιατί είναι νεόδμητο" if new_premium > 1 else ""),
+        rent_line,
         f"Μικτή απόδοση {gr_pct(gross)}. Καθαρή απόδοση ~{gr_pct(net)}, αφού βγάλεις έναν "
         "μήνα χωρίς ενοικιαστή, φόρο, συντήρηση και ΕΝΦΙΑ",
     ]

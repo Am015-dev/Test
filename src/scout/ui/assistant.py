@@ -140,8 +140,8 @@ def _listing(item, intel, rents: dict | None, year: int, loan: bool) -> dict:
         "private_seller": bool(d.get("is_private_seller")),
         "source": d.get("source"),
     }
-    # Rent: the pick's own estimate (neighbourhood asking rent €/m² × m²), else the stored one.
-    basis = rents is not None and price and m2 and picks.area_rent(d, rents)
+    # Rent: the one stored figure (picks.listing_rent); ``rents`` only names its basis.
+    basis = rents is not None and price and m2 and picks.rent_basis(d, rents)
     if p:
         f["rent"] = {"eur_month": p.rent, "low": p.rent_low, "high": p.rent_high}
         f["gross_yield_pct"], f["net_yield_pct"] = _pct(p.gross), _pct(p.net)

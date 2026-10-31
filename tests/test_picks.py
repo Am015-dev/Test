@@ -12,8 +12,11 @@ RENTS = [
 
 
 def flat(i, price, hood="Νέα Ιωνία (Περισσός)", year=2024, m2=80, **kw):
+    # The stored rent estimate, as the pipeline writes it: the neighbourhood's €/m² × m².
+    ppm = next((r["rent_per_m2"] for r in RENTS if r["neighborhood"] == hood), 12.0)
     return {
         "id": i,
+        "est_monthly_rent": round(ppm * m2),
         "url": f"https://x/{i}",
         "title": f"Διαμέρισμα {m2} τ.μ.",
         "price": price,
@@ -38,7 +41,7 @@ def test_station_is_read_from_the_neighbourhood_name():
 
 def test_only_new_finished_near_rail_in_budget_and_best_yield_first():
     rows = [
-        flat(1, 300_000),  # 80 m² → ~11 €/m² ×1.1 new
+        flat(1, 300_000),  # 80 m² → ~11 €/m² (the stored estimate)
         flat(2, 270_000, m2=78, year=2023),  # cheaper per m² → higher yield
         flat(3, 280_000, year=1975),  # old
         flat(4, 290_000, is_unfinished=True),  # shell
