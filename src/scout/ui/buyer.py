@@ -18,7 +18,6 @@ import streamlit as st
 from scout import acquisition, advisor, market_intel, nl_search, picks, shortlist
 from scout.market_intel import municipality
 from scout.nl_search import SearchFilters
-from scout.ui import account
 
 PAGE_SIZE = 12
 MAX_ADVICE = 25  # AI second opinions per browser session — bounds API cost
@@ -166,6 +165,8 @@ SESSION_ONLY = "Τα αγαπημένα κρατιούνται μόνο σε α�
 def watch_keys() -> set[str]:
     """Starred listing keys of the signed-in user (or the anonymous profile), loaded once."""
     if "watch" not in st.session_state:
+        from scout.ui import account  # lazy: pages and tests may swap the account module
+
         store = account.storage()
         st.session_state["watch"] = set(store.get("watch", []))
         st.session_state["watch_persisted"] = store.persistent
@@ -173,6 +174,8 @@ def watch_keys() -> set[str]:
 
 
 def toggle_watch(key: str) -> None:
+    from scout.ui import account
+
     keys = watch_keys()
     on = key not in keys
     keys.add(key) if on else keys.discard(key)
