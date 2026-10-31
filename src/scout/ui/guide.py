@@ -25,7 +25,7 @@ from datetime import date
 import streamlit as st
 
 from scout import area_insights, market_intel, picks, shortlist
-from scout.ui import buyer
+from scout.ui import buyer, derived
 
 TITLE = "Οδηγός"
 STEPS = 5
@@ -880,7 +880,8 @@ def _results(g: dict, listings: list[dict]) -> None:
     year = date.today().year
     rents = _rent_rows()
     intel = market_intel.build(listings)
-    area_facts = {x.area: x for x in area_insights.rank_areas(listings, rents, year=year)}
+    # C13: built once per data version and shared (scout/ui/derived.py), same values.
+    area_facts, find_memo = derived.guide_context(listings, rents, year)
     where = g.get("where") or "best"
     rules = dict(
         max_age=g.get("age"),
@@ -892,7 +893,15 @@ def _results(g: dict, listings: list[dict]) -> None:
         year=year,
     )
     found = picks.find(
-        listings, intel, rents, budget, loan=bool(g.get("loan")), top=10**6, near=True, **rules
+        listings,
+        intel,
+        rents,
+        budget,
+        loan=bool(g.get("loan")),
+        top=10**6,
+        near=True,
+        memo=find_memo,
+        **rules,
     )
     review = _review()
     every, dropped = arrange(found, review)
@@ -973,7 +982,7 @@ def _results(g: dict, listings: list[dict]) -> None:
         _dropped(dropped)
     with st.expander("Πώς υπολογίζω"):
         st.markdown(METHOD)
-    st.caption(coverage(listings))
+    st.caption(derived.memo(listings, "coverage", lambda: coverage(listings)))  # C13: per data
     if _store() is None:
         st.caption("Οι απαντήσεις κρατιούνται μόνο σε αυτή τη συνεδρία.")
 

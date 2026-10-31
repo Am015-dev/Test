@@ -1,0 +1,44 @@
+{
+ "pill-Χάρτης": {
+  "server": [
+   740,
+   697,
+   567
+  ],
+  "total": [
+   1814,
+   1766,
+   1711
+  ],
+  "server_median": 697,
+  "total_median": 1766
+ },
+ "pill-Περιοχές": {
+  "server": [
+   243,
+   509,
+   476
+  ],
+  "total": [
+   830,
+   1470,
+   1730
+  ],
+  "server_median": 476,
+  "total_median": 1470
+ },
+ "guide-map": {
+  "server": [
+   582,
+   724,
+   658
+  ],
+  "total": [
+   1518,
+   1704,
+   1632
+  ],
+  "server_median": 658,
+  "total_median": 1632
+ }
+}
