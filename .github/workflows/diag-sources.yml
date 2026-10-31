@@ -18,12 +18,13 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e . -q
-      - name: Survey portals (search pages)
+      - name: Golden Home area slugs
+        run: python diag/goldenhome_areas.py
+      - name: Probe search pages (dumps for fixtures)
         run: >-
-          python diag/sources_probe.py --no-home --only remax,goldenhome,era
-          --grep 'xolarg|cholarg|poliseis-katoikies|pwlisi/katoikies|/property/\d|akinit|ajax'
+          python diag/sources_probe.py --no-home --only remax,goldenhome
+          --grep 'xolarg|holarg|pwliseis-katoikies|/property/view/|page='
           --dump remax,goldenhome
-          --url remax=https://www.remax.gr/poliseis-katoikies/101-athhna-boreia-proastia
-          --url goldenhome=https://goldenhome.gr/property/pwlisi/perioxi-athens-northern-suburbs
-          --url era=https://era.gr/wp-sitemap.xml
-          --url era=https://era.gr/akinita/
+          --url remax=https://www.remax.gr/pwliseis-katoikies/101-athhna-boreia-proastia
+          --url goldenhome=https://goldenhome.gr/property/pwlisi/perioxi-holargos
+          --url goldenhome=https://goldenhome.gr/property/pwlisi/katoikies/perioxi-holargos
