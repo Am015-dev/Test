@@ -352,6 +352,15 @@ def status_basis(d: dict) -> str:
     )
 
 
+DOM_BASIS = {"listed": "από την ημερομηνία αγγελίας", "seen": "από τότε που τη βλέπουμε"}
+
+
+def dom_text(d: dict) -> str:
+    """'109 μέρες στην αγορά (από την ημερομηνία αγγελίας)' — the basis when we know it."""
+    basis = DOM_BASIS.get(d.get("dom_basis") or "")
+    return f"{d['days_on_market']} μέρες στην αγορά" + (f" ({basis})" if basis else "")
+
+
 def _year_text(d: dict) -> str:
     built, reno = d.get("year_built"), d.get("renovated_year")
     if not built:
@@ -394,7 +403,7 @@ def card_html(d: dict, adv: dict, basis: bool = True) -> str:
     if d.get("is_private_seller"):
         extras.append("Ιδιώτης")
     if d.get("days_on_market"):
-        extras.append(f"{d['days_on_market']} μέρες στην αγορά")
+        extras.append(dom_text(d))
     if twins := adv.get("twins"):
         low = twins[0]["price"]
         cheaper = f", η φθηνότερη {eur(low)}" if d.get("price") and low < d["price"] else ""
@@ -615,7 +624,8 @@ def hide_reason(d: dict, f: SearchFilters) -> str | None:
     if f.areas and not _area_hit(d, f.areas):
         return "area"
     if _strategy_excluded(d):
-        return "not_home"
+        reason = str(d.get("exclusion_reason") or "")
+        return "not_home" if "dwelling" in reason else "excluded"
     if d.get("is_suspect"):
         return "suspect"
     return nl_search.why_hidden(d, f.model_copy(update={"areas": []}))
@@ -634,6 +644,7 @@ def hide_labels(f: SearchFilters) -> dict[str, str]:
     return {
         "area": "εκτός περιοχής",
         "not_home": "όχι κατοικία",
+        "excluded": "εκτός κριτηρίων επένδυσης",
         "suspect": "με στοιχεία που δεν στέκουν",
         "price": "εκτός τιμής",
         "size": "εκτός τ.μ.",
@@ -1345,7 +1356,7 @@ def page_listing(listings: list[dict]) -> None:
     elif history:
         st.caption(f"Τιμή αμετάβλητη από {history[0][0]:%d/%m/%Y} που την πρωτοείδαμε στο XE.")
     if d.get("days_on_market"):
-        st.caption(f"{d['days_on_market']} μέρες στην αγορά.")
+        st.caption(dom_text(d) + ".")
     _area_line(d, listings)
 
     review = st.session_state.get("listing_advice", {}).get(shortlist.lkey(d))
