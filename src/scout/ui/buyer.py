@@ -15,7 +15,7 @@ from datetime import date
 
 import streamlit as st
 
-from scout import acquisition, advisor, market_intel, nl_search, shortlist
+from scout import acquisition, advisor, market_intel, nl_search, picks, shortlist
 from scout.market_intel import municipality
 from scout.nl_search import SearchFilters
 
@@ -46,7 +46,7 @@ CONF_HELP = (
     "25% του διάμεσου· Χαμηλή = λιγότερα από 8 παρόμοια ή εύρος πάνω από 45%· αλλιώς Μέτρια. "
     "Παρόμοια = ίδια περιοχή, ηλικία κτιρίου και (όπου γίνεται) μέγεθος και όροφος."
 )
-UNFINISHED_NOTE = "Ημιτελές / υπό κατασκευή — χρειάζεται επιπλέον κεφάλαιο πριν νοικιαστεί"
+UNFINISHED_NOTE = "Υπό κατασκευή"
 
 EXAMPLES = {
     "Δυάρι στον Χολαργό": "δυάρι στον Χολαργό έως 180Χ με ανελκυστήρα",
@@ -66,17 +66,34 @@ def _unfinished(d: dict) -> bool:
     return bool(d.get("is_unfinished"))
 
 
+def _suggested(pct, adv, d) -> tuple:
+    """Under construction and "too cheap to believe" last, read pages first, then the buyer
+    score (price vs comparables, building age, rent return)."""
+    return (_unfinished(d), bool(adv.get("too_cheap")), not d.get("page_checked"), -pct)
+
+
 SORTS = {
-    # Unfinished shells (only shown when asked for) always rank last on the score/yield sorts.
-    "Σκορ αγοράς": lambda pct, adv, d: (_unfinished(d), -pct, -adv["score"], d["price"]),
-    "Υψηλότερη απόδοση": lambda pct, adv, d: (_unfinished(d), -(gross_yield(d) or 0), d["price"]),
-    "Χαμηλότερη τιμή": lambda pct, adv, d: (d["price"], -adv["score"]),
-    "Χαμηλότερο €/τ.μ.": lambda pct, adv, d: (d.get("price_per_m2") or 1e9, d["price"]),
-    "Φθηνότερο από παρόμοια": lambda pct, adv, d: (
-        adv["cmp"]["pct"] if adv.get("cmp") else 9,
+    "Προτεινόμενη": lambda pct, adv, d: (*_suggested(pct, adv, d), -adv["score"], d["price"]),
+    "Υψηλότερη απόδοση": lambda pct, adv, d: (
+        _unfinished(d),
+        bool(adv.get("too_cheap")),
+        -(gross_yield(d) or 0),
         d["price"],
     ),
+    "Χαμηλότερη τιμή": lambda pct, adv, d: (d["price"], -adv["score"]),
+    "Χαμηλότερο €/τ.μ.": lambda pct, adv, d: (d.get("price_per_m2") or 1e9, d["price"]),
+    "Πιο κάτω από τα παρόμοια": lambda pct, adv, d: (
+        adv.get("cmp") is None,
+        bool(adv.get("too_cheap")),
+        adv["cmp"]["pct"] if adv.get("cmp") else 0,
+        d["price"],
+    ),
+    "Νεότερο κτίριο": lambda pct, adv, d: (-(d.get("year_built") or 0), d["price"]),
 }
+SUGGESTED_HELP = (
+    "Προτεινόμενη σειρά: τελευταία όσα είναι υπό κατασκευή ή ύποπτα φθηνά· πρώτα όσα "
+    "ελέγχθηκε η περιγραφή· μετά τιμή σε σχέση με παρόμοια, ηλικία κτιρίου και απόδοση."
+)
 
 BEDROOMS = {
     "Όλα": (None, None),
@@ -98,13 +115,13 @@ def _r(v: float, step: int) -> int:
 
 
 def pct1(v: float) -> str:
-    """0.0463 -> '4,6%' (Greek decimal comma)."""
-    return f"{v * 100:.1f}".replace(".", ",") + "%"
+    """0.0463 -> '4,6 %' (Greek decimal comma)."""
+    return f"{v * 100:.1f}".replace(".", ",") + " %"
 
 
-def _signed_pct(v: float) -> str:
-    """-0.331 -> '−33%' with a real minus sign, for display (not for st.metric deltas)."""
-    return f"{v:+.0%}".replace("-", "−")
+def pct_int(v: float) -> str:
+    """0.331 -> '33 %'."""
+    return f"{v * 100:.0f} %"
 
 
 def has_ai() -> bool:
@@ -199,6 +216,32 @@ def _show_flash() -> None:
 
 
 # ---- the listing card ----------------------------------------------------------------------
+# One card for search, favourites and saved searches. Every line is a fact with a named source;
+# the basis of every number is one tap away ("Από πού βγαίνουν"). No score number: its parts
+# are arrows, not figures, so it could not be checked from the card.
+
+CARD_CSS = """<style>
+.hg-card { line-height: 1.4; font-size: .9rem; color: var(--hg-ink-soft, #1E293B); }
+.hg-card > div + div { margin-top: 4px; }
+.hg-l1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+.hg-l1 .hg-price { font-size: 1.35rem; font-weight: 750; color: var(--hg-ink, #0F172A); }
+.hg-sep { color: var(--hg-faint, #94A3B8); }
+.hg-st { display: inline-block; font-size: .8rem; font-weight: 600; border-radius: 6px;
+    padding: 2px 8px; }
+.hg-st-bad { background: #FEE2E2; color: #991B1B; }
+.hg-st-ok { background: #DCFCE7; color: #166534; }
+.hg-st-unk { background: #F1F5F9; color: #475569; }
+.hg-st-photo { background: #FEF3C7; color: #92400E; }
+.hg-more { color: var(--hg-muted, #64748B); font-size: .82rem; }
+.hg-card details { margin-top: 6px; font-size: .82rem; color: var(--hg-muted, #64748B); }
+.hg-card summary { cursor: pointer; color: var(--hg-accent, #0F766E); font-weight: 600; }
+.hg-card details p { margin: 4px 0 0; }
+.hg-desc { white-space: pre-line; font-size: .9rem; }
+</style>"""
+
+
+def _css() -> None:
+    st.markdown(CARD_CSS, unsafe_allow_html=True)
 
 
 def _greek_numbers(s: str) -> str:
@@ -213,118 +256,168 @@ def _floor(f: float) -> str:
     return "Ισόγειο" if f == 0 else f"{f:g}ος όροφος"
 
 
-def rent_html(d: dict) -> str:
-    """'Ενοίκιο ~980 €/μήνα · μικτή απόδοση 4,6% (εκτίμηση περιοχής)', or '' without rent."""
+def _rent(d: dict) -> float | None:
+    return d.get("listed_rent") or d.get("est_monthly_rent")
+
+
+def rent_text(d: dict) -> str:
+    """'Ενοίκιο (εκτίμηση) ~690 €/μήνα · Μικτή απόδοση 4,6 %' — or why there is no figure."""
     gy = gross_yield(d)
     if gy is None:
-        return ""
-    rent = d.get("listed_rent") or d.get("est_monthly_rent")
-    note = (
-        ""
-        if d.get("listed_rent")
-        else " <span>(εκτίμηση περιοχής)</span>" if d.get("rent_estimated", True) else ""
-    )
-    return (
-        f'<div class="hg-rent">Ενοίκιο ~<b>{eur(_r(rent, 10))}</b>/μήνα · '
-        f"μικτή απόδοση <b>{pct1(gy)}</b>{note}</div>"
-    )
+        return "Ενοίκιο: χωρίς εκτίμηση (λείπουν τα τ.μ.)"
+    rent = eur(_r(_rent(d), 10))
+    head = "Ενοίκιο (από την αγγελία)" if d.get("listed_rent") else "Ενοίκιο (εκτίμηση)"
+    return f"{head} ~{rent}/μήνα · Μικτή απόδοση {pct1(gy)}"
 
 
-def comps_badge(cmp: dict) -> tuple[str, str]:
-    """(tone, '−33% vs 5 παρόμοια · χαμηλή αξιοπιστία') — the short card version."""
+def rent_basis(d: dict) -> str:
+    """Where the rent figure comes from, in one sentence."""
+    rent, area = _rent(d), d.get("area_m2")
+    if not rent:
+        return "Χωρίς τ.μ. δεν βγαίνει εκτίμηση ενοικίου."
+    if d.get("listed_rent"):
+        return "Ενοίκιο που γράφει η αγγελία (το ακίνητο είναι ήδη νοικιασμένο)."
+    per = (
+        f" ~{f'{rent / area:.1f}'.replace('.', ',')} €/τ.μ. τον μήνα × {_m2(area)} τ.μ."
+        if area
+        else ""
+    )
+    if d.get("rent_estimated", True):
+        return (
+            f"Διάμεσο ζητούμενο ενοίκιο της περιοχής{per}, από αγγελίες ενοικίασης στο XE. "
+            "Όχι πραγματικό συμβόλαιο."
+        )
+    return f"Ζητούμενα ενοίκια παρόμοιων σπιτιών της περιοχής στο XE{per}."
+
+
+def comps_text(adv: dict) -> str:
+    """'Παρόμοια (12): 14 % κάτω' / '… πάνω' / 'Λίγα παρόμοια'."""
+    cmp = adv.get("cmp")
+    if not cmp:
+        return "Λίγα παρόμοια για σύγκριση"
     pct = cmp["pct"]
+    if abs(pct) < 0.005:
+        where = "στον διάμεσο"
+    else:
+        where = f"{pct_int(abs(pct))} {'κάτω' if pct < 0 else 'πάνω'}"
+    out = f"Παρόμοια ({cmp['n']}): {where}"
     if -pct > nl_search.TOO_CHEAP:
-        return "warn", (
-            f"{_signed_pct(pct)} €/τ.μ. vs {cmp['n']} παρόμοια — ασυνήθιστα φθηνό, "
-            "έλεγξε γιατί (τ.μ., κατάσταση, νομικά)"
-        )
-    tone = "good" if pct <= -0.1 else "bad" if pct >= 0.1 else "muted"
-    conf = confidence(cmp).lower()
-    return tone, f"{_signed_pct(pct)} €/τ.μ. vs {cmp['n']} παρόμοια · {conf} αξιοπιστία"
-
-
-def _card_html(d: dict, adv: dict) -> str:
-    """Title/location, the key facts in a fixed order, rent line and badges — one block."""
-    e = html.escape
-    title = e(d.get("title") or "Αγγελία")
-    loc = f'<span class="hg-loc">{e(d["neighborhood"])}</span>' if d.get("neighborhood") else ""
-    facts = []
-    if d.get("area_m2"):
-        facts.append(f"<b>{d['area_m2']:g}</b> τ.μ.")
-    if d.get("bedrooms") is not None:
-        facts.append("Γκαρσονιέρα" if d["bedrooms"] == 0 else f"<b>{d['bedrooms']}</b> υ/δ")
-    if d.get("floor") is not None:
-        facts.append(_floor(d["floor"]))
-    if d.get("price_per_m2"):
-        facts.append(f"{eur(d['price_per_m2'])}/τ.μ.")
-    age = adv.get("age")
-    if d.get("renovated_year"):
-        facts.append(f"ανακαίνιση <b>{d['renovated_year']}</b>")
-    elif d.get("year_built"):
-        facts.append(
-            f"κατασκευή <b>{d['year_built']}</b>"
-            + (f" ({age} {'έτους' if age == 1 else 'ετών'})" if age else "")
-        )
-    badges = []
-    # Only past the default age filter (shown when the buyer relaxes it) — same 40-year line.
-    if age is not None and age > DEFAULT_AGE and not d.get("renovated_year"):
-        badges.append(("bad" if age >= 50 else "warn", f"Παλιό κτίριο — {age} ετών"))
-    if (d.get("year_built") or 0) >= date.today().year:
-        badges.append(("warn", "Νεόδμητο — έλεγξε ότι έχει παραδοθεί"))
-    elif age is None:
-        badges.append(("muted", "Έτος κατασκευής: δεν δηλώνεται"))
-    for flag in advisor.red_flags(d):
-        if not flag.startswith(("Κτίριο", "Χωρίς έτος", "Ημιτελές")):
-            badges.append(("warn", flag))
-    if cmp := adv.get("cmp"):
-        badges.append(comps_badge(cmp))
-    if twins := adv.get("twins"):
-        low = twins[0]["price"]
-        cheaper = f", φθηνότερη {eur(low)}" if low < d["price"] else ""
-        badges.append(("warn", f"Ίδιο σπίτι σε {len(twins)} ακόμα αγγελίες{cheaper}"))
-    first = d.get("first_price")
-    if d.get("price_dropped") and first and first > d["price"]:
-        badges.append(("drop", f"Μείωση από {eur(first)} (−{1 - d['price'] / first:.0%})"))
-    elif d.get("price_dropped"):
-        badges.append(("drop", "Μειώθηκε η τιμή"))
-    if d.get("is_private_seller"):
-        badges.append(("priv", "Ιδιώτης"))
-    if d.get("days_on_market"):
-        badges.append(("muted", f"{d['days_on_market']} μέρες στην αγορά"))
-    out = f'<div class="hg-head"><span class="hg-title">{title}</span>{loc}</div>'
-    if facts:
-        out += '<div class="hg-facts">' + "".join(f"<span>{f}</span>" for f in facts) + "</div>"
-    out += rent_html(d)
-    if _unfinished(d):
-        out += f'<div class="hg-note-bad">{UNFINISHED_NOTE}</div>'
-    if badges:
-        out += (
-            '<div class="hg-badges">'
-            + "".join(f'<span class="hg-b hg-b-{c}">{e(t)}</span>' for c, t in badges)
-            + "</div>"
-        )
+        out += " — έλεγξε γιατί (τ.μ., κατάσταση, νομικά)"
     return out
 
 
-def _score_html(adv: dict) -> str:
-    s = adv["score"]
-    tone = "hi" if s >= SCORE_GOOD else "mid" if s >= SCORE_MID else "lo"
+def comps_basis(d: dict, adv: dict) -> str:
+    cmp = adv.get("cmp")
+    if not cmp:
+        return (
+            f"Παρόμοια: λιγότερες από {market_intel.MIN_COMPS} αγγελίες ίδιας περιοχής, ηλικίας και μεγέθους — "
+            "δεν γίνεται σύγκριση."
+        )
     return (
-        f'<span class="hg-score hg-score-{tone}" title="{html.escape(SCORE_HELP)}">'
-        f"<small>Σκορ</small><b>{s}</b></span>"
+        f"Παρόμοια: {cmp['n']} αγγελίες ({cmp['label']}), διάμεσος "
+        f"{eur(_r(cmp['ppm'], 10))}/τ.μ.· αυτή {eur(_r(d['price_per_m2'], 10))}/τ.μ. "
+        "Ζητούμενες τιμές, όχι τιμές πώλησης."
     )
 
 
-ARROWS = {1: ("▲", "up"), -1: ("▼", "down"), 0: ("≈", "flat"), None: ("?", "flat")}
+def status(d: dict) -> tuple[str, str]:
+    """(tone, text): under construction / page read / not read yet."""
+    if _unfinished(d):
+        return "bad", "Υπό κατασκευή"
+    if d.get("page_checked"):
+        return "ok", "Ελέγχθηκε η περιγραφή"
+    return "unk", "Δεν έχει ελεγχθεί ακόμα"
 
 
-def parts_html(adv: dict) -> str:
-    """The visible score breakdown: 'τιμή vs παρόμοια ▲ · ηλικία ▼ · απόδοση ▲'."""
-    spans = [
-        f'<span class="hg-p-{ARROWS[sign][1]}">{html.escape(label)} {ARROWS[sign][0]}</span>'
-        for label, sign in adv.get("parts", [])
-    ]
-    return '<div class="hg-parts">' + "".join(spans) + "</div>" if spans else ""
+def status_basis(d: dict) -> str:
+    if _unfinished(d):
+        return "Υπό κατασκευή: το λέει η ίδια η αγγελία (τίτλος ή περιγραφή στο XE)."
+    if d.get("page_checked"):
+        when = d.get("page_checked_at")
+        on = f" στις {when:%d/%m}" if hasattr(when, "strftime") else ""
+        return (
+            f"Ελέγχθηκε η περιγραφή: διαβάσαμε τη σελίδα στο XE{on} και δεν αναφέρει κατασκευή "
+            "σε εξέλιξη. Οι φωτογραφίες δεν ελέγχονται."
+        )
+    return (
+        "Δεν έχει ελεγχθεί ακόμα: δεν έχουμε διαβάσει τη σελίδα της αγγελίας — μπορεί να είναι "
+        "υπό κατασκευή. Διάβασε την περιγραφή στο XE."
+    )
+
+
+def _year_text(d: dict) -> str:
+    built, reno = d.get("year_built"), d.get("renovated_year")
+    if not built:
+        return "έτος: δεν δηλώνεται" + (f" (ανακαίνιση {reno})" if reno else "")
+    return f"κτίριο {built}" + (f", ανακαίνιση {reno}" if reno else "")
+
+
+def _m2(v: float) -> str:
+    return f"{v:g}".replace(".", ",")
+
+
+def _join(parts: list[str]) -> str:
+    return '<span class="hg-sep"> · </span>'.join(parts)
+
+
+def card_html(d: dict, adv: dict, basis: bool = True) -> str:
+    """The card body: five fixed lines, extras, and (``basis``) the one-tap basis."""
+    e = html.escape
+    l1 = [f'<span class="hg-price">{eur(d.get("price"))}</span>']
+    if d.get("area_m2"):
+        l1.append(f"{_m2(d['area_m2'])} τ.μ.")
+    if d.get("price_per_m2"):
+        l1.append(f"{eur(d['price_per_m2'])}/τ.μ.")
+    floor = d.get("floor")
+    l2 = [_floor(floor) if floor is not None else "όροφος: δεν δηλώνεται", _year_text(d)]
+    if d.get("neighborhood"):
+        l2.append(e(d["neighborhood"]))
+    if stn := picks.station(d):
+        l2.append(f"Σταθμός {e(stn)}")
+    tone, text = status(d)
+    l3 = f'<span class="hg-st hg-st-{tone}">{text}</span>'
+    if d.get("few_photos"):
+        l3 += ' <span class="hg-st hg-st-photo">≤2 φωτογραφίες</span>'
+    extras = []
+    first = d.get("first_price")
+    if d.get("price_dropped") and first and d.get("price") and first > d["price"]:
+        extras.append(f"Μείωση από {eur(first)} (−{pct_int(1 - d['price'] / first)})")
+    elif d.get("price_dropped"):
+        extras.append("Μειώθηκε η τιμή")
+    if d.get("is_private_seller"):
+        extras.append("Ιδιώτης")
+    if d.get("days_on_market"):
+        extras.append(f"{d['days_on_market']} μέρες στην αγορά")
+    if twins := adv.get("twins"):
+        low = twins[0]["price"]
+        cheaper = f", η φθηνότερη {eur(low)}" if d.get("price") and low < d["price"] else ""
+        extras.append(f"Ίδιο σπίτι σε {len(twins)} ακόμα αγγελίες{cheaper}")
+    if d.get("energy_class"):
+        extras.append(f"Ενεργειακή κλάση {e(str(d['energy_class']).strip())}")
+    out = (
+        f'<div class="hg-card" data-lid="{d.get("id")}">'
+        f'<div class="hg-l1">{_join(l1)}</div>'
+        f'<div class="hg-l2">{_join(l2)}</div>'
+        f'<div class="hg-l3">{l3}</div>'
+        f'<div class="hg-l4">{rent_text(d)}</div>'
+        f'<div class="hg-l5">{e(comps_text(adv))}</div>'
+    )
+    if extras:
+        out += f'<div class="hg-more">{_join(extras)}</div>'
+    if basis:
+        lines = [status_basis(d), rent_basis(d)]
+        if (gy := gross_yield(d)) is not None:
+            lines.append(
+                f"Μικτή απόδοση = 12 × ενοίκιο ÷ τιμή = 12 × {eur(_r(_rent(d), 10))} ÷ "
+                f"{eur(d['price'])} = {pct1(gy)}, πριν από έξοδα και φόρους."
+            )
+        lines.append(comps_basis(d, adv))
+        out += (
+            "<details><summary>Από πού βγαίνουν</summary>"
+            + "".join(f"<p>{e(x)}</p>" for x in lines)
+            + "</details>"
+        )
+    return out + "</div>"
 
 
 def result_card(d: dict, adv: dict, k: str, actions: list, advice=None) -> None:
@@ -332,25 +425,9 @@ def result_card(d: dict, adv: dict, k: str, actions: list, advice=None) -> None:
     key = shortlist.lkey(d)
     uid = f"{k}-{d['id']}"
     with st.container(border=True, key=f"card-{uid}"):
-        if d.get("image_url"):
-            st.markdown(
-                f'<img class="hg-photo" src="{html.escape(d["image_url"])}" alt="" '
-                'loading="lazy">',
-                unsafe_allow_html=True,
-            )
-        with st.container(horizontal=True, vertical_alignment="center", wrap=False):
-            st.markdown(f"### {eur(d['price'])}", width="stretch")
-            st.markdown(_score_html(adv), unsafe_allow_html=True, width="content")
-        if parts := parts_html(adv):
-            st.markdown(parts, unsafe_allow_html=True)
-        st.markdown(_card_html(d, adv), unsafe_allow_html=True)
+        st.markdown(card_html(d, adv), unsafe_allow_html=True)
         if advice is not None:
-            st.markdown(
-                f'<div class="hg-advice hg-advice-{ADVICE_TONE[advice.label]}">'
-                f"<b>{AI_LABEL}: {html.escape(advice.label)}</b> — "
-                f"{html.escape(advice.reason)}</div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown(_advice_html(advice), unsafe_allow_html=True)
         with st.container(key=f"act-{uid}"):
             cols = st.columns(len(actions) + 1, gap="small")
             cols[0].link_button(f"Άνοιγμα στο {d['source'].upper()} ↗", d["url"], width="stretch")
@@ -363,6 +440,14 @@ def result_card(d: dict, adv: dict, k: str, actions: list, advice=None) -> None:
                     type=kind[0] if kind else "secondary",
                     width="stretch",
                 )
+
+
+def _advice_html(advice) -> str:
+    return (
+        f'<div class="hg-advice hg-advice-{ADVICE_TONE[advice.label]}">'
+        f"<b>{AI_LABEL}: {html.escape(advice.label)}</b> — "
+        f"{html.escape(advice.reason)}</div>"
+    )
 
 
 def buyer_view(d: dict, intel) -> dict:
@@ -428,7 +513,6 @@ def _run_query(text: str) -> None:
     text = text.strip()
     if not text:
         return
-    st.session_state.pop("show_all", None)
     if not has_ai():
         options = st.session_state.get("area_options", [])
         _set_query(text, local_parse(text, options))
@@ -463,28 +547,30 @@ def _example_clicked(text: str) -> None:
 
 
 def _clear_query() -> None:
-    for k in ("nl_filters", "nl_text", "nl_error", "q_text", "show_all"):
+    for k in ("nl_filters", "nl_text", "nl_error", "q_text"):
         st.session_state.pop(k, None)
     st.session_state["limit"] = PAGE_SIZE
     st.session_state["f_ver"] = st.session_state.get("f_ver", 0) + 1
 
 
-def _show_all() -> None:
-    """Drop the floor and age filters (the defaults or what the search set)."""
-    st.session_state["show_all"] = True
-    f = st.session_state.get("nl_filters")
-    if f is not None:
-        st.session_state["nl_filters"] = f.model_copy(update={"floor_min": None, "year_min": None})
-    st.session_state["f_ver"] = st.session_state.get("f_ver", 0) + 1
+def _show_all(ver: int) -> None:
+    """Drop the floor and age filters, keeping every other filter as it is on screen."""
+    st.session_state[f"fe_floor_{ver}"] = ANY_FLOOR
+    st.session_state[f"fe_age_{ver}"] = ANY_AGE
+
+
+def _include_undeclared(ver: int) -> None:
+    st.session_state[f"fe_undecl_{ver}"] = True
 
 
 def _more() -> None:
     st.session_state["limit"] = st.session_state.get("limit", PAGE_SIZE) + PAGE_SIZE
 
 
-FLOORS = {"Οποιοσδήποτε": None, "Από 1ο": 1, "Από 2ο": 2, "Από 3ο": 3, "Από 4ο": 4}
+ANY_FLOOR, ANY_AGE = "Οποιοσδήποτε", "Οποιαδήποτε"
+FLOORS = {ANY_FLOOR: None, "Από 1ο": 1, "Από 2ο": 2, "Από 3ο": 3, "Από 4ο": 4}
 AGES = {
-    "Οποιαδήποτε": None,
+    ANY_AGE: None,
     "Έως 10 ετών": 10,
     "Έως 20 ετών": 20,
     "Έως 30 ετών": 30,
@@ -510,20 +596,69 @@ def area_name(d: dict) -> str:
 
 def _area_hit(d: dict, areas: list[str]) -> bool:
     """Whether ``d`` is in one of ``areas``: a central-Athens quarter by its own name (or by
-    'Αθήνα'), anything else by the usual location rule of ``nl_search.match``."""
+    'Αθήνα'), anything else by the usual location rule of ``nl_search``."""
     if not areas:
         return True
     name, m = area_name(d), municipality(d)
     if name != m:
         return any(nl_search.area_matches(a, name) or nl_search.area_matches(a, m) for a in areas)
-    probe = SearchFilters(areas=areas, include_unfinished=True)
-    return nl_search.match(d, probe) is not None
+    return nl_search.why_hidden(d, SearchFilters(areas=areas, include_unfinished=True)) != "area"
+
+
+def _strategy_excluded(d: dict) -> bool:
+    """Excluded by the thesis for a reason the search filters do not cover. The ground/low
+    floor exclusion is left to the floor filter, so «Όροφος: Οποιοσδήποτε» really shows them."""
+    if not d.get("excluded"):
+        return False
+    low = d.get("floor") is not None and d["floor"] < 1
+    return not (low and str(d.get("exclusion_reason") or "ground").startswith("ground"))
+
+
+def hide_reason(d: dict, f: SearchFilters) -> str | None:
+    """Why the search page hides ``d`` (a ``HIDE_LABEL`` key), or None when it is shown.
+    A listing failing several filters counts under the first, in ``HIDE_LABEL`` order."""
+    if f.areas and not _area_hit(d, f.areas):
+        return "area"
+    if _strategy_excluded(d):
+        return "not_home"
+    if d.get("is_suspect"):
+        return "suspect"
+    return nl_search.why_hidden(d, f.model_copy(update={"areas": []}))
 
 
 def match(d: dict, f: SearchFilters):
-    """``nl_search.match`` with the area part done by ``_area_hit`` (Athens quarters)."""
-    hit = nl_search.match(d, f.model_copy(update={"areas": []}))
-    return hit if hit is not None and _area_hit(d, f.areas) else None
+    """``nl_search.match`` with the search page's own rules (``hide_reason``)."""
+    if hide_reason(d, f) is not None:
+        return None
+    return nl_search.match(d, f.model_copy(update={"areas": []}))
+
+
+def hide_labels(f: SearchFilters) -> dict[str, str]:
+    """Reason code → how the "Κρύβονται" line names it, in counting order."""
+    floor = f.floor_min or 0
+    return {
+        "area": "εκτός περιοχής",
+        "not_home": "όχι κατοικία (κτίριο, οικόπεδο, γραφείο)",
+        "suspect": "με στοιχεία που δεν στέκουν (π.χ. τ.μ. όλου του κτιρίου)",
+        "price": "εκτός τιμής",
+        "size": "εκτός τ.μ.",
+        "bedrooms": "άλλος αριθμός υπνοδωματίων",
+        "kind": "άλλος τύπος ακινήτου",
+        "private": "από μεσίτη",
+        "unfinished": "υπό κατασκευή",
+        "floor": "ισόγεια/υπόγεια" if floor <= 1 else f"κάτω από {floor:g}ο όροφο",
+        "year": f"κτίριο πριν το {f.year_min}",
+        "undeclared": "χωρίς δηλωμένο όροφο/έτος",
+    }
+
+
+def hidden_counts(pool: list[dict], f: SearchFilters) -> dict[str, int]:
+    """How many of ``pool`` each reason hides (zero reasons left out)."""
+    counts: dict[str, int] = {}
+    for d in pool:
+        if (why := hide_reason(d, f)) is not None:
+            counts[why] = counts.get(why, 0) + 1
+    return {k: counts[k] for k in hide_labels(f) if counts.get(k)}
 
 
 def _municipality_counts(pool: list[dict]) -> dict[str, int]:
@@ -541,12 +676,24 @@ def _municipality_counts(pool: list[dict]) -> dict[str, int]:
     return counts
 
 
+def _with(options: dict, value, label: str) -> dict:
+    """``options`` plus ``label`` for ``value`` when no option holds it — so a floor or year
+    the search set (e.g. "from 2015") is shown and applied, never silently reset to "any"."""
+    if value is None or value in options.values():
+        return options
+    return {**options, label: value}
+
+
 def _key_of(options: dict, value) -> str:
     return next((k for k, v in options.items() if v == value), next(iter(options)))
 
 
+def _num(n: int) -> str:
+    return f"{n:,}".replace(",", ".")
+
+
 def _filter_editor(f: SearchFilters, pool: list[dict]) -> SearchFilters:
-    """Every filter on screen, pre-filled from the search (or the defaults)."""
+    """Every filter, pre-filled from the search (or the defaults), in one expander."""
     ver = st.session_state.get("f_ver", 0)
     year = date.today().year
     counts = _municipality_counts(pool)
@@ -558,59 +705,65 @@ def _filter_editor(f: SearchFilters, pool: list[dict]) -> SearchFilters:
         if o not in picked:
             picked.append(o)
     options += [a for a in picked if a not in counts]
-    relaxed = st.session_state.get("show_all", False)
-    floor = f.floor_min if f.floor_min is not None else (None if relaxed else DEFAULT_FLOOR)
-    age = year - f.year_min if f.year_min else (None if relaxed else DEFAULT_AGE)
-    with st.container(border=True, key="filters"):
-        c1, c2, c3 = st.columns([3, 1, 1])
-        areas = c1.multiselect(
-            "Περιοχή",
-            options,
-            default=picked,
-            format_func=lambda m: f"{m} ({counts[m]})" if m in counts else m,
-            placeholder="Όλες οι περιοχές",
-            key=f"fe_areas_{ver}",
-        )
-        pmax = c2.number_input(
-            "Τιμή έως (€)",
-            0,
-            5_000_000,
-            int(f.price_max or 0),
-            10_000,
-            key=f"fe_pmax_{ver}",
-            help="0 = χωρίς όριο",
-        )
-        amin = c3.number_input(
-            "Από τ.μ.",
-            0,
-            1000,
-            int(f.area_min or 0),
-            5,
-            key=f"fe_amin_{ver}",
-            help="0 = χωρίς όριο",
-        )
-        c4, c5, c6 = st.columns(3)
-        cur = next((n for n, v in BEDROOMS.items() if v == (f.bedrooms_min, f.bedrooms_max)), "Όλα")
-        beds = c4.selectbox(
-            "Υπνοδωμάτια", list(BEDROOMS), index=list(BEDROOMS).index(cur), key=f"fe_beds_{ver}"
-        )
-        floor_lbl = c5.selectbox(
-            "Όροφος",
-            list(FLOORS),
-            index=list(FLOORS).index(_key_of(FLOORS, floor)),
-            key=f"fe_floor_{ver}",
-            help="Αγγελίες χωρίς δηλωμένο όροφο (συνήθως ισόγεια) κρύβονται όταν βάλεις όροφο.",
-        )
-        age_lbl = c6.selectbox(
-            "Ηλικία κτιρίου",
-            list(AGES),
-            index=list(AGES).index(_key_of(AGES, age)),
-            key=f"fe_age_{ver}",
-            help="Από το έτος κατασκευής ή ανακαίνισης. Αγγελίες χωρίς έτος κρύβονται.",
-        )
-        more = bool(f.kinds or f.wants or f.private_only or f.include_unfinished)
-        with st.expander("Περισσότερα φίλτρα", expanded=more):
-            c7, c8 = st.columns(2)
+    # The defaults apply until the buyer changes them on screen (a new search restores them).
+    floor = f.floor_min if f.floor_min is not None else DEFAULT_FLOOR
+    age = year - f.year_min if f.year_min else DEFAULT_AGE
+    floors = _with(FLOORS, floor, f"Από {floor or 0:g}ο")
+    ages = _with(AGES, age, f"Κτίριο από {year - (age or 0)}")
+    with st.expander("Φίλτρα: περιοχή, τιμή, όροφος, ηλικία κτιρίου", key="filters_box"):
+        with st.container(key="filters"):
+            areas = st.multiselect(
+                "Περιοχή",
+                options,
+                default=picked,
+                format_func=lambda m: f"{m} ({counts[m]})" if m in counts else m,
+                placeholder="Όλες οι περιοχές",
+                key=f"fe_areas_{ver}",
+            )
+            c2, c3 = st.columns(2)
+            pmax = c2.number_input(
+                "Τιμή έως (€)",
+                0,
+                5_000_000,
+                int(f.price_max or 0),
+                10_000,
+                key=f"fe_pmax_{ver}",
+                help="0 = χωρίς όριο",
+            )
+            amin = c3.number_input(
+                "Από τ.μ.",
+                0,
+                1000,
+                int(f.area_min or 0),
+                5,
+                key=f"fe_amin_{ver}",
+                help="0 = χωρίς όριο",
+            )
+            c5, c6 = st.columns(2)
+            # Pre-filled through session state (not ``index=``) so «Δείξε όλες» and
+            # «Δείξε και αυτές» can set these widgets without Streamlit's double-value warning.
+            st.session_state.setdefault(f"fe_floor_{ver}", _key_of(floors, floor))
+            st.session_state.setdefault(f"fe_age_{ver}", _key_of(ages, age))
+            st.session_state.setdefault(f"fe_undecl_{ver}", f.include_undeclared)
+            floor_lbl = c5.selectbox("Όροφος", list(floors), key=f"fe_floor_{ver}")
+            age_lbl = c6.selectbox(
+                "Ηλικία κτιρίου",
+                list(ages),
+                key=f"fe_age_{ver}",
+                help="Από το έτος κατασκευής του κτιρίου (όχι της ανακαίνισης).",
+            )
+            undeclared = st.checkbox(
+                "Και αγγελίες χωρίς δηλωμένο όροφο/έτος",
+                key=f"fe_undecl_{ver}",
+                help="Μετρά μόνο όταν έχεις βάλει όροφο ή ηλικία. Συχνά είναι ισόγεια.",
+            )
+            c4, c7 = st.columns(2)
+            cur = next(
+                (n for n, v in BEDROOMS.items() if v == (f.bedrooms_min, f.bedrooms_max)), "Όλα"
+            )
+            beds = c4.selectbox(
+                "Υπνοδωμάτια", list(BEDROOMS), index=list(BEDROOMS).index(cur), key=f"fe_beds_{ver}"
+            )
             kinds = c7.multiselect(
                 "Τύπος",
                 list(nl_search.KIND_LABEL),
@@ -619,25 +772,25 @@ def _filter_editor(f: SearchFilters, pool: list[dict]) -> SearchFilters:
                 placeholder="Όλοι",
                 key=f"fe_kinds_{ver}",
             )
-            wants = c8.multiselect(
+            wants = st.multiselect(
                 "Να έχει",
                 list(nl_search.WANT_LABEL),
                 default=f.wants,
                 format_func=lambda k: nl_search.WANT_LABEL.get(k, k),
                 placeholder="π.χ. ανελκυστήρα, πάρκινγκ",
                 key=f"fe_wants_{ver}",
+                help="Δεν κρύβει αγγελίες: όσες το αναφέρουν στον τίτλο ανεβαίνουν.",
             )
-            c9, c10 = st.columns(2)
-            priv = c9.checkbox("Μόνο από ιδιώτη", f.private_only, key=f"fe_priv_{ver}")
-            unfinished = c10.checkbox(
-                "Και ημιτελή κτίρια",
+            priv = st.checkbox("Μόνο από ιδιώτη", f.private_only, key=f"fe_priv_{ver}")
+            unfinished = st.checkbox(
+                "Και κτίρια υπό κατασκευή",
                 f.include_unfinished,
                 key=f"fe_unf_{ver}",
-                help="Εμφανίζονται σημειωμένα και με χαμηλό σκορ: θέλουν επιπλέον κεφάλαιο "
-                "πριν νοικιαστούν.",
+                help="Εμφανίζονται σημειωμένα και στο τέλος: θέλουν επιπλέον κεφάλαιο πριν "
+                "νοικιαστούν.",
             )
     bmin, bmax = BEDROOMS[beds]
-    max_age = AGES[age_lbl]
+    max_age = ages[age_lbl]
     return f.model_copy(
         update={
             "price_max": int(pmax) or None,
@@ -645,12 +798,13 @@ def _filter_editor(f: SearchFilters, pool: list[dict]) -> SearchFilters:
             "bedrooms_min": bmin,
             "bedrooms_max": bmax,
             "areas": areas,
-            "floor_min": FLOORS[floor_lbl],
+            "floor_min": floors[floor_lbl],
             "year_min": year - max_age if max_age else None,
             "kinds": kinds,
             "wants": wants,
             "private_only": priv,
             "include_unfinished": unfinished,
+            "include_undeclared": undeclared,
         }
     )
 
@@ -676,22 +830,24 @@ def _understood_html(f: SearchFilters) -> str:
     return f'<div class="hg-understood"><b>Αναζήτηση για:</b>{chips}</div>'
 
 
-def _hidden_note(f: SearchFilters) -> str:
-    """What the floor/age filters hide, in words: '(ισόγεια ή χωρίς όροφο, πάνω από 40 ετών…)'."""
-    why = []
-    if f.floor_min is not None:
-        low = "ισόγεια/υπόγεια" if f.floor_min <= 1 else f"κάτω από {f.floor_min:g}ο όροφο"
-        why.append(f"{low} ή χωρίς δηλωμένο όροφο")
-    if f.year_min:
-        why.append(f"πάνω από {date.today().year - f.year_min} ετών ή χωρίς έτος")
-    return ", ".join(why)
+def hidden_line(counts: dict[str, int], f: SearchFilters) -> str:
+    """'Κρύβονται 1.234 αγγελίες: 800 εκτός περιοχής · 300 ισόγεια/υπόγεια · …'."""
+    labels = hide_labels(f)
+    shown = {k: n for k, n in counts.items() if k != "undeclared"}
+    total = sum(shown.values())
+    if not total:
+        return ""
+    word = "αγγελία" if total == 1 else "αγγελίες"
+    verb = "Κρύβεται" if total == 1 else "Κρύβονται"
+    parts = " · ".join(f"{_num(n)} {labels[k]}" for k, n in shown.items())
+    return f"{verb} {_num(total)} {word}: {parts}."
 
 
 def _apply_area_pick() -> None:
     """Another page sent the buyer here for one area (session key ``area_pick``)."""
     pick = st.session_state.pop("area_pick", None)
     if pick:
-        for k in ("nl_text", "nl_error", "q_text", "show_all"):
+        for k in ("nl_text", "nl_error", "q_text"):
             st.session_state.pop(k, None)
         st.session_state["nl_filters"] = SearchFilters(areas=[pick])
         st.session_state["f_ver"] = st.session_state.get("f_ver", 0) + 1
@@ -699,15 +855,15 @@ def _apply_area_pick() -> None:
 
 
 def page_search(listings: list[dict]) -> None:
+    _css()
     _show_flash()
     _apply_area_pick()
     ai = has_ai()
+    base = st.session_state.get("nl_filters")
+    asked = base is not None
     with st.container(key="hero"):
-        st.markdown("## Διαμέρισμα για επένδυση και ενοικίαση")
-        st.caption(
-            "Αγγελίες πώλησης από το XE.gr. Για κάθε σπίτι: ζητούμενη τιμή σε σχέση με παρόμοια, "
-            "εκτίμηση ενοικίου και τι κοστίζει η αγορά. Δεν είναι εκτίμηση αξίας."
-        )
+        st.markdown("## Διαμέρισμα για επένδυση")
+        st.caption("Αγγελίες πώλησης από το XE.gr. Ζητούμενες τιμές, όχι τιμές πώλησης.")
         with st.form("search_form", border=False):
             c1, c2 = st.columns([5, 1], vertical_alignment="bottom")
             text = c1.text_input(
@@ -719,42 +875,40 @@ def page_search(listings: list[dict]) -> None:
             )
             submitted = c2.form_submit_button("Αναζήτηση", type="primary", width="stretch")
         if not ai:
-            st.caption(
-                "Το κείμενο διαβάζεται απλά: περιοχή, τιμή, τ.μ., δυάρι/τριάρι. Τα υπόλοιπα "
-                "ρύθμισέ τα στα φίλτρα από κάτω."
-            )
-        with st.container(key="examples", horizontal=True, gap="small"):
-            st.markdown(
-                '<span class="hg-try">Δοκίμασε:</span>', unsafe_allow_html=True, width="content"
-            )
-            for i, (label, q) in enumerate(EXAMPLES.items()):
-                st.button(label, key=f"ex{i}", on_click=_example_clicked, args=(q,))
+            st.caption("Από το κείμενο διαβάζονται περιοχή, τιμή, τ.μ., δυάρι/τριάρι.")
+        if not asked:
+            with st.container(key="examples", horizontal=True, gap="small"):
+                st.markdown(
+                    '<span class="hg-try">Δοκίμασε:</span>', unsafe_allow_html=True, width="content"
+                )
+                for i, (label, q) in enumerate(EXAMPLES.items()):
+                    st.button(label, key=f"ex{i}", on_click=_example_clicked, args=(q,))
     if submitted:
         if text.strip():
             _run_query(text)
+            st.rerun()
         else:
             st.session_state["nl_error"] = "Γράψε πρώτα τι σπίτι ψάχνεις."
     if st.session_state.get("nl_error"):
         st.error(st.session_state["nl_error"])
 
-    base = st.session_state.get("nl_filters")
-    asked = base is not None
     stale_ok = st.session_state.get("include_stale", False)
-    pool = nl_search.candidates(listings, include_stale=stale_ok)
+    pool = [d for d in listings if stale_ok or d.get("is_fresh", True)]
+    c1, c2 = st.columns([5, 1], vertical_alignment="center")
+    understood = c1.empty()
     if asked:
-        c1, c2 = st.columns([5, 1], vertical_alignment="center")
-        understood = c1.empty()
         c2.button("Καθαρισμός", key="clear_q", on_click=_clear_query, width="stretch")
     f = _filter_editor(base or SearchFilters(), pool)
-    if asked:
-        understood.markdown(_understood_html(f), unsafe_allow_html=True)
+    understood.markdown(_understood_html(f), unsafe_allow_html=True)
 
     intel = market_intel.build(listings)
     hits = [(m, d, buyer_view(d, intel)) for d in pool if (m := match(d, f))]
-    n = f"{len(hits):,}".replace(",", ".")
-    top = st.columns([4, 3, 3], vertical_alignment="center")
+    counts = hidden_counts(pool, f)
+    verdicts = {}
+    top = st.columns([3, 3, 3], vertical_alignment="center")
     top[0].markdown(
-        f'<div class="hg-count"><b>{n}</b> {"αγγελία" if len(hits) == 1 else "αγγελίες"}</div>',
+        f'<div class="hg-count"><b>{_num(len(hits))}</b> '
+        f'{"αγγελία" if len(hits) == 1 else "αγγελίες"}</div>',
         unsafe_allow_html=True,
     )
     sort = top[1].selectbox("Ταξινόμηση", list(SORTS), key="sort", label_visibility="collapsed")
@@ -765,21 +919,34 @@ def page_search(listings: list[dict]) -> None:
         args=(st.session_state.get("nl_text") or nl_search.describe(f), f),
         width="stretch",
     )
-    st.caption(SCORE_LEGEND, help=SCORE_HELP)
-    if f.floor_min is not None or f.year_min:
-        loose = f.model_copy(update={"floor_min": None, "year_min": None})
-        hidden = sum(1 for d in pool if match(d, loose)) - len(hits)
-        if hidden > 0:
-            c1, c2 = st.columns([4, 1], vertical_alignment="center")
-            num = f"{hidden:,}".replace(",", ".")
-            c1.caption(f"Κρύβονται {num} αγγελίες ({_hidden_note(f)}).")
-            c2.button("Δείξε όλες", key="show_all_btn", on_click=_show_all, width="stretch")
+    ver = st.session_state.get("f_ver", 0)
+    if line := hidden_line(counts, f):
+        st.caption(line)
+        if counts.get("floor") or counts.get("year"):
+            back = counts.get("floor", 0) + counts.get("year", 0) + counts.get("undeclared", 0)
+            st.button(
+                f"Δείξε όλες, χωρίς φίλτρο ορόφου/ηλικίας (+{_num(back)})",
+                key="show_all_btn",
+                on_click=_show_all,
+                args=(ver,),
+                width="stretch",
+            )
+    if n := counts.get("undeclared"):
+        c1, c2 = st.columns([3, 2], vertical_alignment="center")
+        c1.caption(f"{_num(n)} {'αγγελία' if n == 1 else 'αγγελίες'} χωρίς δηλωμένο όροφο/έτος.")
+        c2.button(
+            "Δείξε και αυτές",
+            key="undecl_btn",
+            on_click=_include_undeclared,
+            args=(ver,),
+            width="stretch",
+        )
+    if sort == "Προτεινόμενη":
+        st.caption(SUGGESTED_HELP)
     stale = sum(1 for d in listings if not d.get("is_fresh", True))
     if stale:
         st.checkbox(
-            f"Δείξε και {stale:,} παλαιότερες αγγελίες (μπορεί να έχουν ήδη πουληθεί)".replace(
-                ",", "."
-            ),
+            f"Δείξε και {_num(stale)} παλαιότερες αγγελίες (μπορεί να έχουν ήδη πουληθεί)",
             key="include_stale",
         )
     named = [a for a in f.areas if not a.isascii()] or f.areas  # "Χολαργός" over "Cholargos"
@@ -801,7 +968,7 @@ def page_search(listings: list[dict]) -> None:
     if st.toggle("Χάρτης αποτελεσμάτων", key="show_map"):
         from scout.ui import components
 
-        rows = [{**d, "score": adv["score"]} for _, d, adv in hits]  # the card score
+        rows = [{**d, "score": adv["score"]} for _, d, adv in hits]
         components.results_map(rows, key="search-map", height=380)
     limit = st.session_state.get("limit", PAGE_SIZE)
     for _m, d, adv in hits[:limit]:
@@ -814,7 +981,7 @@ def page_search(listings: list[dict]) -> None:
         )
     if len(hits) > limit:
         st.button(
-            f"Δείξε περισσότερες ({len(hits) - limit} ακόμα)",
+            f"Δείξε περισσότερες ({_num(len(hits) - limit)} ακόμα)",
             key="more",
             on_click=_more,
             width="stretch",
@@ -904,10 +1071,11 @@ def _delete_mandate(mandate_id: int) -> None:
 
 
 def page_shortlist(listings: list[dict]) -> None:
+    _css()
     st.markdown("## Αποθηκευμένες αναζητήσεις")
     st.caption(
-        "Για κάθε αναζήτηση που αποθήκευσες, οι νέες αγγελίες με το καλύτερο σκορ. Η έγκριση "
-        "τη βάζει στα αγαπημένα."
+        "Για κάθε αναζήτηση που αποθήκευσες, οι νέες αγγελίες που ταιριάζουν. Η έγκριση τη "
+        "βάζει στα αγαπημένα."
     )
     _show_flash()
     try:
@@ -925,7 +1093,7 @@ def page_shortlist(listings: list[dict]) -> None:
         return
     intel = market_intel.build(listings)
     for m in mandates:
-        picks = shortlist.pick(m.filters, listings, m.approved | m.rejected)
+        found = shortlist.pick(m.filters, listings, m.approved | m.rejected)
         with st.expander(
             f"{m.text}  ·  εγκρίθηκαν {len(m.approved)}  ·  απορρίφθηκαν {len(m.rejected)}",
             expanded=True,
@@ -934,13 +1102,13 @@ def page_shortlist(listings: list[dict]) -> None:
             st.button(
                 "Διαγραφή αναζήτησης", key=f"del{m.id}", on_click=_delete_mandate, args=(m.id,)
             )
-            if not picks:
+            if not found:
                 st.write("Καμία νέα αγγελία αυτή τη στιγμή.")
-            for d, _adv, _reasons in picks:
+            for d, _adv, _reasons in found:
                 key = shortlist.lkey(d)
                 result_card(
                     d,
-                    buyer_view(d, intel),  # the same score as everywhere else
+                    buyer_view(d, intel),
                     f"m{m.id}",
                     [
                         ("Λεπτομέρειες", open_detail, (d["id"],)),
@@ -954,52 +1122,43 @@ def page_shortlist(listings: list[dict]) -> None:
 
 
 def page_watchlist(listings: list[dict]) -> None:
-    st.markdown("## Αγαπημένα")
+    _css()
     _show_flash()
     keys = watch_keys()
+    starred = [d for d in listings if shortlist.lkey(d) in keys]
+    st.markdown(f"## Αγαπημένα ({len(starred)})" if starred else "## Αγαπημένα")
     if not st.session_state.get("watch_persisted"):
         st.caption(SESSION_ONLY)
-    starred = [d for d in listings if shortlist.lkey(d) in keys]
     if not starred:
         st.info("Δεν έχεις αγαπημένα ακόμα. Πάτα «☆ Αγαπημένο» σε μια αγγελία.")
         return
-    prices = [d["price"] for d in starred if d.get("price")]
-    ppm = [d["price_per_m2"] for d in starred if d.get("price_per_m2")]
-    c = st.columns(3)
-    c[0].metric("Αγαπημένα", len(starred))
-    c[1].metric("Σύνολο τιμών", eur(sum(prices)) if prices else "—")
-    c[2].metric("Διάμεσο €/τ.μ.", eur(statistics.median(ppm)) if ppm else "—")
-    st.caption(SCORE_LEGEND, help=SCORE_HELP)
     intel = market_intel.build(listings)
     views = [(d, buyer_view(d, intel)) for d in starred]
-    for d, adv in sorted(views, key=lambda v: (_unfinished(v[0]), -v[1]["score"])):
+    views.sort(key=lambda v: SORTS["Προτεινόμενη"](100, v[1], v[0]))
+    st.caption(SUGGESTED_HELP)
+    for d, adv in views:
         result_card(d, adv, "w", [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)])
 
 
 # ---- one listing ---------------------------------------------------------------------------
 
 
-def _listing_link_table(rows: list[dict]) -> None:
-    import pandas as pd
-
-    table = pd.DataFrame(
-        {
-            "Αγγελία": d.get("url") or "",
-            "Τιμή": eur(d.get("price")),
-            "€/τ.μ.": eur(d.get("price_per_m2")),
-            "τ.μ.": f"{d['area_m2']:g}" if d.get("area_m2") else "—",
-            "Όροφος": _floor(d["floor"]) if d.get("floor") is not None else "—",
-            "Έτος": str(d.get("year_built") or "—"),
-            "Περιοχή": d.get("neighborhood") or "—",
-        }
-        for d in rows
-    )
-    st.dataframe(
-        table,
-        hide_index=True,
-        width="stretch",
-        column_config={"Αγγελία": st.column_config.LinkColumn("Αγγελία", display_text="Άνοιγμα ↗")},
-    )
+def _listing_lines(rows: list[dict]) -> None:
+    """Other listings as one short line each (a link to the portal) — no wide table."""
+    lines = []
+    for d in rows:
+        parts = [eur(d.get("price"))]
+        if d.get("area_m2"):
+            parts.append(f"{_m2(d['area_m2'])} τ.μ.")
+        if d.get("price_per_m2"):
+            parts.append(f"{eur(d['price_per_m2'])}/τ.μ.")
+        if d.get("floor") is not None:
+            parts.append(_floor(d["floor"]))
+        if d.get("year_built"):
+            parts.append(str(d["year_built"]))
+        text = " · ".join(parts).replace("[", "(").replace("]", ")")
+        lines.append(f"- [{text} ↗]({d['url']})" if d.get("url") else f"- {text}")
+    st.markdown("\n".join(lines))
 
 
 def _ask_listing(d: dict, adv: dict, intel) -> None:
@@ -1032,58 +1191,52 @@ def position_bar(ppm: float, cmp: dict) -> str:
     )
 
 
-def _comparison_section(d: dict, cmp: dict | None) -> None:
-    st.markdown("#### Σε σύγκριση με παρόμοια σπίτια")
+def _comparison_section(d: dict, adv: dict) -> None:
+    cmp = adv.get("cmp")
+    st.markdown("#### " + comps_text(adv))
     if not cmp:
-        st.caption("Δεν υπάρχουν αρκετά παρόμοια (ίδια περιοχή και ηλικία) για σύγκριση.")
+        st.caption(comps_basis(d, adv))
         return
-    ppm = d["price_per_m2"]
-    c = st.columns(3)
-    # ASCII minus so st.metric reads the sign; inverse: cheaper = green, pointing down.
-    c[0].metric(
-        "Αυτό (ζητούμενη)",
-        f"{eur(_r(ppm, 10))}/τ.μ.",
-        delta=f"{cmp['pct']:+.0%} vs διάμεσο",
-        delta_color="inverse",
-    )
-    c[1].metric("Διάμεσος παρόμοιων", f"{eur(_r(cmp['ppm'], 10))}/τ.μ.")
-    c[2].metric(
-        "Μεσαίο 50% παρόμοιων",
-        f"{eur(_r(cmp['p25'], 10))}–{eur(_r(cmp['p75'], 10))}/τ.μ.".replace(" €–", "–"),
-    )
-    st.markdown(position_bar(ppm, cmp), unsafe_allow_html=True)
+    st.markdown(position_bar(d["price_per_m2"], cmp), unsafe_allow_html=True)
     st.caption(
-        f"Βάση: {cmp['n']} παρόμοια ({cmp['label']}) · αξιοπιστία {confidence(cmp)}. "
-        "Ζητούμενες τιμές αγγελιών, όχι τιμές πώλησης.",
+        f"{comps_basis(d, adv)} Αξιοπιστία σύγκρισης: {confidence(cmp)}.",
         help=CONF_HELP,
     )
     with st.expander(f"Τα {cmp['n']} παρόμοια"):
-        _listing_link_table(cmp["rows"])
+        _listing_lines(cmp["rows"])
+
+
+def _description_section(d: dict) -> None:
+    """«Τι λέει η αγγελία»: the listing's own text when we have read it."""
+    st.markdown("#### Τι λέει η αγγελία")
+    text = (d.get("description") or "").strip()
+    if text:
+        cut = text if len(text) <= 600 else text[:600].rsplit(" ", 1)[0] + " …"
+        st.markdown(f'<div class="hg-desc">{html.escape(cut)}</div>', unsafe_allow_html=True)
+        st.caption("Από τη σελίδα της αγγελίας στο XE.")
+    elif d.get("page_checked"):
+        st.caption(
+            "Η σελίδα διαβάστηκε μόνο για «υπό κατασκευή»· το κείμενό της δεν έχει κρατηθεί. "
+            "Διάβασέ το στο XE."
+        )
+    else:
+        st.caption("Δεν έχουμε διαβάσει ακόμα τη σελίδα της αγγελίας.")
 
 
 def _rent_section(d: dict) -> None:
     """Rent basis, gross yield with its formula, and a net-yield calculator."""
-    st.markdown("#### Απόδοση ενοικίου")
+    st.markdown("#### Ενοίκιο και απόδοση")
     gy = gross_yield(d)
     if gy is None:
-        st.caption("Δεν υπάρχει εκτίμηση ενοικίου για αυτή την αγγελία (λείπουν τα τ.μ.).")
+        st.caption(rent_basis(d))
         return
     price = d["price"]
-    rent = d.get("listed_rent") or d.get("est_monthly_rent")
+    rent = _rent(d)
     area = d.get("area_m2")
-    if d.get("listed_rent"):
-        basis = "Ενοίκιο που αναφέρει η αγγελία (το ακίνητο είναι νοικιασμένο)."
-    elif d.get("rent_estimated", True):
-        per = f" (~{rent / area:.0f} €/τ.μ. τον μήνα × {area:g} τ.μ.)" if area else ""
-        basis = f"Εκτίμηση από το διάμεσο ενοίκιο της περιοχής{per} — όχι πραγματικό ενοίκιο."
-    else:
-        basis = "Εκτίμηση από αγγελίες ενοικίασης παρόμοιων σπιτιών της περιοχής."
-    c = st.columns(2)
-    c[0].metric("Ενοίκιο", f"~{eur(_r(rent, 10))}/μήνα")
-    c[1].metric("Μικτή απόδοση", pct1(gy), help="12 × ενοίκιο ÷ τιμή, πριν από έξοδα και φόρους.")
+    st.markdown(rent_text(d))
     st.caption(
-        f"{basis} Μικτή απόδοση = 12 × ενοίκιο ÷ τιμή = 12 × {eur(rent)} ÷ {eur(price)} "
-        f"= {pct1(gy)}."
+        f"{rent_basis(d)} Μικτή απόδοση = 12 × ενοίκιο ÷ τιμή = 12 × {eur(_r(rent, 10))} ÷ "
+        f"{eur(price)} = {pct1(gy)}."
     )
 
     private = bool(d.get("is_private_seller"))
@@ -1093,20 +1246,21 @@ def _rent_section(d: dict) -> None:
     lid = d["id"]
     with st.container(border=True, key=f"netcalc-{lid}"):
         st.markdown("**Καθαρή απόδοση** — άλλαξε τις παραδοχές")
-        r1 = st.columns(3)
+        r1 = st.columns(2)
         rent_in = r1[0].number_input(
             "Ενοίκιο €/μήνα", 0, 20_000, _r(rent, 10), 10, key=f"nc_rent_{lid}"
         )
         common = r1[1].number_input(
-            "Κοινόχρηστα €/μήνα",
+            "Κοινόχρηστα που πληρώνεις εσύ €/μήνα",
             0,
             2_000,
             0,
             5,
             key=f"nc_common_{lid}",
-            help="Συνήθως τα πληρώνει ο ενοικιαστής· βάλε ποσό αν τα καλύπτεις εσύ.",
+            help="Συνήθως τα πληρώνει ο ενοικιαστής.",
         )
-        enfia = r1[2].number_input(
+        r2 = st.columns(2)
+        enfia = r2[0].number_input(
             "ΕΝΦΙΑ €/έτος",
             0,
             20_000,
@@ -1115,9 +1269,9 @@ def _rent_section(d: dict) -> None:
             key=f"nc_enfia_{lid}",
             help="Πρόχειρα ~4 €/τ.μ. τον χρόνο· το πραγματικό ποσό είναι στο εκκαθαριστικό.",
         )
-        r2 = st.columns(3)
-        vacant = r2[0].number_input("Μήνες κενό/έτος", 0, 12, 1, 1, key=f"nc_vac_{lid}")
-        tax = r2[1].number_input(
+        vacant = r2[1].number_input("Μήνες κενό ανά έτος", 0, 12, 1, 1, key=f"nc_vac_{lid}")
+        r3 = st.columns(2)
+        tax = r3[0].number_input(
             "Φόρος ενοικίου %",
             0,
             60,
@@ -1126,12 +1280,12 @@ def _rent_section(d: dict) -> None:
             key=f"nc_tax_{lid}",
             help="15% έως 12.000 €/έτος, 35% για 12.001–35.000 €, 45% πάνω από 35.000 €.",
         )
-        upkeep = r2[2].number_input("Συντήρηση % ενοικίου", 0, 50, 8, 1, key=f"nc_upkeep_{lid}")
+        upkeep = r3[1].number_input("Συντήρηση % του ενοικίου", 0, 50, 8, 1, key=f"nc_upkeep_{lid}")
         income = rent_in * (12 - vacant)
         net = income * (1 - tax / 100 - upkeep / 100) - common * 12 - enfia
         total = price + acq["total_fees"]
         st.markdown(
-            f"Καθαρό ετήσιο ≈ **{eur(_r(net, 100))}** · καθαρή απόδοση ≈ **{pct1(net / total)}** "
+            f"Καθαρό ετήσιο ≈ **{eur(_r(net, 100))}** · Καθαρή απόδοση ≈ **{pct1(net / total)}** "
             f"στο συνολικό κόστος αγοράς {eur(_r(total, 100))}"
         )
         st.caption(
@@ -1139,11 +1293,11 @@ def _rent_section(d: dict) -> None:
             "− ΕΝΦΙΑ. Καθαρή απόδοση = καθαρό ÷ (τιμή + έξοδα αγοράς). Χωρίς δάνειο και ασφάλιση."
         )
     lines = [
-        ("Φόρος μεταβίβασης 3,09%", acq["transfer_tax"]),
-        ("Συμβολαιογράφος ~1,5%", acq["notary"]),
-        ("Κτηματολόγιο ~0,5%", acq["land_registry"]),
-        ("Δικηγόρος ~1%", acq["legal"]),
-        ("Μεσίτης ~2,48%" if not private else "Μεσίτης (ιδιώτης: 0)", acq["agent"]),
+        ("Φόρος μεταβίβασης 3,09 %", acq["transfer_tax"]),
+        ("Συμβολαιογράφος ~1,5 %", acq["notary"]),
+        ("Κτηματολόγιο ~0,5 %", acq["land_registry"]),
+        ("Δικηγόρος ~1 %", acq["legal"]),
+        ("Μεσίτης ~2,48 %" if not private else "Μεσίτης (ιδιώτης: 0)", acq["agent"]),
     ]
     st.markdown(
         f"**Έξοδα αγοράς ≈ {eur(_r(acq['total_fees'], 100))}** "
@@ -1154,7 +1308,6 @@ def _rent_section(d: dict) -> None:
 
 def _go_area(area: str) -> None:
     st.session_state["nl_filters"] = SearchFilters(areas=[area])
-    st.session_state.pop("show_all", None)
     st.session_state["f_ver"] = st.session_state.get("f_ver", 0) + 1
     st.session_state["limit"] = PAGE_SIZE
     st.session_state["page"] = NAV_SEARCH
@@ -1166,76 +1319,82 @@ def _area_line(d: dict, listings: list[dict]) -> None:
     if not m:
         return
     vals = [x["price_per_m2"] for x in listings if x.get("price_per_m2") and area_name(x) == m]
-    c1, c2 = st.columns([3, 1], vertical_alignment="center")
     if len(vals) >= 5:
-        c1.caption(
+        st.caption(
             f"Περιοχή {m}: διάμεσο {eur(_r(statistics.median(vals), 10))}/τ.μ. ζητούμενης τιμής "
-            f"σε {len(vals):,} αγγελίες.".replace(",", ".")
+            f"σε {_num(len(vals))} αγγελίες του XE."
         )
-    else:
-        c1.caption(f"Περιοχή {m}.")
-    c2.button("Αγγελίες της περιοχής", key="area_link", on_click=_go_area, args=(m,))
+    st.button(f"Αγγελίες στην περιοχή {m}", key="area_link", on_click=_go_area, args=(m,))
 
 
 def page_listing(listings: list[dict]) -> None:
-    """Everything a buyer needs about one flat: facts, rent and yield, how it prices against
-    like-for-like flats, the same flat at other agents, its price history and time on market."""
+    """One flat, top to bottom on a phone: facts and status, what the listing says, rent and
+    yield, how it prices against like-for-like flats, price history, then the actions."""
     from scout.ui import queries
 
+    _css()
     _show_flash()
     by_id = {d["id"]: d for d in listings}
     wanted = st.session_state.get("detail_id")
     starred = watch_keys()
-    picks = [d for d in listings if shortlist.lkey(d) in starred and d["id"] != wanted]
+    options = [d for d in listings if shortlist.lkey(d) in starred and d["id"] != wanted]
     if wanted in by_id:
-        picks.insert(0, by_id[wanted])
-    if not picks:
+        options.insert(0, by_id[wanted])
+    if not options:
         st.markdown("## Αγγελία")
         st.info("Άνοιξε μια αγγελία με «Λεπτομέρειες» από την Αναζήτηση ή τα Αγαπημένα.")
         return
     labels = {
-        f"{eur(d['price'])} · {d.get('title') or ''} · {d.get('neighborhood') or ''}": d["id"]
-        for d in picks
+        f"{eur(d['price'])} · {_m2(d['area_m2']) if d.get('area_m2') else '?'} τ.μ. · "
+        f"{d.get('neighborhood') or ''}": d["id"]
+        for d in options
     }
     choice = st.selectbox("Αγγελία", list(labels), key=f"listing_pick_{wanted}")
     d = by_id[labels[choice]]
     intel = market_intel.build(listings)
     adv = buyer_view(d, intel)
-    review = st.session_state.get("listing_advice", {}).get(shortlist.lkey(d))
-    actions = [(AI_LABEL, _ask_listing, (d, adv, intel))] if has_ai() else []
-    result_card(
-        d,
-        adv,
-        "l",
-        [*actions, _star_action(d)],
-        advice=review.verdicts[0] if review and review.verdicts else None,
-    )
-    if review is None and st.session_state.get("advice_err") and has_ai():
-        st.caption(st.session_state["advice_err"])
-    st.caption(SCORE_LEGEND, help=SCORE_HELP)
-    if d.get("energy_class"):
-        st.markdown(f"Ενεργειακή κλάση: **{html.escape(str(d['energy_class']).strip())}**")
+    with st.container(border=True, key=f"card-l-{d['id']}"):
+        st.markdown(card_html(d, adv, basis=False), unsafe_allow_html=True)
+        st.caption(status_basis(d))
 
+    _description_section(d)
     _rent_section(d)
-    _comparison_section(d, adv.get("cmp"))
+    _comparison_section(d, adv)
 
     if twins := adv.get("twins"):
-        st.markdown("#### Το ίδιο σπίτι από άλλους μεσίτες")
+        st.markdown(f"#### Το ίδιο σπίτι σε {len(twins)} ακόμα αγγελίες")
         st.caption(
-            "Ίδια περιοχή, τ.μ., όροφος και έτος, τιμή έως 10% διαφορά — πιθανότατα το ίδιο "
-            "διαμέρισμα. Η χαμηλότερη τιμή είναι το σημείο εκκίνησης της διαπραγμάτευσης."
+            "Ίδια περιοχή, τ.μ., όροφος και έτος, τιμή έως 10 % διαφορά — πιθανότατα το ίδιο "
+            "διαμέρισμα από άλλο μεσίτη. Η χαμηλότερη τιμή είναι το σημείο εκκίνησης."
         )
-        _listing_link_table(twins)
+        _listing_lines(twins)
 
-    st.markdown("#### Ιστορικό τιμής και χρόνος στην αγορά")
+    st.markdown("#### Ιστορικό τιμής")
     history = queries.load_price_history(d["id"])
     if len({p for _, p in history}) > 1:
         st.markdown("  \n".join(f"{when:%d/%m/%Y}: **{eur(price)}**" for when, price in history))
     elif history:
-        st.caption(f"Τιμή αμετάβλητη από {history[0][0]:%d/%m/%Y} που την πρωτοείδαμε.")
+        st.caption(f"Τιμή αμετάβλητη από {history[0][0]:%d/%m/%Y} που την πρωτοείδαμε στο XE.")
     if d.get("days_on_market"):
-        since = d.get("listed_date") or d.get("first_seen")
-        src = "ημερομηνία αγγελίας" if d.get("listed_date") else "πρώτη φορά που την είδαμε"
-        when = f" (από {since:%d/%m/%Y}, {src})" if since else ""
-        st.caption(f"Στην αγορά περίπου {d['days_on_market']} μέρες{when}.")
+        st.caption(f"{d['days_on_market']} μέρες στην αγορά.")
     _area_line(d, listings)
+
+    review = st.session_state.get("listing_advice", {}).get(shortlist.lkey(d))
+    actions = [(AI_LABEL, _ask_listing, (d, adv, intel))] if has_ai() else []
+    with st.container(key=f"act-l-{d['id']}"):
+        cols = st.columns(len(actions) + 2, gap="small")
+        cols[0].link_button(f"Άνοιγμα στο {d['source'].upper()} ↗", d["url"], width="stretch")
+        for i, (label, cb, args, *kind) in enumerate([_star_action(d), *actions], start=1):
+            cols[i].button(
+                label,
+                key=f"l-{i}-{shortlist.lkey(d)}",
+                on_click=cb,
+                args=args,
+                type=kind[0] if kind else "secondary",
+                width="stretch",
+            )
+    if review is not None and review.verdicts:
+        st.markdown(_advice_html(review.verdicts[0]), unsafe_allow_html=True)
+        st.caption("Σχόλιο γλωσσικού μοντέλου πάνω στα ίδια δεδομένα — όχι εκτίμηση αξίας.")
+    elif st.session_state.get("advice_err") and has_ai():
+        st.caption(st.session_state["advice_err"])

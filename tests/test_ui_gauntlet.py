@@ -242,14 +242,15 @@ def test_buyer_journey(env):
     # it is on the favourites page and persisted in the gist
     at.radio(key="page").set_value(STARRED).run()
     ok(at, "favourites")
-    assert at.metric[0].value == "1"
+    assert any(m.value == "## Αγαπημένα (1)" for m in at.markdown)
     # open its details from the favourites page
     next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
     ok(at, "details")
     assert at.session_state["page"] == DETAIL
-    # the listing page: rent & yield, like-for-like comparison, no investor jargon
+    # the listing page: what the listing says, rent & yield, comparables, no investor jargon
     text = " ".join(m.value for m in at.markdown)
-    assert "Σε σύγκριση με παρόμοια" in text and "Απόδοση ενοικίου" in text
+    assert "Τι λέει η αγγελία" in text and "Ενοίκιο και απόδοση" in text
+    assert "#### Παρόμοια (" in text or "#### Λίγα παρόμοια" in text
     assert "12 × ενοίκιο ÷ τιμή" in " ".join(c.value for c in at.caption)
     assert "Έξοδα αγοράς" in text and "Καθαρή απόδοση" in text
     assert not any(w in text for w in ("Golden Visa", "Airbnb", "DSCR", "cap rate", "GRM"))
@@ -279,7 +280,7 @@ def test_buyer_journey(env):
     assert any("εγκρίθηκαν 1" in e.label and "απορρίφθηκαν 1" in e.label for e in at.expander)
     # the approved one is now starred
     at.radio(key="page").set_value(STARRED).run()
-    assert at.metric[0].value == "1"
+    assert any(m.value == "## Αγαπημένα (1)" for m in at.markdown)
     # delete the mandate
     at.radio(key="page").set_value(SHORTLIST).run()
     next(b for b in at.button if b.label == "Διαγραφή αναζήτησης").click().run()
@@ -298,9 +299,8 @@ def test_search_filter_editor_sort_and_clear(env):
     ok(at, "price filter")
     at.selectbox(key="sort").set_value("Χαμηλότερη τιμή").run()
     ok(at, "sort")
-    prices = [m.value for m in at.markdown if m.value.startswith("### ") and m.value.endswith(" €")]
-    assert prices, "no result cards shown"
-    nums = [int(p.replace("### ", "").replace(" €", "").replace(".", "")) for p in prices]
+    nums = _card_prices(at)
+    assert nums, "no result cards shown"
     assert nums == sorted(nums) and all(n <= 200_000 for n in nums)
     # filter and sort tweaks never call the AI on their own
     assert (at.session_state["advice_calls"] if "advice_calls" in at.session_state else 0) == calls
@@ -501,13 +501,16 @@ def test_type_and_must_have_filters_accept_any_selection(env):
 # ---- buyer UX: one score, rent/yield, unfinished, no developer text, "Δείξε όλες" ----------
 
 
-def _card_scores(at) -> list[int]:
+def _cards(at) -> list[str]:
+    return [m.value for m in at.markdown if 'class="hg-card"' in m.value]
+
+
+def _card_prices(at) -> list[int]:
     import re
 
     return [
-        int(re.search(r"<b>(\d+)</b>", m.value).group(1))
-        for m in at.markdown
-        if 'class="hg-score' in m.value
+        int(re.search(r'class="hg-price">([\d.]+) €<', c).group(1).replace(".", ""))
+        for c in _cards(at)
     ]
 
 
@@ -532,24 +535,24 @@ def test_one_score_on_map_and_cards(env):
     # the map's min-score slider filters on the same score
     at.slider(key="map_score").set_value(30).run()
     assert all(s >= 30 for s in at.dataframe[0].value["Σκορ"])
-    # the card on the search page and on its listing page show that same score
+    # the cards carry no score number (its parts are not figures), but every card carries
+    # the basis of each of its numbers one tap away
     at = fresh(SEARCH)
-    first = _card_scores(at)[0]
+    cards = _cards(at)
+    assert cards and not any("hg-score" in c or "Σκορ" in c for c in cards)
+    assert all("<details><summary>Από πού βγαίνουν</summary>" in c for c in cards)
     next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
     ok(at, "details")
-    assert _card_scores(at)[0] == first == scores[at.session_state["detail_id"]]
-    # every card carries the visible breakdown and the legend is on the page
-    at = fresh(SEARCH)
-    assert sum('class="hg-parts"' in m.value for m in at.markdown) == len(_card_scores(at))
-    assert any("ηλικία" in m.value and "hg-p-" in m.value for m in at.markdown)
-    assert any("Σκορ 0–100" in c.value for c in at.caption)
+    assert not any("hg-score" in m.value for m in at.markdown if "<style" not in m.value)
 
 
 def test_yield_line_on_cards(env):
     at = fresh(SEARCH)
-    lines = [m.value for m in at.markdown if 'class="hg-rent"' in m.value]
-    assert lines and all("μικτή απόδοση" in v and "/μήνα" in v for v in lines)
-    assert any("Ενοίκιο ~<b>900 €</b>" in v for v in lines)
+    cards = _cards(at)
+    assert cards and all(
+        "Ενοίκιο (εκτίμηση) ~" in c and "/μήνα · Μικτή απόδοση " in c for c in cards
+    )
+    assert any("~900 €/μήνα" in c for c in cards)
     assert "Υψηλότερη απόδοση" in at.selectbox(key="sort").options
     assert "Καλύτερη αντιστοιχία" not in at.selectbox(key="sort").options
 
@@ -558,24 +561,22 @@ def test_unfinished_listing_is_labelled_and_ranks_low(env):
     from scout.ui import buyer
 
     at = fresh(SEARCH)
-    assert not any(buyer.UNFINISHED_NOTE in m.value for m in at.markdown)  # hidden by default
+    assert not any("hg-st-bad" in c for c in _cards(at))  # hidden by default
     at.checkbox(key="fe_unf_0").check().run()
     at.selectbox(key="sort").set_value("Χαμηλότερη τιμή").run()
     ok(at, "unfinished shown")
-    # the cheapest listing is the unfinished shell: shown first here, clearly marked, low score
-    cards = [m.value for m in at.markdown if 'class="hg-head"' in m.value]
-    assert buyer.UNFINISHED_NOTE in cards[0]
-    assert _card_scores(at)[0] < buyer.SCORE_MID
-    # by score it goes to the bottom
-    at.selectbox(key="sort").set_value("Σκορ αγοράς").run()
-    cards = [m.value for m in at.markdown if 'class="hg-head"' in m.value]
-    assert not any(buyer.UNFINISHED_NOTE in c for c in cards)  # not among the first page
+    # the cheapest listing is the unfinished shell: shown first here, clearly marked
+    cards = _cards(at)
+    assert f'hg-st-bad">{buyer.UNFINISHED_NOTE}<' in cards[0]
+    # in the suggested order it goes to the bottom
+    at.selectbox(key="sort").set_value("Προτεινόμενη").run()
+    assert not any("hg-st-bad" in c for c in _cards(at))  # not among the first page
     listings, _ = _buyer_scores()
     from scout import market_intel
 
     intel = market_intel.build(listings)
     hits = [((100, []), d, buyer.buyer_view(d, intel)) for d in listings if not d["excluded"]]
-    hits.sort(key=lambda h: buyer.SORTS["Σκορ αγοράς"](h[0][0], h[2], h[1]))
+    hits.sort(key=lambda h: buyer.SORTS["Προτεινόμενη"](h[0][0], h[2], h[1]))
     assert hits[-1][1]["is_unfinished"]
     hits.sort(key=lambda h: buyer.SORTS["Υψηλότερη απόδοση"](h[0][0], h[2], h[1]))
     assert hits[-1][1]["is_unfinished"]
@@ -592,15 +593,17 @@ def test_show_all_button_relaxes_floor_and_age(env):
 
     before = count()
     note = next(c.value for c in at.caption if c.value.startswith("Κρύβονται"))
-    hidden = int(re.search(r"Κρύβονται ([\d.]+)", note).group(1).replace(".", ""))
-    assert "ισόγεια" in note and "40 ετών" in note
-    at.button(key="show_all_btn").click().run()
+    assert "ισόγεια/υπόγεια" in note and f"κτίριο πριν το {date.today().year - 40}" in note
+    btn = at.button(key="show_all_btn")
+    back = int(re.search(r"\(\+([\d.]+)\)", btn.label).group(1).replace(".", ""))
+    btn.click().run()
     ok(at, "show all")
-    assert count() == before + hidden
-    ver = at.session_state["f_ver"]
+    assert count() == before + back
+    ver = at.session_state["f_ver"] if "f_ver" in at.session_state else 0
     assert at.selectbox(key=f"fe_floor_{ver}").value == "Οποιοσδήποτε"
     assert at.selectbox(key=f"fe_age_{ver}").value == "Οποιαδήποτε"
-    assert not any(c.value.startswith("Κρύβονται") for c in at.caption)
+    note = " ".join(c.value for c in at.caption if c.value.startswith("Κρύβ"))
+    assert "ισόγεια" not in note and "κτίριο πριν" not in note
     # clearing brings the defaults back
     at.button(key="ex0").click().run()
     at.button(key="clear_q").click().run()
@@ -675,14 +678,13 @@ def test_local_parse_reads_area_price_size():
     assert local_parse("κάτι", areas) == local_parse("", [])
 
 
-def test_old_building_badge_only_past_the_default_age_filter():
+def test_card_shows_build_year_and_renovation_apart():
     from scout.ui import buyer
 
-    year = date.today().year
-    d = {"price": 200_000, "title": "Διαμέρισμα", "floor": 2.0, "is_private_seller": False}
-    at40 = buyer._card_html({**d, "year_built": year - 40}, {"age": 40})
-    at41 = buyer._card_html({**d, "year_built": year - 41}, {"age": 41})
-    assert "Παλιό κτίριο" not in at40 and "Παλιό κτίριο — 41 ετών" in at41
+    d = {"id": 1, "price": 200_000, "floor": 2.0, "year_built": 1975, "renovated_year": 2021}
+    card = buyer.card_html(d, {})
+    assert "κτίριο 1975, ανακαίνιση 2021" in card
+    assert "έτος: δεν δηλώνεται" in buyer.card_html({**d, "year_built": None}, {})
     assert buyer.DEFAULT_AGE == 40 and buyer.AGES["Έως 40 ετών"] == buyer.DEFAULT_AGE
 
 
@@ -695,8 +697,9 @@ def test_listing_metric_delta_and_position_bar():
     assert buyer.confidence({**cmp, "n": 10}) == "Μέτρια"
     bar = buyer.position_bar(2100, cmp)
     assert "2.100 €/τ.μ." in bar and "2.700–3.400 €/τ.μ." in bar
-    tone, text = buyer.comps_badge(cmp)
-    assert tone == "good" and text.startswith("−30%") and "6 παρόμοια" in text
+    assert buyer.comps_text({"cmp": cmp}) == "Παρόμοια (6): 30 % κάτω"
+    assert buyer.comps_text({"cmp": {**cmp, "pct": 0.12}}) == "Παρόμοια (6): 12 % πάνω"
+    assert buyer.comps_text({}) == "Λίγα παρόμοια για σύγκριση"
     # st.metric reads the sign from an ASCII minus: cheaper must render green/down
     assert f"{cmp['pct']:+.0%}".startswith("-")
 
@@ -709,7 +712,7 @@ def test_area_pick_from_another_page_preselects_the_area(env):
     ver = at.session_state["f_ver"]
     assert at.multiselect(key=f"fe_areas_{ver}").value == ["Παπάγου"]
     assert "area_pick" not in at.session_state  # applied once
-    locs = [m.value for m in at.markdown if 'class="hg-head"' in m.value]
+    locs = _cards(at)
     assert locs and all("Παπάγου" in v for v in locs)
 
 

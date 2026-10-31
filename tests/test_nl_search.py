@@ -214,3 +214,59 @@ def test_advise_breakdown_follows_the_score_components():
     assert unknown == {"ηλικία": None}  # no comps / no yield: not shown, not guessed
     shell = advise({**d, "is_unfinished": True}, comp_pct=-0.2)
     assert ("ημιτελές", -1) in shell["parts"] and shell["score"] < advise(d, -0.2)["score"] / 3
+
+
+# ---- why a listing is hidden (the search page's "Κρύβονται N" line) ------------------------
+
+
+def test_year_filter_is_the_build_year_not_the_renovation():
+    from scout.nl_search import why_hidden
+
+    old_renovated = {**BASE, "year_built": 1975, "renovated_year": 2021}
+    assert why_hidden(old_renovated, SearchFilters(year_min=2015)) == "year"
+    assert why_hidden({**BASE, "year_built": 2016}, SearchFilters(year_min=2015)) is None
+
+
+def test_undeclared_floor_or_year_is_its_own_reason_and_can_be_included():
+    from scout.nl_search import why_hidden
+
+    f = SearchFilters(floor_min=2, year_min=2015)
+    no_floor = {**BASE, "floor": None, "year_built": 2018}
+    no_year = {**BASE, "year_built": None}
+    assert why_hidden(no_floor, f) == why_hidden(no_year, f) == "undeclared"
+    inc = f.model_copy(update={"include_undeclared": True})
+    assert why_hidden(no_floor, inc) is None and why_hidden(no_year, inc) is None
+    # a KNOWN wrong year is not "undeclared", even if the floor is missing
+    assert why_hidden({**no_floor, "year_built": 1990}, inc) == "year"
+    # without a floor/year filter nothing is hidden for not stating them
+    assert why_hidden(no_floor, SearchFilters()) is None
+
+
+def test_first_failing_reason_is_reported_in_order():
+    from scout.nl_search import HIDE_ORDER, why_hidden
+
+    d = {**BASE, "price": 900_000, "floor": 0.0, "year_built": 1960, "is_unfinished": True}
+    f = SearchFilters(areas=["Παπάγου"], price_max=300_000, floor_min=1, year_min=2000)
+    assert why_hidden(d, f) == "area"
+    assert why_hidden(d, f.model_copy(update={"areas": []})) == "price"
+    f2 = f.model_copy(update={"areas": [], "price_max": None})
+    assert why_hidden(d, f2) == "unfinished"
+    assert why_hidden(d, f2.model_copy(update={"include_unfinished": True})) == "floor"
+    assert HIDE_ORDER.index("floor") < HIDE_ORDER.index("year") < HIDE_ORDER.index("undeclared")
+
+
+def test_match_agrees_with_why_hidden():
+    from scout.nl_search import why_hidden
+
+    f = SearchFilters(floor_min=2, year_min=2010, price_max=200_000)
+    for d in (BASE, {**BASE, "year_built": 2012}, {**BASE, "year_built": 2012, "floor": 1.0}):
+        assert (match(d, f) is None) == (why_hidden(d, f) is not None)
+
+
+def test_describe_mentions_undeclared_only_with_a_floor_or_year_filter():
+    from scout.nl_search import describe
+
+    assert "χωρίς δηλωμένο" not in describe(SearchFilters(include_undeclared=True))
+    assert "χωρίς δηλωμένο όροφο/έτος" in describe(
+        SearchFilters(floor_min=2, include_undeclared=True)
+    )
