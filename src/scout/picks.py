@@ -22,7 +22,8 @@ safety     6 each: page read · >2 photos · energy class stated · ≥8 compara
            · established area (≥50 active listings) · steady area (days-on-market
            spread: stdev ≤ mean)
 growth     12 station today (from the neighbourhood name) · 12 Metro Line 4 station planned
-           in the area (``metro_line4`` when present) · 6 area new-build premium ≤15 %
+           for the listing (``metro_line4.line4_station`` when present) · 6 area
+           new-build premium ≤15 %
            (``area_insights``, needs ``area_facts``)
 =========  ===============================================================================
 
@@ -88,27 +89,23 @@ def instalment(price: float, ltv: float = LTV, rate: float = RATE, years: int = 
     return principal / n if r == 0 else principal * r / (1 - (1 + r) ** -n)
 
 
-def line4_station(area: str) -> str | None:
-    """The planned Metro Line 4 station in ``area`` (``metro_line4``, written by the insights
-    workstream), or None — also when that module is not there yet."""
+def line4_stations(area: str) -> list[str]:
+    """Planned Metro Line 4 stations in ``area`` (``metro_line4.line4_stations``, written by
+    the insights workstream); empty when that module is not there yet."""
+    try:
+        from . import metro_line4
+    except ImportError:
+        return []
+    return list(metro_line4.line4_stations(area) or [])
+
+
+def line4_station(d: dict) -> str | None:
+    """The planned Line 4 station for one listing (``metro_line4.line4_station``), or None."""
     try:
         from . import metro_line4
     except ImportError:
         return None
-    for name in ("station_for_area", "for_area", "planned_station"):
-        fn = getattr(metro_line4, name, None)
-        if callable(fn):
-            got = fn(area)
-            if got:
-                return got if isinstance(got, str) else str(getattr(got, "name", got))
-            return None
-    table = getattr(metro_line4, "STATIONS", None) or ()
-    for row in table:
-        a = row.get("area") if isinstance(row, dict) else getattr(row, "area", None)
-        if a and (a == area or a in area):
-            name = row.get("station") if isinstance(row, dict) else getattr(row, "station", None)
-            return name or a
-    return None
+    return metro_line4.line4_station(d)
 
 
 def area_stats(listings: list[dict]) -> dict[str, tuple[int, float | None, float | None]]:
@@ -290,7 +287,7 @@ def _build(
     ]
     fact = (area_facts or {}).get(area)
     prem = getattr(fact, "new_premium", None)
-    l4 = line4_station(area)
+    l4 = line4_station(d)
     grow = [
         (st_name or "", bool(st_name), STATION_PTS),
         (f"Γραμμή 4: {l4}" if l4 else "", bool(l4), LINE4_PTS),

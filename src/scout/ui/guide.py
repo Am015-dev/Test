@@ -111,7 +111,7 @@ def _load_saved() -> dict | None:
     if s is None:
         return None
     try:
-        got = s.get("guide") if hasattr(s, "get") else None
+        got = s.get("guide", None)
     except Exception:
         return None
     return dict(got) if isinstance(got, dict) else None
@@ -122,10 +122,7 @@ def _save(g: dict) -> None:
     if s is None:
         return
     try:
-        if hasattr(s, "set"):
-            s.set("guide", dict(g))
-        else:
-            s["guide"] = dict(g)
+        s.set("guide", dict(g))
     except Exception as e:  # keep working; the answers still live in this session
         buyer._flash("error", f"Οι απαντήσεις δεν αποθηκεύτηκαν ({buyer._reason(e)}).")
 
@@ -329,12 +326,32 @@ def recommend(found: list[picks.Pick], facts: dict, goal: str) -> str | None:
         stations = sorted({p.station for p in ps if p.station})
         if stations:
             extra.append(", ".join(stations[:2]))
-        if l4 := picks.line4_station(area):
-            extra.append(f"Γραμμή 4: {l4}")
+        if l4 := picks.line4_stations(area):
+            extra.append(f"Γραμμή 4: {', '.join(l4[:2])}")
         if x is not None and x.new_premium is not None:
             extra.append(f"νεόδμητα {round(x.new_premium * 100):+d} % από τα παλιά")
     out += " · " + " · ".join(extra) if extra else ""
     return out if out.endswith(".") else out + "."
+
+
+def loan_summary(found: list[picks.Pick]) -> str | None:
+    """The «με δάνειο» answer for the whole list: how many flats' rent covers the instalment,
+    and the range of the monthly gap."""
+    if not found:
+        return None
+    gaps = sorted(p.cashflow for p in found)
+    cover = sum(c >= 0 for c in gaps)
+    if cover == 0:
+        lo, hi = buyer.eur(-gaps[-1]), buyer.eur(-gaps[0])
+        span = lo if lo == hi else f"{lo}–{hi}"
+        return (
+            f"Με δάνειο: **καμία από τις {len(found)} δεν καλύπτει τη δόση** με το ενοίκιο — "
+            f"λείπουν {span}/μήνα."
+        )
+    return (
+        f"Με δάνειο: το ενοίκιο καλύπτει τη δόση σε **{cover} από τις {len(found)}** "
+        f"(στην καλύτερη μένουν {buyer.eur(gaps[-1])}/μήνα)."
+    )
 
 
 def facts_for(shown: list[picks.Pick], g: dict, area_facts: dict, intel) -> dict:
@@ -364,7 +381,7 @@ def facts_for(shown: list[picks.Pick], g: dict, area_facts: dict, intel) -> dict
                 "κατάσταση": p.status,
                 "φωτογραφίες": d.get("photo_count"),
                 "σταθμός": p.station,
-                "γραμμή_4": picks.line4_station(area),
+                "γραμμή_4": picks.line4_station(d),
                 "προσφορά_αφετηρία": p.offer,
                 "δόση_δανείου_€/μήνα": p.instalment if g.get("loan") else None,
                 "ενοίκιο_μείον_δόση": p.cashflow if g.get("loan") else None,
@@ -772,6 +789,8 @@ def _results(g: dict, listings: list[dict]) -> None:
         st.markdown(
             f"**{len(every)}** αγγελίες {what}. Ελέγχθηκε η περιγραφή σε **{checked}** από αυτές."
         )
+        if g.get("loan") and (loan := loan_summary(every)):
+            st.markdown(loan)
         if relax:
             _relax(
                 relax,

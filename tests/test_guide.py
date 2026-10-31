@@ -131,3 +131,55 @@ def test_answer_chips_and_relax_mapping():
         "Γαλάτσι",
         "οποιαδήποτε ηλικία",
     ]  # fmt: skip
+
+
+def test_loan_summary_says_whether_the_rent_covers_the_instalment():
+    def pk(cash):
+        return picks.Pick(listing={}, rank_score=0, rent=0, rent_low=0, rent_high=0, gross=0,
+                          net=0, offer=0, station=None, cashflow=cash)  # fmt: skip
+
+    assert guide.loan_summary([pk(-110), pk(-340), pk(-160)]) == (
+        "Με δάνειο: **καμία από τις 3 δεν καλύπτει τη δόση** με το ενοίκιο — "
+        "λείπουν 110 €–340 €/μήνα."
+    )
+    assert guide.loan_summary([pk(-50), pk(20)]) == (
+        "Με δάνειο: το ενοίκιο καλύπτει τη δόση σε **1 από τις 2** (στην καλύτερη μένουν 20 €/μήνα)."
+    )
+    assert guide.loan_summary([]) is None
+
+
+def test_contract_hooks_line4_and_profile_store(monkeypatch):
+    import sys
+    import types
+
+    m = types.ModuleType("scout.metro_line4")
+    m.line4_stations = lambda area: ["Γαλάτσι"] if area == "Γαλάτσι" else []
+    m.line4_station = lambda d: "Γαλάτσι" if "Γαλάτσι" in (d.get("neighborhood") or "") else None
+    monkeypatch.setitem(sys.modules, "scout.metro_line4", m)
+    rows = [
+        flat(1, 265_000, m2=95, hood="Γαλάτσι (Λαμπρινή)", page_checked=True),
+        flat(2, 265_000, m2=95, hood="Νέα Ιωνία (Κέντρο)", page_checked=True),
+    ]
+    rents = [*RENTS, {"neighborhood": "Νέα Ιωνία (Κέντρο)", "rent_per_m2": 12.0, "samples": 9}]
+    got = picks.find(rows, market_intel.build(rows, YEAR), rents, 300_000, year=YEAR,
+                     near_rail=False, goal="growth", top=10)  # fmt: skip
+    assert got[0].listing["id"] == 1 and "Γραμμή 4: Γαλάτσι" in got[0].reasons["growth"]
+    assert picks.line4_stations("Γαλάτσι") == ["Γαλάτσι"]
+
+    class Store:
+        def __init__(self):
+            self.data = {"guide": {"budget": 200_000, "step": 2}}
+
+        def get(self, key, default=None):
+            return self.data.get(key, default)
+
+        def set(self, key, value):
+            self.data[key] = value
+
+    store = Store()
+    acc = types.ModuleType("scout.ui.account")
+    acc.storage = lambda: store
+    monkeypatch.setitem(sys.modules, "scout.ui.account", acc)
+    assert guide._load_saved() == {"budget": 200_000, "step": 2}
+    guide._save({"budget": 300_000})
+    assert store.data["guide"] == {"budget": 300_000}
