@@ -1,0 +1,88 @@
+{
+ "fingerprint": {
+  "active_sale": 26758,
+  "last_seen": "2026-10-31 19:38:43.707993"
+ },
+ "date": "2026-10-31",
+ "scores_sha256": "86b8ec2802fd48844d6e90550cbab39c8f48a13f86cfe52615023e1d11dbf67f",
+ "guide-160k-rail-new": [
+  "xe:fffd66ce-2af0-4f3a-8557-5b3c77b5d5f4",
+  "xe:25a3bedd-7b22-4025-89eb-44fcab6d2a79"
+ ],
+ "guide-250k-best-any": [
+  "xe:a4a4fe9d-635d-4a84-b0ce-bf6ea86b4ce4",
+  "xe:f4649671-1ce2-4894-b2e9-b81bf207596b",
+  "xe:fa73474c-a560-422f-bc88-f455141ff789",
+  "xe:7458f995-11f2-4604-a422-056d4bbaba39",
+  "xe:5a89396b-4827-4581-b11d-e46876837ec4",
+  "xe:439d0798-e8e4-40a3-8c48-cd0429aeb437",
+  "xe:d95c49b5-b38b-403a-ac1d-d7c41e4f25d1",
+  "xe:d8f06054-ca75-4eaf-ac9c-f943076ebef2",
+  "xe:baf769f5-370a-4dbe-9ecc-793748800c9c",
+  "xe:f9d12ccb-5af9-4c76-8bad-2b600dc94239"
+ ],
+ "search-landing": [
+  "xe:c55264c2-fa66-4935-aa3b-c8321ed6bc33",
+  "xe:c699bfa7-3a83-4f3c-b3c6-7e980658abcd",
+  "xe:23fceab3-fd9e-4ec0-be03-3619754738b3",
+  "xe:4a245313-3d43-4126-8825-e4e839d001a1",
+  "xe:387f02b4-fde9-45d4-b801-589ea833a8a8",
+  "xe:284428d9-8893-4051-956d-590dcad1b2fb",
+  "xe:fa73474c-a560-422f-bc88-f455141ff789",
+  "xe:8cda5bef-86ad-4196-bed3-d9be18941b93",
+  "xe:55a749ce-c799-4938-b6f3-a8777625315f",
+  "xe:b5398240-e860-4569-b300-9d233c02e478"
+ ],
+ "search-typed": [],
+ "search-example-1": [],
+ "search-example-2": [],
+ "search-3bed-250k": [
+  "xe:55a749ce-c799-4938-b6f3-a8777625315f",
+  "xe:ffa9b3d7-b0cc-401c-be8f-2b5fc5bbe49f",
+  "xe:f4d397bd-ce04-444a-8463-62a6b36c3ed5",
+  "xe:f270dbcc-d0de-4698-a554-fd074517429a",
+  "xe:aaf4a5ee-aca4-4c15-93fd-47af91f783c1",
+  "xe:daf00681-82f1-444f-b055-251d4abfe644",
+  "xe:d95c49b5-b38b-403a-ac1d-d7c41e4f25d1",
+  "xe:0a38fb10-96e3-4f50-bde2-1556d84ec347",
+  "xe:0621dc73-ae77-4597-94f9-28ea38babcba",
+  "xe:d3d55583-6940-4b7a-82b2-1093b00da73c"
+ ],
+ "search-marousi": [
+  "xe:d6a88495-945c-42fa-955a-6937c24a35e9",
+  "xe:0dd0507d-f05a-4532-a779-62c792f7bc5f",
+  "goldenhome:537255",
+  "remax:389535",
+  "goldenhome:391463",
+  "goldenhome:359360",
+  "xe:19e3694f-521f-44c5-bf50-d1f579df6c34"
+ ],
+ "map": [
+  "xe:07b45e55-2fa0-422f-95d1-af4394238751",
+  "xe:c55264c2-fa66-4935-aa3b-c8321ed6bc33",
+  "xe:c699bfa7-3a83-4f3c-b3c6-7e980658abcd",
+  "xe:a3416d45-aad5-4e99-b34a-47ebc0714a70",
+  "xe:23fceab3-fd9e-4ec0-be03-3619754738b3",
+  "xe:4a245313-3d43-4126-8825-e4e839d001a1",
+  "xe:387f02b4-fde9-45d4-b801-589ea833a8a8",
+  "xe:c67e2981-01f5-4cea-aa20-27a92020f71b",
+  "xe:dbfd9ab6-4284-4007-87d2-5ddd98260352",
+  "xe:284428d9-8893-4051-956d-590dcad1b2fb"
+ ],
+ "compare": [
+  "Αθήνα (Κυψέλη) · 75 τ.μ. · 180.000 € · #10685",
+  "Νέα Ιωνία (Λαζάρου) · 103 τ.μ. · 282.707 € · #26914"
+ ],
+ "cards_sha256": {
+  "guide-160k-rail-new": "cdb92596ff7f6d840464922708c676a4ae450f0c62c95037bc2db8ff95fe5e9c",
+  "guide-250k-best-any": "b5a1b533c57ceca895e13b303c17f8eadd0a802da15d5ecb7780ca2e6fa506aa",
+  "search-landing": "c91471e5d69a0744ca8f1182548632015473be456382476323e9bf4fcc6c7ac2",
+  "search-typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "search-example-1": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "search-example-2": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "search-3bed-250k": "ca6353053d245b44a3da2c59ce9591fd869d28f19a36a71b8e7bb06d682b5cfd",
+  "search-marousi": "845078092449ba414f28992e0e6b40d0c34411dca679cc31030af4d82250b785",
+  "map": "0554aefffa7135187b0210d91c3e0d05a42e5943686089c2cba6b106095ac7c6",
+  "compare": "25fc25d2a314812735665459dd7c67b6c62489a077eb31801a666c1742473046"
+ }
+}
