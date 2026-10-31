@@ -98,8 +98,7 @@ def classify(client, images: list[tuple[str, bytes]]) -> str | None:
     content.append({"type": "text", "text": PROMPT})
     resp = client.messages.create(
         model=vision_model(),
-        max_tokens=100,
-        temperature=0,
+        max_tokens=100,  # the SDK/API take no temperature for this model family
         messages=[{"role": "user", "content": content}],
     )
     text = "".join(getattr(b, "text", "") for b in resp.content)
