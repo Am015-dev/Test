@@ -20,7 +20,9 @@ for url in Path("diag/urls.txt").read_text().split():
         continue
     d = parse_detail_jsonld(html) or {}
     print("JSONLD:", {k: v for k, v in d.items() if k != "description"})
-    print("DESCRIPTION:", re.sub(r"\s+", " ", d.get("description") or "")[:1500])
+    print("DESCRIPTION:", re.sub(r"\s+", " ", d.get("description") or "")[:3000])
+    imgs = list(dict.fromkeys(re.findall(r"https://blob\.cdn\.xe\.gr/[^\"' ]+?-source\.jpg", html)))
+    print("IMAGES:", " ".join(imgs[:12]))
     t = HTMLParser(html)
     for sel in ("[data-testid='characteristics']", ".characteristics", "[class*='characteristic']",
                 "[data-testid*='feature']", "[class*='features']"):
