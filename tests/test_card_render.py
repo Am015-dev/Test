@@ -113,7 +113,7 @@ def test_buyer_card_every_number_has_its_basis_one_tap_away_and_the_score():
     html = card_html(BUYER, {"cmp": CMP, "score": 81})
     head, basis = html.split("<details>", 1)
     assert "12 × 900 € ÷ 245.000 € = 4,4 %" in basis  # the yield
-    assert "× 78 τ.μ." in basis and "τα διπλανά στο XE.gr" in basis  # the rent
+    assert "αυτό έχει 78 τ.μ." in basis and "τα διπλανά ζητούν συνήθως" in basis  # the rent
     assert "12 σπίτια (L). Ζητούν συνήθως 3.600 €/τ.μ." in basis  # the comparables
     # C7: the score right of the price, its basis one tap away; never «Σκορ»
     assert 'hg-rating">Βαθμολογία 81<' in head.split("hg-l2")[0]

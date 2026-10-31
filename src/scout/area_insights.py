@@ -953,11 +953,12 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
         out.append(
             (
                 "Ζήτηση ενοικίου",
-                f"Εδώ πωλούνται {insight.n_fresh} σπίτια και νοικιάζονται {insight.rent_samples}, "
-                f"δηλαδή {_rent_ratio(insight.supply_per_rent)} προς 1. Όσο λιγότερα είναι τα "
-                "ενοίκια στην αγορά, τόσο πιο εύκολα βρίσκεις ενοικιαστή. Θέλει προσοχή όταν η "
-                f"αναλογία φτάνει {f'{SUPPLY_HIGH:g}'.replace('.', ',')} φορές τη συνηθισμένη "
-                f"των περιοχών, καλό είναι κάτω από {f'{SUPPLY_LOW:g}'.replace('.', ',')}",
+                f"Εδώ πωλούνται {insight.n_fresh} σπίτια και νοικιάζονται μόνο {insight.rent_samples}, "
+                f"δηλαδή {_rent_ratio(insight.supply_per_rent)} για κάθε ένα που νοικιάζεται. "
+                "Όσο λιγότερα σπίτια νοικιάζονται, τόσο πιο εύκολα βρίσκεις ενοικιαστή. Το "
+                f"κρίνουμε σε σχέση με τις άλλες περιοχές: καλό κάτω από "
+                f"{f'{SUPPLY_LOW:g}'.replace('.', ',')} φορές το συνηθισμένο, προσοχή από "
+                f"{f'{SUPPLY_HIGH:g}'.replace('.', ',')} φορές και πάνω.",
                 v,
             )
         )
