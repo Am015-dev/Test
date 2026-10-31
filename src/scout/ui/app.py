@@ -109,6 +109,7 @@ from scout.ui import (  # noqa: E402
     areas,  # noqa: E402
     buyer,  # noqa: E402
     components,  # noqa: E402
+    find,  # noqa: E402
     queries,  # noqa: E402
 )
 from scout.ui import format as fmt  # noqa: E402
@@ -2348,6 +2349,7 @@ def page_compare(listings: list[dict]) -> None:
 # What a buyer uses. The older rental-investor tools (yields, cap rate, Airbnb, Golden Visa)
 # stay reachable for the owner with ?admin=1.
 NAV = {
+    find.TITLE: find.page_find,
     "Πού να αγοράσω": areas.page_areas,
     "Αναζήτηση": buyer.page_search,
     "Χάρτης": page_map,
