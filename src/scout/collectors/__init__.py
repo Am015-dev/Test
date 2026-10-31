@@ -10,6 +10,7 @@ from .base import Collector
 from .goldenhome import GoldenHomeCollector
 from .greenacres import GreenAcresCollector
 from .indomio import IndomioCollector
+from .remax import RemaxCollector
 from .spitogatos import SpitogatosCollector
 from .xe import XeCollector
 
@@ -26,13 +27,14 @@ ALL_COLLECTORS: list[type[Collector]] = [
 
 # Collectors selectable by the ``SOURCES`` env toggle (comma-separated names).
 BY_NAME: dict[str, type[Collector]] = {
-    c.source: c for c in (XeCollector, GreenAcresCollector, GoldenHomeCollector)
+    c.source: c for c in (XeCollector, GreenAcresCollector, GoldenHomeCollector, RemaxCollector)
 }
 # Display name per ``Listing.source`` for the UI's source label and coverage line.
 SOURCE_LABELS: dict[str, str] = {
     "xe": "XE.gr",
     "greenacres": "Green-Acres",
     "goldenhome": "Golden Home",
+    "remax": "RE/MAX",
     "spitogatos": "Spitogatos",
     "indomio": "Indomio",
 }
@@ -74,6 +76,7 @@ __all__ = [
     "IndomioCollector",
     "GreenAcresCollector",
     "GoldenHomeCollector",
+    "RemaxCollector",
     "enabled_sources",
     "SOURCE_LABELS",
     "ALL_COLLECTORS",

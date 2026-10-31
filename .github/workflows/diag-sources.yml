@@ -18,7 +18,7 @@ on:
         default: "Cholargos"
       sources:
         description: "SOURCES for the smoke run"
-        default: "xe,goldenhome"
+        default: "xe,goldenhome,remax"
 permissions:
   contents: read
 jobs:
@@ -31,5 +31,21 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e . -q
-      - name: RE/MAX sale-search probe
+      - name: Survey portals (robots.txt, homepage, search page)
+        run: >-
+          python diag/sources_probe.py
+          --url remax=https://www.remax.gr/pwliseis-agora-katoikies/1031-xolargos
+          --url goldenhome=https://goldenhome.gr/property/pwlisi/katoikies/perioxi-holargos
+          --url era=https://era.gr/
+          --url noikaki=https://noikaki.gr/search
+      - name: RE/MAX detail-page probe
         run: python diag/remax_probe.py
+      - name: Smoke the collectors for one area (throwaway DB)
+        timeout-minutes: 30
+        env:
+          DATABASE_URL: sqlite:////tmp/smoke.db
+          SOURCES: ${{ inputs.sources || 'xe,goldenhome,remax' }}
+          SCRAPE_DETAIL_PAGES: "false"
+          SCRAPE_REQUEST_MIN_S: "4"
+          SCRAPE_REQUEST_MAX_S: "7"
+        run: python scripts/smoke_sources.py --area "${{ inputs.area || 'Cholargos' }}"

@@ -26,7 +26,7 @@ DETAIL_RE = re.compile(r"/property/\d{4,}-[a-z0-9-]+")
 CHOL_RE = re.compile(r'href="([^"]*(?:xolarg|cholarg|holarg)[^"]*)"', re.I)
 # Round 1 (run 41221767513) found the sale scheme in the sitemap:
 # /pwliseis-agora-katoikies/<id>-<slug>; round 2 checks the page itself.
-CANDIDATES = ["/pwliseis-agora-katoikies/1031-xolargos"]
+CANDIDATES: list[str] = []  # round 2 confirmed the area page; see remax.py
 WEEKLY = re.compile(
     r"/\d+-(xolargos|papagoy|agia-paraskeyh|xalandri|brilhssia|maroysi|zwgrafoy|"
     r"palaio-ycyxiko|neo-ycyxiko|ycyxiko|filo8eh|hrakleio|nea-filadelfeia|peykh|galatsi|"
@@ -83,9 +83,17 @@ for path in CANDIDATES:
     if r is not None:
         report(path, r)
 
-# Area ids for the weekly areas, from the sale-homes sitemap.
-r = get("/xml_sitemaps/el/pwliseis-agora/katoikies.xml")
+# Does a detail page carry the build year? Fetch one, print the year-ish snippets, dump it.
+dumped = False
+r = get("/property/324813-polisi-diamerisma-xolargos")
 if r is not None:
-    for u in re.findall(r"<loc>([^<]+)</loc>", r.text):
-        if u.startswith(BASE + "/pwliseis-agora-katoikies/") and WEEKLY.search(u):
-            print(f"AREA {u}")
+    html = r.text
+    print(f"DETAIL {r.status_code} len={len(html)} jsonld={html.count('application/ld+json')}")
+    for m in re.finditer(r"(Έτος|έτος|Κατασκευ|κατασκευ|Year)", html):
+        snippet = re.sub(r"<[^>]+>", " ", html[m.start() - 150 : m.start() + 200])
+        print("   year? " + re.sub(r"\s+", " ", snippet)[:300])
+    blob = base64.b64encode(gzip.compress(html.encode())).decode()
+    print(f"DUMP-BEGIN remax-detail {len(blob)}")
+    for k in range(0, len(blob), 4000):
+        print("D " + blob[k : k + 4000])
+    print("DUMP-END remax-detail")
