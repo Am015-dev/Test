@@ -61,12 +61,19 @@ def test_deep_link_via_session_state_selects_page_and_pill(env):  # noqa: F811
     ok(at, "deep link")
     assert at.pills(key="nav_pill").value == "Σύγκριση"
     assert any(s.value == "Σύγκριση" for s in at.subheader)
-    # a page without a pill («Αγγελία») stays selected; the pill row just shows none
-    at.session_state["page"] = "Αγγελία"
-    at.run()
+
+
+def test_detail_page_is_not_a_menu_item_but_opens_from_a_card(env):  # noqa: F811
+    at = _app()
+    assert "Αγγελία" not in at.radio(key="page").options
+    at.pills(key="nav_pill").set_value("Αναζήτηση").run()
+    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
     ok(at, "detail")
     assert at.session_state["page"] == "Αγγελία"
     assert at.pills(key="nav_pill").value is None
+    assert "Αγγελία" in at.radio(key="page").options  # listed only while it is open
+    at.pills(key="nav_pill").set_value("Χάρτης").run()
+    assert "Αγγελία" not in at.radio(key="page").options
 
 
 def test_tapping_the_selected_pill_again_keeps_the_page(env):  # noqa: F811
@@ -105,3 +112,19 @@ def test_compare_is_a_three_column_facts_table_for_two_flats(env):  # noqa: F811
     assert len(at.selectbox) == 2 and not at.multiselect
     at.selectbox(key="compare_b").set_value(opts[0]).run()
     assert any("διαφορετικές" in i.value for i in at.info)
+
+
+def test_compare_opens_filled_with_top_picks_when_no_favourites(env):  # noqa: F811
+    at = _app()
+    at.pills(key="nav_pill").set_value("Σύγκριση").run()
+    ok(at, "compare")
+    a, b = at.selectbox(key="compare_a").value, at.selectbox(key="compare_b").value
+    assert a and b and a != b
+    assert any(m.value.startswith("| | Α | Β |") for m in at.markdown)
+
+
+def test_map_filters_sit_in_one_expander(env):  # noqa: F811
+    at = _app()
+    at.pills(key="nav_pill").set_value("Χάρτης").run()
+    ok(at, "map")
+    assert len(at.expander) == 1 and at.expander[0].label == "Φίλτρα"

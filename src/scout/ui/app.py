@@ -1377,28 +1377,29 @@ def page_map(listings: list[dict]) -> None:
     p_hi = int(-(-prices[min(len(prices) * 99 // 100, len(prices) - 1)] // 10_000) * 10_000)
     p_hi = max(p_hi if prices else 1_000_000, 50_000)
 
-    areas = st.multiselect("Περιοχή", options, key="map_areas", placeholder="Όλες οι περιοχές")
-    c1, c2 = st.columns(2)
-    k_max = c1.slider(
-        "Τιμή έως",
-        min_value=50,
-        max_value=p_hi // 1000,
-        value=p_hi // 1000,
-        step=10,
-        format="%d χιλ. €",
-        key="map_price",
-        help="Στο τέρμα δεξιά = χωρίς όριο.",
-    )
-    this_year = datetime.utcnow().year
-    year = c2.slider(
-        "Κατασκευή από",
-        min_value=MAP_YEAR_MIN,
-        max_value=this_year,
-        value=MAP_YEAR_MIN,
-        step=5,
-        key="map_year",
-        help="Στο τέρμα αριστερά = χωρίς όριο. Αγγελίες χωρίς έτος κρύβονται όταν βάλεις όριο.",
-    )
+    with st.expander("Φίλτρα", expanded=False):
+        areas = st.multiselect("Περιοχή", options, key="map_areas", placeholder="Όλες οι περιοχές")
+        c1, c2 = st.columns(2)
+        k_max = c1.slider(
+            "Τιμή έως",
+            min_value=50,
+            max_value=p_hi // 1000,
+            value=p_hi // 1000,
+            step=10,
+            format="%d χιλ. €",
+            key="map_price",
+            help="Στο τέρμα δεξιά = χωρίς όριο.",
+        )
+        this_year = datetime.utcnow().year
+        year = c2.slider(
+            "Κατασκευή από",
+            min_value=MAP_YEAR_MIN,
+            max_value=this_year,
+            value=MAP_YEAR_MIN,
+            step=5,
+            key="map_year",
+            help="Στο τέρμα αριστερά = χωρίς όριο. Αγγελίες χωρίς έτος κρύβονται όταν βάλεις όριο.",
+        )
     matched = _map_filter(
         listings,
         areas=areas,
@@ -2191,6 +2192,10 @@ def page_saved_searches(listings: list[dict]) -> None:
                 st.rerun()
 
 
+def _go_find() -> None:
+    st.session_state["page"] = find.TITLE
+
+
 def _compare_rows(d: dict, adv: dict) -> dict[str, str]:
     """One flat's facts as text (field -> value). Every figure names its basis in the field."""
     from scout import finance, picks
@@ -2262,22 +2267,33 @@ def page_compare(listings: list[dict]) -> None:
     favs = [o for o, i in opts.items() if shortlist.lkey(by_id[i]) in starred]
     # Two selectboxes, not a multiselect: its built-in "select up to 2" notice is English.
     names = list(opts)
+    if len(favs) >= 2:
+        default = favs[:2]
+    else:  # no favourites yet: start from the two best-scoring finished flats
+        scores = buyer.buyer_scores(elig)
+        best = sorted(
+            (d for d in elig if not d.get("is_unfinished")), key=lambda d: -scores[d["id"]]
+        )[:2]
+        by_name = {i: n for n, i in opts.items()}
+        default = [by_name[d["id"]] for d in best]
+    default = default if len(default) == 2 else [None, None]
     pick_a = st.selectbox(
         "Α",
         names,
-        index=names.index(favs[0]) if len(favs) >= 2 else None,
+        index=names.index(default[0]) if default[0] else None,
         key="compare_a",
         placeholder="Γράψε περιοχή, τ.μ. ή τιμή",
     )
     pick_b = st.selectbox(
         "Β",
         names,
-        index=names.index(favs[1]) if len(favs) >= 2 else None,
+        index=names.index(default[1]) if default[1] else None,
         key="compare_b",
         placeholder="Γράψε περιοχή, τ.μ. ή τιμή",
     )
     if not pick_a or not pick_b:
-        st.info("Διάλεξε δύο αγγελίες.")
+        st.info("Διάλεξε δύο αγγελίες — ή άνοιξε «Βρες μου σπίτι» για να δεις τις καλύτερες.")
+        st.button("Βρες μου σπίτι", key="cmp_to_find", on_click=_go_find)
         return
     if pick_a == pick_b:
         st.info("Διάλεξε δύο διαφορετικές αγγελίες.")
@@ -2377,7 +2393,9 @@ def main() -> None:
     pages = {**NAV, **(ADMIN_NAV if admin else {})}
     with st.sidebar:  # desktop / keyboard navigation; on a phone the pills below do the job
         st.markdown("### Σκάουτ ακινήτων")
-        page = st.radio("Σελίδα", list(pages), key="page", label_visibility="collapsed")
+        # «Αγγελία» needs a selected listing: reachable from cards only, listed only while open.
+        shown = [p for p in pages if p != buyer.NAV_DETAIL or st.session_state.get("page") == p]
+        page = st.radio("Σελίδα", shown, key="page", label_visibility="collapsed")
     # Pills mirror the current page (pages also navigate by setting session_state["page"]).
     st.session_state["nav_pill"] = _PILL_OF.get(page)
     st.pills(

@@ -310,7 +310,7 @@ def listing_grid(rows: list[dict], metric: str = "score") -> None:
 
 # Score → colour (absolute score, same scale as the card chip): red weak → green good.
 MAP_SCORE_GOOD, MAP_SCORE_MID = 50, 30
-_MAP_MAX_POINTS = 5000  # beyond this the browser chokes; we keep the best-scored ones
+_MAP_MAX_POINTS = 1500  # beyond this the browser chokes; we keep the best-scored ones
 # Approx ("κέντρο περιοχής") points share one coordinate per area — hundreds stack on one pixel.
 # Spread them deterministically in a ~350 m disc so they stay individually hoverable.
 _JITTER_DEG = 0.0032

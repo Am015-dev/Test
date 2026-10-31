@@ -205,7 +205,12 @@ def fresh(page: str):
     at = AppTest.from_file(APP, default_timeout=60).run()
     assert not at.exception, [e.value for e in at.exception]
     if page != PAGES[0]:  # the app opens on the first menu entry
-        at.radio(key="page").set_value(page).run()
+        if page in at.radio(key="page").options:
+            at.radio(key="page").set_value(page).run()
+        else:  # «Αγγελία» is not a menu item: open it from a card, like a user does
+            at.radio(key="page").set_value("Αναζήτηση").run()
+            next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+            assert at.session_state["page"] == page
     return at
 
 
