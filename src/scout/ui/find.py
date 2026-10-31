@@ -1,12 +1,16 @@
 """«Βρες μου σπίτι» — budget in, the best three flats out, each with the case for it.
 
-Phone-first: one column, the answer above the fold, no tables.
+Phone-first: one column, the answer above the fold, no tables, no metric rows. Each card says
+first whether we read the listing's page; when too little qualifies the page offers one-tap
+relaxations with exact counts instead of a dead end; the method is explained once, at the
+bottom.
 """
 
 from __future__ import annotations
 
 import html
 import statistics
+from datetime import date
 
 import streamlit as st
 
@@ -70,25 +74,29 @@ def set_verdict(key: str, verdict: str | None) -> None:
             )
 
 
+# On a phone Streamlit stacks columns, which turns a card's 2×2 buttons into four full-width
+# rows. Keep the button pairs side by side (labels are short enough for 2 × 175 px).
+PHONE_CSS = """<style>
+[class*="st-key-pick-"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap; gap: .5rem; }
+[class*="st-key-pick-"] [data-testid="stColumn"] { min-width: 0; width: auto; flex: 1 1 0; }
+</style>"""
+
+
 def _card(i: int, p: picks.Pick, approved: bool) -> None:
     d = p.listing
     e = html.escape
     with st.container(border=True, key=f"pick-{d['id']}"):
         st.markdown(
-            f"### {i}. {buyer.eur(d['price'])}" + (" · ✓ το ενέκρινες" if approved else "") + "\n"
+            f"### {i}. {buyer.eur(d['price'])}" + (" · το ενέκρινες" if approved else "") + "\n"
             f"**{e(d.get('title') or '')}** · {e(d.get('neighborhood') or '')}"
         )
-        c = st.columns(3)
-        c[0].metric("Ενοίκιο", f"~{buyer.eur(p.rent)}", help="ανά μήνα, εκτίμηση")
-        c[1].metric("Μικτή απόδοση", picks.gr_pct(p.gross))
-        c[2].metric("Καθαρή", f"~{picks.gr_pct(p.net)}")
-        st.caption(
-            f"Ενοίκιο μάλλον {buyer.eur(p.rent_low)}–{buyer.eur(p.rent_high)} τον μήνα. "
-            f"Πρόταση προσφοράς: ~{buyer.eur(p.offer)}."
-        )
-        st.markdown("**Γιατί αυτό**\n" + "\n".join(f"- {e(w)}" for w in p.why))
+        st.markdown(f":{'green' if p.checked else 'orange'}[**{e(p.status)}**]")
+        st.markdown("  \n".join(e(x) for x in p.lines))
         if p.risks:
             st.markdown("**Έλεγξε**\n" + "\n".join(f"- {e(r)}" for r in p.risks))
+        if p.excerpt:
+            with st.expander("Τι λέει η αγγελία"):
+                st.markdown(e(p.excerpt))
         key = shortlist.lkey(d)
         cols = st.columns(2)
         cols[0].link_button("Άνοιγμα στο XE ↗", d["url"], width="stretch")
@@ -146,68 +154,129 @@ def _dropped(rows: list[picks.Pick]) -> None:
             )
 
 
+AGES: dict[int | None, str] = {
+    5: "Έως 5 ετών",
+    10: "Έως 10 ετών (νεόδμητο)",
+    15: "Έως 15 ετών",
+    20: "Έως 20 ετών",
+    None: "Οποιαδήποτε",
+}
+# relaxation keyword (picks.find) → the widget key that holds it
+WIDGETS = {
+    "budget": "find_budget",
+    "max_age": "find_age",
+    "near_rail": "find_rail",
+    "checked_only": "find_checked",
+}
+BUDGET_MAX = 2_000_000
+
+
+def apply_relax(changes: dict) -> None:
+    for k, v in changes.items():
+        st.session_state[WIDGETS[k]] = min(v, BUDGET_MAX) if k == "budget" else v
+
+
+def _relax(options: list[picks.Relax], intro: str) -> None:
+    with st.container(border=True, key="find-relax"):
+        st.markdown(intro)
+        for i, r in enumerate(options):
+            st.button(
+                r.text, key=f"relax-{i}", on_click=apply_relax, args=(r.changes,), width="stretch"
+            )
+
+
+METHOD = """
+- **Ενοίκιο (εκτίμηση)**: διάμεσο ζητούμενο ενοίκιο €/τ.μ. των αγγελιών ενοικίασης XE.gr στη
+  γειτονιά (αλλιώς στην ευρύτερη περιοχή) × τ.μ. του διαμερίσματος, +10 % για κτίριο έως 5 ετών.
+  Ζητούμενα ενοίκια, όχι συμβόλαια — το πραγματικό μπορεί να είναι ±10 %.
+- **Μικτή απόδοση** = 12 × ενοίκιο ÷ τιμή.
+- **Καθαρή απόδοση**: 11 μήνες ενοίκιο τον χρόνο (1 μήνας κενός), −15 % φόρος ενοικίων,
+  −5 % συντήρηση, −ΕΝΦΙΑ ~3 €/τ.μ. τον χρόνο, διά τιμή + έξοδα αγοράς (φόρος μεταβίβασης,
+  συμβολαιογράφος, δικηγόρος, μεσίτης αν δεν πουλάει ιδιώτης). Τα κοινόχρηστα τα πληρώνει ο
+  ενοικιαστής.
+- **Τιμή €/τ.μ. και παρόμοια**: διάμεσος €/τ.μ. αγγελιών στην ίδια περιοχή, ίδιου τύπου,
+  παρόμοιας ηλικίας, μεγέθους και ορόφου. Πάνω από 35 % φθηνότερο είναι προειδοποίηση, όχι
+  ευκαιρία.
+- **Προσφορά**: ζητούμενη τιμή −3 %, −3 % ακόμα αν είναι 90+ μέρες στην αγορά, −2 % αν
+  πουλάει ιδιώτης. Αφετηρία διαπραγμάτευσης, όχι εκτίμηση αξίας.
+- **Σταθμός**: τα XE δεν δίνουν διεύθυνση· η γειτονιά της αγγελίας είναι η περιοχή ενός
+  σταθμού. Επιβεβαίωσε τη διεύθυνση.
+- **Ελέγχθηκε η περιγραφή**: διαβάσαμε τη σελίδα της αγγελίας· δεν δηλώνει «Υπό κατασκευή»,
+  διαθεσιμότητα σε μελλοντική ημερομηνία ή παράδοση σε επόμενο έτος, και η περιγραφή δεν γράφει
+  «ημιτελές», «υπό κατασκευή», «σκελετός». Οι φωτογραφίες δεν ελέγχονται αυτόματα· σημειώνω
+  μόνο όσες αγγελίες έχουν έως 2. Όσες δεν έχουν ελεγχθεί ακόμα μπαίνουν μετά τις ελεγμένες.
+- **Σειρά**: ελεγμένες πρώτα, μετά όσες έχουν περισσότερες από 2 φωτογραφίες, μετά η
+  μικτή απόδοση και η τιμή σε σχέση με τα παρόμοια.
+- Τιμές: ζητούμενες τιμές XE.gr, όχι τιμές πώλησης.
+"""
+
+
 def page_find(listings: list[dict]) -> None:
     st.markdown(f"## {TITLE}")
-    st.caption(
-        "Πες τον προϋπολογισμό σου. Βρίσκω τα 3 καλύτερα για αγορά προς ενοικίαση και "
-        "εξηγώ γιατί, με τους αριθμούς."
-    )
+    st.caption("Πες τον προϋπολογισμό σου. Βρίσκω τα 3 καλύτερα για αγορά προς ενοικίαση.")
+    st.markdown(PHONE_CSS, unsafe_allow_html=True)
+    st.session_state.setdefault("find_age", picks.NEW_YEARS)
     with st.container(border=True, key="find-form"):
         budget = st.number_input(
-            "Προϋπολογισμός (€)", 50_000, 2_000_000, 300_000, 10_000, key="find_budget"
+            "Προϋπολογισμός (€)", 50_000, BUDGET_MAX, 300_000, 10_000, key="find_budget"
+        )
+        max_age = st.selectbox(
+            "Ηλικία κτιρίου", list(AGES), format_func=AGES.__getitem__, key="find_age"
         )
         c = st.columns(2)
-        new_only = c[0].toggle(f"Νεόδμητο (έως {picks.NEW_YEARS} ετών)", True, key="find_new")
-        near_rail = c[1].toggle("Δίπλα σε σταθμό μετρό/ΗΣΑΠ", True, key="find_rail")
+        near_rail = c[0].toggle("Δίπλα σε σταθμό μετρό/ΗΣΑΠ", True, key="find_rail")
+        checked_only = c[1].toggle("Μόνο ελεγμένες σελίδες", False, key="find_checked")
     intel = market_intel.build(listings)
     rents = _rent_rows()
-    found = picks.find(
-        listings, intel, rents, int(budget), new_only=new_only, near_rail=near_rail, top=10_000
-    )
+    year = date.today().year
+    rules = dict(max_age=max_age, near_rail=near_rail, checked_only=checked_only, year=year)
+    found = picks.find(listings, intel, rents, int(budget), top=10_000, **rules)
     review = _review()
     every, dropped = arrange(found, review)
     lo, hi = budget * (1 - picks.BUDGET_BAND), budget * (1 + picks.BUDGET_BAND)
-    if not every:
-        if dropped:
-            _dropped(dropped)
-        st.info(
-            "Δεν βρήκα αγγελίες με αυτά τα κριτήρια. Δοκίμασε μεγαλύτερο προϋπολογισμό ή "
-            "βγάλε έναν όρο (νεόδμητο / σταθμός)."
-        )
-        return
-    gross = [p.gross for p in every]
-    st.markdown(
-        f"Από **{len(every)}** αγγελίες {buyer.eur(lo)}–{buyer.eur(hi)}"
-        + (", νεόδμητες" if new_only else "")
+    what = (
+        f"{buyer.eur(lo)}–{buyer.eur(hi)}"
+        + (f", κτίριο έως {max_age} ετών" if max_age is not None else "")
         + (", δίπλα σε σταθμό" if near_rail else "")
-        + f", η διάμεση μικτή απόδοση είναι **{picks.gr_pct(statistics.median(gross))}**. "
-        "Αυτές είναι οι 3 με την καλύτερη απόδοση και τιμή. Άνοιξε την αγγελία και δες τις "
-        "φωτογραφίες: αν είναι μόνο renders ή σχέδια, ή δείχνουν γυμνούς τοίχους και σκαλωσιές, "
-        "πάτα «Δεν μου κάνει» και έρχεται το επόμενο."
+        + (", μόνο ελεγμένες" if checked_only else "")
     )
     checked = sum(p.checked for p in every)
-    if checked < len(every):
-        st.caption(
-            f"Ελεγμένες σελίδες αγγελιών: {checked} από {len(every)}. Πρώτα δείχνω όσες "
-            "επιβεβαιώθηκε ότι είναι έτοιμες (όχι υπό κατασκευή)."
-        )
+    relax = (
+        picks.relaxations(listings, intel, rents, int(budget), **rules)
+        if len(every) < picks.TOP or checked < picks.TOP
+        else []
+    )
+    if not every:
+        st.markdown(f"Καμία αγγελία {what}.")
+        if relax:
+            _relax(relax, "Χαλάρωσε έναν όρο — σε παρένθεση πόσες αγγελίες προστίθενται:")
+        else:
+            st.info("Ούτε με έναν όρο λιγότερο βρίσκω κάτι. Άλλαξε τον προϋπολογισμό.")
+        if dropped:
+            _dropped(dropped)
+        _method()
+        return
+    st.markdown(
+        f"**{len(every)}** αγγελίες {what}. Ελέγχθηκε η περιγραφή σε **{checked}** από αυτές."
+        f" Διάμεση μικτή απόδοση **{picks.gr_pct(statistics.median(p.gross for p in every))}**."
+    )
+    intro = (
+        f"Μόνο {len(every)} {'ταιριάζει' if len(every) == 1 else 'ταιριάζουν'}"
+        if len(every) < picks.TOP
+        else f"Μόνο {checked} {'ελεγμένη' if checked == 1 else 'ελεγμένες'}"
+    ) + ". Με έναν όρο λιγότερο (σε παρένθεση πόσες προστίθενται):"
+    if relax and len(every) < picks.TOP:
+        _relax(relax, intro)
     ok = {shortlist.lkey(p.listing) for p in every if review.get(shortlist.lkey(p.listing)) == "ok"}
     for i, p in enumerate(every[: max(picks.TOP, len(ok))], start=1):
         _card(i, p, shortlist.lkey(p.listing) in ok)
+    if relax and len(every) >= picks.TOP:
+        _relax(relax, intro)
     if dropped:
         _dropped(dropped)
-    if near_rail or new_only:
-        loose = picks.find(listings, intel, rents, int(budget), new_only=False, near_rail=False)
-        if loose and loose[0].gross > every[0].gross + 0.005:
-            b = loose[0].listing
-            st.caption(
-                f"Για σύγκριση: χωρίς τους όρους «νεόδμητο»/«σταθμός» η καλύτερη απόδοση "
-                f"είναι {picks.gr_pct(loose[0].gross)} ({b.get('neighborhood')}, "
-                f"κτίριο {b.get('year_built') or '—'}). Νεόδμητο δίπλα σε σταθμό σημαίνει "
-                "ακριβότερο τ.μ. — άρα χαμηλότερη απόδοση, αλλά πιο εύκολη ενοικίαση και "
-                "μεταπώληση."
-            )
-    st.caption(
-        "Ζητούμενες τιμές και ζητούμενα ενοίκια XE.gr, όχι συμβόλαια. Η εγγύτητα σε σταθμό "
-        "προκύπτει από το όνομα της γειτονιάς στην αγγελία — επιβεβαίωσε τη διεύθυνση."
-    )
+    _method()
+
+
+def _method() -> None:
+    with st.expander("Πώς υπολογίζω"):
+        st.markdown(METHOD)
