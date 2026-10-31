@@ -419,3 +419,29 @@ match labelled; every card on every page shows the score; `tests/test_guide.py` 
 near-match order, the labels and the counts; `tests/test_copy.py` stays green; screenshots of
 the result at 390 px before and after in `docs/qa/more/`. No visual redesign (W21 owns the
 look): add classes and chips only through `buyer.card_html`'s existing slots.
+
+### C8 — trust-ordered lists everywhere (W23, `ui/buyer.py` sort helpers, `ui/maplist.py`, `nl_search` default order)
+
+The design reviewer's finding (b): «Αναζήτηση» and the map list open on unchecked flats 33–35 %
+under their comparables, the classic bait listing, while the guide already applies a trust
+ladder. Rule: every list in the app opens in the same order as the guide: page read first,
+real photos next, then the chosen sort; a flat more than 30 % under its comparables sorts after
+the rest of its tier and its card says «έλεγξε γιατί» (already in `comps_text`). The user's
+explicit sort («Σειρά») keeps working inside the tiers. Definition of done: first screen of
+Αναζήτηση with the default example and of the map list show page-read flats first on the
+published DB; a test on a seeded DB asserts the tier order and that the bait flat is not first;
+copy guard green; one 390 px before/after shot of Αναζήτηση in `docs/qa/trust/`. No change to
+the guide, the cards or the theme (W22 owns the card slots).
+
+### C9 — one navigation on desktop, saved searches reachable (W24, `ui/app.py` `main()` + sidebar, `theme.py` sidebar block only)
+
+The design reviewer's finding (a): desktop shows two navigations with different names (the
+sidebar radio and the top pills) and «Αποθηκευμένες αναζητήσεις» is sidebar-only. Rule: one
+navigation. The pills are the navigation on every width; the sidebar keeps only sign-in,
+«Ανανέωση δεδομένων» and the saved searches entry as a link-style button; the radio is removed
+(keep `session_state["page"]` as the single source of truth so cards and buttons still
+navigate). «Αποθηκευμένες αναζητήσεις» becomes reachable from «Αναζήτηση» (a secondary button
+under the search box, «Αποθηκευμένες») and from the sidebar. Definition of done: at 1280 px
+exactly one set of page names on screen; every page still reachable by keyboard; AppTest
+shell tests updated; copy guard and theme tests green; 1280 px before/after shots in
+`docs/qa/shell/`. No visual redesign beyond removing the duplicate control.
