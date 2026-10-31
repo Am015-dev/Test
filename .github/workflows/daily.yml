@@ -69,6 +69,9 @@ jobs:
           SCRAPE_DETAIL_PAGES: "false"
           SCRAPE_REQUEST_MIN_S: "4"
           SCRAPE_REQUEST_MAX_S: "7"
+          # Plain-HTTP portals to read (docs/SOURCES.md). Golden Home verified on the runner
+          # 2026-10-31 (run 41220363373); unknown names are ignored, never fatal.
+          SOURCES: xe,greenacres,goldenhome
           AREAS: ${{ inputs.areas || env.WEEKLY_AREAS }}
         run: python scripts/run_daily.py --shards 5 --areas "$AREAS"
 
