@@ -167,6 +167,36 @@ _RENDER_RE = re.compile(
 _AVAILABLE_RE = re.compile(r"Διαθέσιμο από:\s*(\d{1,2})/(\d{1,2})/(\d{4})")
 
 
+# Rental-card facts. Accent-stripped, lower-cased text. "μη επιπλωμένο" / "χωρίς έπιπλα" /
+# "ανεπίπλωτο" say unfurnished; "επιπλωμένο" / "με έπιπλα" say furnished; silence = None.
+_UNFURNISHED_RE = re.compile(r"\b(?:μη|οχι)\s+επιπλωμεν|χωρις\s+επιπλ|ανεπιπλωτ|unfurnished")
+_FURNISHED_RE = re.compile(r"επιπλωμεν|\bμε\s+επιπλ|\bfurnished")
+_AVAILABLE_FROM_RE = re.compile(r"διαθεσιμο\s+απο:?\s*(\d{1,2})/(\d{1,2})/(\d{2,4})")
+
+
+def parse_furnished(text: str | None) -> bool | None:
+    """True / False when a rental's text says (un)furnished, None when it is silent."""
+    norm = _strip_accents(text or "").lower()
+    if _UNFURNISHED_RE.search(norm):
+        return False
+    if _FURNISHED_RE.search(norm):
+        return True
+    return None
+
+
+def parse_available_from(text: str | None) -> date | None:
+    """The «Διαθέσιμο από: 1/12/2026» date on a rental, or None."""
+    m = _AVAILABLE_FROM_RE.search(_strip_accents(text or "").lower())
+    if not m:
+        return None
+    year = int(m.group(3))
+    year = year + 2000 if year < 100 else year
+    try:
+        return date(year, int(m.group(2)), int(m.group(1)))
+    except ValueError:
+        return None
+
+
 def unfinished_on_detail(html: str, detail: dict, today: date | None = None) -> bool:
     """True when a listing's own page says it is not finished yet: XE's "Υπό κατασκευή"
     characteristic or under-construction condition, an availability date ahead, or a
@@ -679,6 +709,54 @@ class XeCollector(Collector):
                         "neighborhood": raw.get("neighborhood"),
                     }
             self._paced_sleep(settings)
+
+    # Rental search pages walked per area (~36 cards a page). Bounded so the rental pass
+    # stays about a minute per area at the polite pacing; no detail-page fetch.
+    RENT_MAX_PAGES = 5
+
+    def collect_rentals(self) -> Iterator[dict]:
+        """Full rental cards for the area: the same ``parse_card`` fields as sale cards
+        (price = monthly rent), plus ``listing_type="rent"`` and ``furnished`` /
+        ``available_from`` when the card says so. Pages are walked until one adds nothing
+        new or ``RENT_MAX_PAGES``."""
+        settings = get_settings()
+        session = self._new_session()
+        for base_url in self.search_urls(self.strategy, transaction="rent"):
+            seen_ids: set[str] = set()
+            for page in range(1, self.RENT_MAX_PAGES + 1):
+                url = base_url if page == 1 else f"{base_url}&page={page}"
+                html = self._fetch_html(session, url, max_attempts=None if page == 1 else 2)
+                if not html:
+                    break
+                new_on_page = 0
+                for card in HTMLParser(html).css(self.CARD_SELECTOR):
+                    try:
+                        raw = self.parse_rental_card(card.html, base_url=url)
+                    except Exception as exc:  # fail soft per card
+                        logger.warning("xe: rental card parse error: %s", exc)
+                        continue
+                    sid = raw.get("source_id")
+                    if not sid or sid in seen_ids:
+                        continue
+                    seen_ids.add(sid)
+                    new_on_page += 1
+                    yield raw
+                logger.info("xe: rent page %d -> %d new rentals (%s)", page, new_on_page, base_url)
+                if new_on_page == 0:
+                    break
+                self._paced_sleep(settings)
+
+    def parse_rental_card(self, html: str, base_url: str) -> dict:
+        """``parse_card`` for a rental-search card, plus the rental facts it states."""
+        raw = self.parse_card(html, base_url=base_url)
+        raw["listing_type"] = "rent"
+        # A rental ad's "currently rented" wording is not a sitting tenant to buy with.
+        raw["is_currently_rented"] = False
+        raw["listed_rent"] = None
+        text = HTMLParser(html).text(separator=" ")
+        raw["furnished"] = parse_furnished(text)
+        raw["available_from"] = parse_available_from(text)
+        return raw
 
     def collect(self) -> Iterator[dict]:
         settings = get_settings()
