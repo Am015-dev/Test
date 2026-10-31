@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -332,8 +332,9 @@ def test_decision_sentences_have_numbers_and_budget():
     s = ai.decision(ranked, 300_000)
     assert s[0].startswith("Για απόδοση: Παπάγου, μικτή ") and "ενοίκιο 12,0 €/τ.μ." in s[0]
     assert s[1].startswith("Για ρευστότητα: Χολαργός, 61 αγγελίες")
-    assert s[2].startswith("Για νεόδμητο κοντά σε σταθμό έως 300.000 €: Μαρούσι (ΗΣΑΠ Μαρούσι)")
-    assert "30 αγγελίες, 30 με ελεγμένη περιγραφή" in s[2]
+    assert s[2].startswith("Για ανατίμηση:")
+    assert s[3].startswith("Για νεόδμητο κοντά σε σταθμό έως 300.000 €: Μαρούσι (ΗΣΑΠ Μαρούσι)")
+    assert "30 αγγελίες, 30 με ελεγμένη περιγραφή" in s[3]
     assert all(any(ch.isdigit() for ch in line) for line in s)
 
 
@@ -376,3 +377,288 @@ def test_why_names_the_rent_sample_as_rent_listings():
     rents = [rent("Cholargos", None, 12.0, 38), rent("Cholargos", "Χολαργός (Κέντρο)", 12, 38)]
     (x,) = ai.rank_areas(_stock(), rents, year=YEAR)
     assert "από 38 αγγελίες ενοικίασης" in x.why
+
+
+# ---- round 3: investor insights ----------------------------------------------------------
+
+
+def _cohort(month: int, n: int, ppm: float, **kw) -> list[dict]:
+    return many(n, ppm=ppm, first_seen=datetime(2026, month, 10), **kw)
+
+
+def test_price_series_is_median_by_first_seen_month_with_n():
+    rows = _cohort(4, 15, 2000) + _cohort(10, 15, 2100) + _cohort(10, 5, 9000)
+    s = ai.price_series(rows, date(2026, 10, 30))
+    assert s == [("2026-04", 2000.0, 15), ("2026-10", 2100.0, 20)]
+
+
+def test_price_series_ignores_months_older_than_twelve():
+    rows = _cohort(10, 3, 2000) + many(3, first_seen=datetime(2025, 9, 1))
+    assert [k for k, _, _ in ai.price_series(rows, date(2026, 10, 30))] == ["2026-10"]
+
+
+def test_trend_6m_needs_both_months_with_enough_listings():
+    end = date(2026, 10, 30)
+    ok = [("2026-04", 2000.0, 15), ("2026-10", 2082.0, 15)]
+    pct, n = ai.trend_6m(ok, end)
+    assert pct == pytest.approx(0.041) and n == (15, 15)
+    assert ai.trend_6m([("2026-04", 2000.0, 14), ("2026-10", 2082.0, 40)], end)[0] is None
+    assert ai.trend_6m([("2026-10", 2082.0, 40)], end) == (None, (0, 40))
+
+
+def test_area_trend_6m_flows_into_the_insight():
+    rows = _cohort(4, 15, 2000) + _cohort(10, 15, 2082)
+    x = ai.rank_areas(rows, year=YEAR)[0]
+    assert x.trend_pct_6m == pytest.approx(0.041) and x.trend_6m_n == (15, 15)
+    assert [n for _, _, n in x.trend_series] == [15, 15]
+    # ...and the decision sentence quotes it with its basis
+    s = [t for t in ai.decision([x], 300_000) if t.startswith("Για ανατίμηση")][0]
+    assert "+4,1 % €/τ.μ. σε 6 μήνες (n=15/15)" in s
+
+
+def test_trend_6m_is_none_without_history():
+    x = ai.rank_areas(many(25), year=YEAR)[0]
+    assert x.trend_pct_6m is None
+    assert x.trend_series[0][2] == 25  # only July: no month 6 earlier
+
+
+def _weekly_life(n_per_week=40, gone_after=None):
+    """Weekly scrapes from 1 Jan; listings first seen on week 1; the first ``gone_after``
+    fraction vanish after 3 weeks (21 days)."""
+    rows = []
+    start = datetime(2026, 1, 1)
+    for i in range(n_per_week):
+        gone = gone_after is not None and i < gone_after * n_per_week
+        last = start + timedelta(days=7 * (3 if gone else 12))
+        rows.append(
+            flat(
+                first_seen=start + timedelta(days=7),
+                last_seen=last,
+                status="gone" if gone else "active",
+            )
+        )
+    # a baseline listing seen on every scrape keeps all weekly scrape days in the record
+    for w in range(13):
+        rows.append(flat(first_seen=start, last_seen=start + timedelta(days=7 * w), status="gone"))
+    return rows
+
+
+def test_liquidity_share_gone_within_windows_and_label():
+    life = _weekly_life(40, gone_after=0.5)
+    days, start = ai.scrape_context(life)
+    stats = ai.liquidity_stats(life, days, start)
+    assert stats[30] == (0.5, 40) and stats[60] == (0.5, 40)
+    assert ai.liquidity_label(0.5) == "γρήγορη"
+    assert ai.liquidity_label(0.2) == "μέτρια"
+    assert ai.liquidity_label(0.1) == "αργή"
+    assert ai.liquidity_label(None) is None
+
+
+def test_liquidity_needs_min_cohort_and_regular_scrapes():
+    life = _weekly_life(ai.MIN_LIQ - 1, gone_after=0.5)
+    days, start = ai.scrape_context(life)
+    assert ai.liquidity_stats(life, days, start)[60][0] is None  # cohort too small
+    # an 80-day hole in the scrape record restarts the regular run after it
+    hole = _weekly_life(40, 0.5) + [flat(first_seen=datetime(2026, 7, 1), last_seen=OCT)]
+    _, s2 = ai.scrape_context(hole)
+    assert s2 == date(2026, 7, 1) or s2 == date(2026, 10, 30)
+    assert s2 > date(2026, 3, 1)
+
+
+def test_unconfirmed_disappearances_do_not_count():
+    # listings last seen just before an 80-day hole: we do not know when they went
+    life = [
+        flat(first_seen=datetime(2026, 8, 1), last_seen=datetime(2026, 8, 5), status="gone")
+        for _ in range(40)
+    ] + [flat(first_seen=datetime(2026, 7, 20), last_seen=OCT) for _ in range(5)]
+    days, start = ai.scrape_context(life)
+    assert ai.liquidity_stats(life, days, start)[30] == (None, 0)
+
+
+def test_rank_areas_attaches_liquidity_from_lifecycle():
+    life = _weekly_life(40, gone_after=0.5)
+    x = ai.rank_areas(many(25), year=YEAR, lifecycle=life)[0]
+    assert x.liquidity == "γρήγορη" and x.gone_60 == 0.5 and x.gone_n_60 == 40
+    text = ai.liquidity_text(x)
+    assert text.startswith("γρήγορη — 50 % έφυγαν σε 60 μέρες (n=40)")
+    assert "≥ 35 %" in ai.LIQUIDITY_THRESHOLDS and "< 15 %" in ai.LIQUIDITY_THRESHOLDS
+
+
+def test_liquidity_unknown_says_why():
+    x = ai.rank_areas(many(25), year=YEAR)[0]  # active-only input: no history
+    assert x.liquidity is None
+    assert ai.liquidity_text(x).startswith("άγνωστη — δεν υπάρχει αρκετό ιστορικό")
+
+
+def test_supply_per_rent_listing_and_relative_to_median():
+    a = many(60, ppm=2500)
+    b = many(60, area="Παπάγου", search_area="Papagou", ppm=2500)
+    c = many(60, area="Μαρούσι", search_area="Marousi", ppm=2500)
+    rents = [
+        rent("Cholargos", None, 12, 30),
+        rent("Cholargos", "Χολαργός (Κέντρο)", 12, 30),
+        rent("Papagou", None, 12, 60),
+        rent("Papagou", "Παπάγου (Κέντρο)", 12, 60),
+        rent("Marousi", None, 12, 10),
+        rent("Marousi", "Μαρούσι (Κέντρο)", 12, 10),
+    ]
+    got = {x.area: x for x in ai.rank_areas(a + b + c, rents, year=YEAR)}
+    assert got["Χολαργός"].supply_per_rent == pytest.approx(2.0)
+    assert got["Παπάγου"].supply_per_rent == pytest.approx(1.0)
+    assert got["Μαρούσι"].supply_per_rent == pytest.approx(6.0)
+    assert got["Χολαργός"].supply_rel == pytest.approx(1.0)  # the median
+    assert got["Μαρούσι"].supply_rel == pytest.approx(3.0)
+
+
+def test_supply_unknown_when_rent_samples_not_recorded():
+    rents = [rent("Cholargos", None, 12, 0), rent("Cholargos", "Χολαργός (Κέντρο)", 12, 0)]
+    x = ai.rank_areas(many(25), rents, year=YEAR)[0]
+    assert x.supply_per_rent is None and x.supply_rel is None
+
+
+def test_area_carries_line4_and_regulatory_flags():
+    g = ai.rank_areas(many(25, area="Γαλάτσι", search_area="Galatsi"), year=YEAR)[0]
+    assert g.line4 == ["Άλσος Βεΐκου", "Γαλάτσι", "Ελικώνος"]
+    k = ai.rank_areas(many(25, neighborhood="Αθήνα (Κουκάκι)", search_area="Koukaki"), year=YEAR)[0]
+    assert k.area == "Κουκάκι" and "δεν εκδίδεται νέο ΑΜΑ" in k.reg_flags[0]
+
+
+def test_decision_appreciation_names_line4_and_trend_basis():
+    rows = many(60, area="Γαλάτσι", search_area="Galatsi", ppm=3000)
+    x = ai.rank_areas(rows, year=YEAR)[0]
+    s = [t for t in ai.decision([x], 300_000) if t.startswith("Για ανατίμηση")][0]
+    assert "Γαλάτσι — Γραμμή 4 υπό κατασκευή (Άλσος Βεΐκου, Γαλάτσι, Ελικώνος, ορίζοντας 2032)" in s
+    assert "από τον Ιούλιο" in s and "n=60/60" in s
+
+
+def test_decision_liquidity_uses_gone_share_when_known():
+    life = _weekly_life(40, gone_after=0.4)
+    active = [d for d in life if d["status"] == "active"]
+    x = ai.rank_areas(active, year=YEAR, lifecycle=life)[0]
+    s = next(t for t in ai.decision([x], 300_000) if t.startswith("Για ρευστότητα"))
+    assert s.startswith("Για ρευστότητα: Χολαργός, γρήγορη — 40 % έφυγαν σε 60 μέρες (n=40)")
+
+
+# ---- the six checks ----------------------------------------------------------------------
+
+
+def _checks(d, rows, insight):
+    from scout import market_intel
+
+    return {
+        c[0].split(" (")[0]: c for c in ai.investor_checks(d, market_intel.build(rows), insight)
+    }
+
+
+def _subject(**kw):
+    return flat(
+        id=1,
+        ppm=2400.0,
+        price=192_000,
+        gross_yield=0.056,
+        est_monthly_rent=896,
+        rent_estimated=True,
+        **kw,
+    )
+
+
+def test_six_checks_have_labels_values_with_basis_and_a_known_verdict():
+    from scout import market_intel
+
+    rows = many(30, ppm=3000)
+    for i, r in enumerate(rows):
+        r["id"] = 100 + i
+    x = ai.rank_areas(rows, year=YEAR, lifecycle=rows + _weekly_life(40, 0.5))[0]
+    checks = ai.investor_checks(_subject(), market_intel.build(rows), x)
+    assert [c[0].split(" (")[0] for c in checks] == [
+        "Τιμή vs παρόμοια",
+        "Απόδοση",
+        "Ρευστότητα περιοχής",
+        "Ζήτηση ενοικίου",
+        "Νομικά / κανονιστικά",
+        "Έξοδος",
+    ]
+    assert all(v in (ai.GOOD, ai.MID, ai.WARN, ai.UNKNOWN) for _, _, v in checks)
+    assert all(val for _, val, _ in checks)
+    # the numeric checks carry their numbers
+    assert all(any(ch.isdigit() for ch in checks[i][1]) for i in (0, 1, 2))
+
+
+def test_price_check_good_when_below_comps_and_warns_when_too_cheap_or_dear():
+    rows = many(30, ppm=3000)
+    for i, r in enumerate(rows):
+        r["id"] = 100 + i
+    c = _checks(_subject(), rows, None)["Τιμή vs παρόμοια"]
+    assert c[2] == ai.GOOD and "2.400 €/τ.μ. έναντι διάμεσης 3.000 €/τ.μ. (−20,0 %)" in c[1]
+    assert "Παρόμοια (30)" in c[1]
+    cheap = _checks(_subject() | {"price_per_m2": 1500.0}, rows, None)["Τιμή vs παρόμοια"]
+    assert cheap[2] == ai.WARN and "υπερβολικά φθηνό" in cheap[1]
+    dear = _checks(_subject() | {"price_per_m2": 3300.0}, rows, None)["Τιμή vs παρόμοια"]
+    assert dear[2] == ai.WARN
+    fair = _checks(_subject() | {"price_per_m2": 3000.0}, rows, None)["Τιμή vs παρόμοια"]
+    assert fair[2] == ai.MID
+
+
+def test_price_check_unknown_without_comps():
+    c = ai.investor_checks(_subject(), None, None)[0]
+    assert c[2] == ai.UNKNOWN and "δεν υπάρχουν ≥ 5 παρόμοια" in c[1]
+
+
+def test_yield_check_shows_rent_and_price_and_verdict_bands():
+    base = _subject()
+    good = ai.investor_checks(base, None, None)[1]
+    assert good[2] == ai.GOOD
+    assert "5,6 %" in good[1] and "12 × 896 €/μήνα" in good[1] and "192.000 €" in good[1]
+    assert ai.investor_checks(base | {"gross_yield": 0.045}, None, None)[1][2] == ai.MID
+    assert ai.investor_checks(base | {"gross_yield": 0.035}, None, None)[1][2] == ai.WARN
+    none = ai.investor_checks(base | {"gross_yield": None}, None, None)[1]
+    assert none[2] == ai.UNKNOWN
+
+
+def test_liquidity_and_rent_demand_checks_follow_the_insight():
+    x = ai.rank_areas(many(25), year=YEAR, lifecycle=_weekly_life(40, 0.5))[0]
+    liq = ai.investor_checks(_subject(), None, x)[2]
+    assert liq[2] == ai.GOOD and "γρήγορη" in liq[1] and "≥ 35 %" in liq[1]
+    x.liquidity = "αργή"
+    assert ai.investor_checks(_subject(), None, x)[2][2] == ai.WARN
+    assert ai.investor_checks(_subject(), None, None)[2][2] == ai.UNKNOWN
+    demand = ai.investor_checks(_subject(), None, x)[3]
+    assert demand[2] == ai.UNKNOWN  # no rent sample count in this fixture
+    x.supply_per_rent, x.supply_rel, x.rent_samples = 2.5, 0.5, 10
+    good = ai.investor_checks(_subject(), None, x)[3]
+    assert good[2] == ai.GOOD and "2,5 αγγελίες πώλησης ανά αγγελία ενοικίασης" in good[1]
+    x.supply_rel = 2.0
+    assert ai.investor_checks(_subject(), None, x)[3][2] == ai.WARN
+    x.supply_rel = 1.0
+    assert ai.investor_checks(_subject(), None, x)[3][2] == ai.MID
+
+
+def test_regulatory_check_uses_flags():
+    frozen = _subject(neighborhood="Αθήνα (Κουκάκι)", search_area="Koukaki")
+    c = ai.investor_checks(frozen, None, None)[4]
+    assert c[2] == ai.WARN and "δεν εκδίδεται νέο ΑΜΑ" in c[1]
+    watch = _subject(neighborhood="Αθήνα (Αμπελόκηποι)", search_area="Ampelokipoi")
+    assert ai.investor_checks(watch, None, None)[4][2] == ai.MID
+    assert ai.investor_checks(_subject(), None, None)[4][2] == ai.GOOD
+    assert ai.investor_checks(_subject(neighborhood=None, search_area=None), None, None)[4][2] == (
+        ai.UNKNOWN
+    )
+
+
+def test_exit_check_uses_trend_and_line4():
+    x = ai.rank_areas(
+        _cohort(4, 15, 2000, area="Γαλάτσι", search_area="Galatsi")
+        + _cohort(10, 15, 2082, area="Γαλάτσι", search_area="Galatsi"),
+        year=YEAR,
+    )[0]
+    d = _subject(neighborhood="Γαλάτσι (Άλσος Βεΐκου)")
+    c = ai.investor_checks(d, None, x)[5]
+    assert c[2] == ai.GOOD
+    assert "+4,1 % σε 6 μήνες" in c[1] and "n=15/15" in c[1]
+    assert "Μετρό Γραμμή 4 υπό κατασκευή: Άλσος Βεΐκου (ορίζοντας 2032)" in c[1]
+    # a sub-area without a station name only gets the area-level stations
+    other = _subject(neighborhood="Γαλάτσι (Λαμπρινή)")
+    assert "Άλσος Βεΐκου, Γαλάτσι, Ελικώνος" in ai.investor_checks(other, None, x)[5][1]
+    x.trend_pct_6m, x.trend_pct = None, None
+    unk = ai.investor_checks(d, None, x)[5]
+    assert unk[2] == ai.UNKNOWN and "δεν υπάρχει αρκετό ιστορικό" in unk[1]
