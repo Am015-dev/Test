@@ -532,11 +532,10 @@ def test_one_score_on_map_and_cards(env):
     assert any(scores[d["id"]] != round(d.get("score") or 0) for d in listings)
     at = fresh("Χάρτης")
     ok(at, "map")
-    # the map's best-5 cards carry the buyer score, best first
+    # the map's 5 cards carry the buyer score; the map itself no longer shows a score legend
     shown = _card_scores(at)
-    assert shown and shown == sorted(shown, reverse=True)
-    assert set(shown) <= set(scores.values())
-    assert any("Σκορ 0–100" in c.value for c in at.caption)
+    assert 0 < len(shown) <= 5 and set(shown) <= set(scores.values())
+    assert not any("Σκορ 0–100" in c.value for c in at.caption)
     # the card on the search page and on its listing page show that same score
     at = fresh(SEARCH)
     first = _card_scores(at)[0]
