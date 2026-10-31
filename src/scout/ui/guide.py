@@ -289,7 +289,10 @@ def covered_areas(listings: list[dict]) -> list[tuple[str, int]]:
     return [(a, c) for a, c in n.most_common() if c >= MIN_AREA]
 
 
-_ACC = (("ος", "ο"), ("ας", "α"), ("ης", "η"), ("οι", "ους"))  # nominative → accusative
+_ACC = (  # nominative → accusative, unaccented and accented endings
+    ("ος", "ο"), ("ός", "ό"), ("ας", "α"), ("άς", "ά"), ("ης", "η"), ("ής", "ή"),
+    ("οι", "ους"), ("οί", "ούς"),
+)  # fmt: skip
 
 
 def accusative(name: str) -> str:
@@ -545,12 +548,27 @@ def _more() -> None:
 
 
 def result_head(back) -> None:
-    """The result's header row (C6): «Πίσω» small and secondary next to the title; no step
-    line or bar — the answer chips below reopen any question."""
+    """The result's header row (C6): «Πίσω» small and secondary next to the title, which is
+    the page title here (C17: the «Οδηγός» heading is not repeated above it); no step line
+    or bar — the answer chips below reopen any question."""
     with st.container(key="guide-result-head"):
         c = st.columns([1, 3], vertical_alignment="center")
         c[0].button("Πίσω", key="guide-back", on_click=back, args=(STEPS - 1,))
-        c[1].markdown("### Η πρότασή μου")
+        c[1].markdown("## Η πρότασή μου")
+
+
+def at_result(g: dict) -> bool:
+    """True on the screen that shows the list (buy or rent), where the title is the result's."""
+    if g.get("mode") == "buy":
+        return int(g.get("step") or 1) >= STEPS and all(
+            g.get(k) for k in ("budget", "goal", "where")
+        )
+    if g.get("mode") == "rent":
+        r = g.get("rent") or {}
+        return int(r.get("step") or 1) >= STEPS and all(
+            r.get(k) for k in ("budget", "beds", "where")
+        )
+    return False
 
 
 def _progress(step: int) -> None:
@@ -963,7 +981,8 @@ def page(listings: list[dict]) -> None:
     buyer._show_flash()
     st.markdown(CSS, unsafe_allow_html=True)
     g = state()
-    st.markdown(f"## {TITLE}")
+    if not at_result(g):
+        st.markdown(f"## {TITLE}")
     if g.get("mode") != "buy":
         from scout.ui import rent_guide
 

@@ -601,13 +601,13 @@ NO_PHOTO = "Χωρίς φωτογραφία"
 
 def photo_html(d: dict, *, hero: bool = False) -> str:
     """The listing's first photo in a fixed 4:3 box (``theme``: ``.hg-thumb``), loaded lazily
-    from the portal's own CDN; nothing is downloaded or stored here. Without a photo, or if
-    it fails to load, the same box reads «Χωρίς φωτογραφία»."""
+    from the portal's own CDN; nothing is downloaded or stored here. Without a photo there is
+    no box (C17); if it fails to load, the box reads «Χωρίς φωτογραφία»."""
     cls = "hg-thumb hg-thumb-hero" if hero else "hg-thumb"
     url = d.get("image_url") or ""
     label = f'<span class="hg-thumb-none">{NO_PHOTO}</span>'
     if not url.startswith("https://"):
-        return f'<figure class="{cls} hg-thumb-empty">{label}</figure>'
+        return ""  # C17: no empty box; the card's text starts at the edge
     fail = "this.parentNode.classList.add('hg-thumb-empty');this.remove()"
     return (
         f'<figure class="{cls}"><img src="{html.escape(url)}" loading="lazy" '
@@ -1676,38 +1676,40 @@ def _area_line(d: dict, listings: list[dict]) -> None:
 
 
 def verdict_lines(d: dict, adv: dict) -> list[str]:
-    """«Τι να κάνεις»: three things a person would say about this flat, each under 20 words
-    and each from a number on the card: the price against the neighbours, the rent and the
-    yield, and what to check before you call."""
+    """«Τι να κάνεις»: three things a person would say about this flat, each short and each
+    from a number on the card: the price against the neighbours, the rent and the yield, and
+    what to check before you call."""
     cmp = adv.get("cmp")
     if not cmp:
-        price = "Δεν βρήκαμε αρκετά διπλανά σπίτια για να πούμε αν η τιμή είναι καλή."
+        price = "Λίγα διπλανά: δεν ξέρουμε αν η τιμή είναι καλή."
     elif abs(cmp["pct"]) < 0.005:
-        price = f"Ζητά όσο και τα διπλανά ({cmp['n']} σπίτια), άρα δεν έχει περιθώριο."
+        price = f"Όσο τα διπλανά ({cmp['n']} σπίτια): χωρίς περιθώριο."
+    elif -cmp["pct"] > nl_search.TOO_CHEAP:
+        price = f"Πολύ φθηνό: {pct_int(-cmp['pct'])} κάτω από τα διπλανά ({cmp['n']}), ρώτα γιατί."
     elif cmp["pct"] < 0:
-        price = f"Ζητά {pct_int(-cmp['pct'])} λιγότερα από τα διπλανά ({cmp['n']} σπίτια): " + (
-            "πολύ φθηνό, ρώτα γιατί." if -cmp["pct"] > nl_search.TOO_CHEAP else "καλή τιμή."
-        )
+        price = f"Καλή τιμή: {pct_int(-cmp['pct'])} κάτω από τα διπλανά ({cmp['n']} σπίτια)."
     else:
         price = (
-            f"Ζητά {pct_int(cmp['pct'])} παραπάνω από τα διπλανά ({cmp['n']} σπίτια): ζήτα έκπτωση."
+            f"Ακριβό: {pct_int(cmp['pct'])} πάνω από τα διπλανά ({cmp['n']} σπίτια), ζήτα έκπτωση."
         )
     gy = gross_yield(d)
     if gy is None:
-        rent = "Δεν βγάζουμε ενοίκιο, γιατί η αγγελία δεν γράφει τ.μ."
+        rent = "Χωρίς τ.μ. στην αγγελία δεν βγάζουμε ενοίκιο."
     else:
-        src = "γράφει" if d.get("listed_rent") else "νοικιάζεται περίπου"
-        rent = (
-            f"Ενοίκιο: {src} {eur(_r(_rent(d), 10))} τον μήνα, δηλαδή {pct1(gy)} μικτά τον χρόνο."
+        how = (
+            "καλή απόδοση"
+            if gy >= nl_search.YIELD_GOOD
+            else "χαμηλή απόδοση" if gy < nl_search.YIELD_WEAK else "μέτρια απόδοση"
         )
+        rent = f"Ενοίκιο ~{eur(_r(_rent(d), 10))} τον μήνα, {pct1(gy)} μικτά: {how}."
     if _unfinished(d):
-        check = "Χτίζεται ακόμα: πριν πάρεις τηλέφωνο, ρώτα πότε παραδίδεται και αν έχει άδεια."
+        check = "Χτίζεται ακόμα: ρώτα πότε παραδίδεται και αν έχει άδεια."
     elif not d.get("page_checked"):
-        check = "Δεν έχουμε διαβάσει την αγγελία: δες στο κείμενό της αν χτίζεται ακόμα."
+        check = "Πριν τηλεφωνήσεις, διάβασε αν χτίζεται ακόμα: δεν το ελέγξαμε."
     elif not d.get("energy_class"):
-        check = "Πριν πάρεις τηλέφωνο, ζήτα το πιστοποιητικό ενεργειακής απόδοσης: δεν το γράφει."
+        check = "Πριν τηλεφωνήσεις, ζήτα το ενεργειακό πιστοποιητικό: δεν το γράφει."
     else:
-        check = "Πριν πάρεις τηλέφωνο, ρώτα για κοινόχρηστα, βάρη και πότε ελευθερώνεται."
+        check = "Πριν τηλεφωνήσεις, ρώτα κοινόχρηστα, βάρη και πότε ελευθερώνεται."
     return [price, rent, check]
 
 
@@ -1743,8 +1745,8 @@ def page_listing(listings: list[dict]) -> None:
     intel = market_intel.build(listings)
     adv = buyer_view(d, intel)
     ad_link(d, f"l-{d['id']}")
-    with st.container(border=True, key=f"card-l-{d['id']}"):
-        st.markdown(card_html(d, adv, basis=False, hero=True), unsafe_allow_html=True)
+    with st.container(border=True, key=f"card-l-{d['id']}"):  # the same card as every list
+        st.markdown(card_html(d, adv, compact=True), unsafe_allow_html=True)
     st.markdown(
         "**Τι να κάνεις**\n\n" + "\n".join(f"- {html.escape(x)}" for x in verdict_lines(d, adv))
     )

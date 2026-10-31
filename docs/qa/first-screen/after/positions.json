@@ -1,0 +1,61 @@
+{
+  "guide result": {
+    "ok": false,
+    "rows": [
+      {
+        "name": "counts line",
+        "top": 391,
+        "bottom": 551,
+        "verdict": "ok",
+        "text": "20 αγγελίες 264.000 €–336.000 €, νεόδμητο, κοντά σε σταθμό ακριβώς όπως ζήτησες, 80 κοντιν"
+      },
+      {
+        "name": "recommendation",
+        "top": 547,
+        "bottom": 611,
+        "verdict": "ok",
+        "text": "Σου προτείνω Νέα Ιωνία: εκεί βγαίνει 3,7 % και 6 από τα 20 σπίτια είναι εκεί."
+      },
+      {
+        "name": "first card",
+        "top": 623,
+        "bottom": 887,
+        "verdict": "BELOW FOLD (bottom 887 > 844)",
+        "text": "1. 335.000 € · 93 τ.μ. · 3.602 €/τ.μ. · Βαθμολογία 58 1ος όροφος · κτίριο 2025 · Άγιος Δημ"
+      },
+      {
+        "name": "link to the ad",
+        "top": 883,
+        "bottom": 927,
+        "verdict": "BELOW FOLD (bottom 927 > 844)",
+        "text": "Δες την αγγελία στο XE.gr"
+      }
+    ]
+  },
+  "listing page": {
+    "ok": true,
+    "rows": [
+      {
+        "name": "link to the ad",
+        "top": 271,
+        "bottom": 315,
+        "verdict": "ok",
+        "text": "Δες την αγγελία στο XE.gr"
+      },
+      {
+        "name": "price line",
+        "top": 340,
+        "bottom": 393,
+        "verdict": "ok",
+        "text": "170.000 € · 50 τ.μ. · 3.400 €/τ.μ. · Βαθμολογία 63"
+      },
+      {
+        "name": "verdict («Τι να κάνεις»)",
+        "top": 619,
+        "bottom": 825,
+        "verdict": "ok",
+        "text": "Τι να κάνεις Καλή τιμή: 28 % κάτω από τα διπλανά (14 σπίτια). Ενοίκιο ~560 € τον μήνα, 3,9"
+      }
+    ]
+  }
+}

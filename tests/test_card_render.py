@@ -79,7 +79,7 @@ def test_buyer_card_has_the_five_fixed_lines_in_greek():
     assert l2 == "3ος όροφος · κτίριο 2018 · Περισσός"
     assert "Σταθμός ΗΣΑΠ Περισσός: το βγάζουμε από το όνομα της γειτονιάς" in html
     assert l3 == "Ελέγχθηκε η περιγραφή"  # one status chip; the photo clause is behind the card
-    assert "Φωτογραφίες: δεν ελέγχθηκαν" in html.split("hg-l4")[1]
+    assert "Φωτογραφίες: δεν τις έχουμε δει ακόμα" in html.split("hg-l4")[1]
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
     assert l5 == "13 % κάτω από τα διπλανά (12)"
 
@@ -90,14 +90,14 @@ def test_buyer_card_status_unknowns_and_photos():
     unchecked = card_html({**BUYER, "floor": None, "year_built": None}, {})
     # one status chip on line 3 (C17); the photo clause is a fact behind the card
     assert 'hg-st-unk">Δεν έχει ελεγχθεί ακόμα</span></div>' in unchecked
-    assert "Φωτογραφίες: δεν ελέγχθηκαν" in unchecked.split("hg-l5")[1]
+    assert "Φωτογραφίες: δεν τις έχουμε δει ακόμα" in unchecked.split("hg-l5")[1]
     assert "όροφος: δεν δηλώνεται" in unchecked and "έτος: δεν δηλώνεται" in unchecked
     assert "Λίγα διπλανά" in unchecked
     shell = card_html(
         {**BUYER, "is_unfinished": True, "page_checked": True, "few_photos": True}, {}
     )
-    assert 'hg-st-bad">Υπό κατασκευή<' in shell and "Το πολύ 2 φωτογραφίες" in shell
-    assert "Το πολύ 2 φωτογραφίες" not in shell.split("hg-l4")[0]  # not a second chip
+    assert 'hg-st-bad">Υπό κατασκευή<' in shell and "Έως 2 φωτογραφίες" in shell
+    assert "Έως 2 φωτογραφίες" not in shell.split("hg-l4")[0]  # not a second chip
     assert "Ελέγχθηκε" not in shell.split("<details>")[0]  # under construction wins
     norent = card_html({**BUYER, "area_m2": None, "est_monthly_rent": None}, {})
     assert "Ενοίκιο: χωρίς εκτίμηση" in norent
@@ -178,8 +178,8 @@ def test_compact_card_shows_at_most_five_lines_and_hides_the_rest_one_tap_away()
         "Ιδιώτης",
         "Ενεργειακή κλάση A+",
         "Μείωση από 260.000 €",
-        "δεν αναφέρει κατασκευή σε εξέλιξη",
-        "Φωτογραφίες: δεν ελέγχθηκαν",
+        "δεν γράφει ότι χτίζεται ακόμα",
+        "Φωτογραφίες: δεν τις έχουμε δει ακόμα",
         "Σταθμός ΗΣΑΠ Περισσός: το βγάζουμε από το όνομα της γειτονιάς",
         "12 × 900 € ÷ 245.000 € = 4,4 %",
         "Ζητούν συνήθως 3.600 €/τ.μ.",

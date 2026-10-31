@@ -44,7 +44,7 @@ def walk(at, budget="guide-b250", goal="yield", where="best", age="any"):
     at.button(key="guide-show").click().run()
     ok(at, "step 4")
     # the result has no step line (C6): «Πίσω» and the title only
-    assert "Βήμα" not in _text(at) and "### Η πρότασή μου" in _text(at)
+    assert "Βήμα" not in _text(at) and "## Η πρότασή μου" in _text(at)
     return at
 
 
