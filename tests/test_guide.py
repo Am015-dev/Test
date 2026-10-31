@@ -191,3 +191,30 @@ def test_contract_hooks_line4_and_profile_store(monkeypatch):
     assert guide._load_saved() == {"budget": 200_000, "step": 2}
     guide._save({"budget": 300_000})
     assert store.data["guide"] == {"budget": 300_000}
+
+
+def test_assistant_gets_its_own_facts_format(monkeypatch):
+    """The brief and the «Ρώτα με» panel read ``facts["listings"]``: the guide must hand the
+    assistant its own facts_for output, not the page's Greek-keyed summary."""
+    from scout import market_intel
+    from scout.ui import assistant
+
+    rows = [
+        flat(1, 265_000, m2=95, hood="Γαλάτσι (Άλσος Βεΐκου)", page_checked=True),
+        flat(2, 265_000, m2=95, hood="Νέα Ιωνία (Κέντρο)", page_checked=True),
+    ]
+    rents = [
+        *RENTS,
+        {"neighborhood": "Γαλάτσι (Άλσος Βεΐκου)", "rent_per_m2": 12.0, "samples": 9},
+        {"neighborhood": "Νέα Ιωνία (Κέντρο)", "rent_per_m2": 12.0, "samples": 9},
+    ]
+    intel = market_intel.build(rows, YEAR)
+    every = picks.find(rows, intel, rents, 300_000, year=YEAR, near_rail=False, top=10)
+    g = {"budget": 300_000, "goal": "yield", "loan": True, "where": "rail", "age": 10}
+    facts = guide.assistant_facts(every, g, {}, intel, rents, 300_000, "yield")
+    assert len(facts["listings"]) == len(every) and facts["buyer"]["budget"] == 300_000
+    assert facts["buyer"]["loan"] is True and "loan" in facts["listings"][0]
+    seen = {}
+    monkeypatch.setattr(assistant, "brief", lambda f, client=None: seen.setdefault("f", f) and "ok")
+    monkeypatch.setattr(assistant, "enabled", lambda: True)
+    assert assistant.brief(facts) == "ok" and seen["f"] is facts

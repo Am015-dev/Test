@@ -728,6 +728,36 @@ def _dropped(rows: list[picks.Pick]) -> None:
             )
 
 
+def assistant_facts(
+    every: list[picks.Pick],
+    g: dict,
+    area_facts: dict,
+    intel,
+    rents: list[dict],
+    budget: int,
+    goal: str,
+) -> dict:
+    """The facts the assistant reads: ``assistant.facts_for`` (its own contract, English keys,
+    up to 10 picks, the areas they are in, the buyer's answers) when that module exists, else
+    this page's own summary. The brief and the panel only render on the assistant's format."""
+    a = _assistant()
+    if a is not None and callable(getattr(a, "facts_for", None)):
+        answers = {
+            "budget": budget,
+            "goal": goal,
+            "loan": bool(g.get("loan")),
+            "where": g.get("where"),
+            "areas": g.get("areas"),
+            "max_age": g.get("age"),
+            "bedrooms": g.get("bedrooms"),
+        }
+        try:
+            return a.facts_for(every, intel, list(area_facts.values()), answers, rent_rows=rents)
+        except Exception:
+            pass
+    return facts_for(every, g, area_facts, intel)
+
+
 def _assistant_brief(facts: dict) -> None:
     a = _assistant()
     if a is None or not callable(getattr(a, "brief", None)):
@@ -809,7 +839,7 @@ def _results(g: dict, listings: list[dict]) -> None:
                 relax,
                 f"Μόνο {len(every)}. Με έναν όρο λιγότερο (σε παρένθεση πόσες προστίθενται):",
             )
-        facts = facts_for(every, g, area_facts, intel)
+        facts = assistant_facts(every, g, area_facts, intel, rents, budget, rules["goal"])
         _assistant_brief(facts)
         n = st.session_state.setdefault("guide_shown", picks.PAGE)
         visible = every[:n]
