@@ -299,10 +299,10 @@ def test_rank_by_value_against_the_neighbourhood_then_freshness():
     ]
     assert dict(p.checks)["Φρεσκάδα"] == "νέα αγγελία (2 μέρες)"
     assert dict(p.checks)["Τιμή έναντι παρόμοιων"] == (
-        "9,0 έναντι 10,0 €/τ.μ., διάμεσο 9 αγγελιών (Χαλάνδρι (Κέντρο))"
+        "9,0 €/τ.μ. τον μήνα. Τα διπλανά ζητούν συνήθως 10,0 €/τ.μ. (9 αγγελίες, Χαλάνδρι (Κέντρο))"
     )
     assert picks_rent.fresh_verdict({"days_on_market": 75}) == (
-        "75 μέρες στην αγορά — ρώτα γιατί δεν έχει νοικιαστεί"
+        "75 μέρες στην αγορά. Ρώτα γιατί δεν έχει νοικιαστεί ακόμα"
     )
     assert got[-1].too_cheap and got[-1].risks[0].startswith("Πολύ κάτω από τα παρόμοια")
     # within the band but above the budget: said so
