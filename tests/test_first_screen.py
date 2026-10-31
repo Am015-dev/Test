@@ -164,6 +164,8 @@ def test_areas_box_is_four_verdicts_with_the_sentences_behind(env):
         assert len(re.findall(r"\d+(?:[.,]\d+)?", line)) == 1, line  # one number each
     # the verdicts name the same areas, in the same order, as the sentences they summarise
     named = [re.match(r"\*\*([^*]+)\*\*", b).group(1) for b in box]
-    in_full = [m.group(1) for s in full if (m := re.match(r"Αν θες [^:]+: ([^.(]+?)(?:\.| \()", s))]
+    in_full = [
+        m.group(1) for s in full if (m := re.match(r"Αν θες [^:]+: ([^.,(]+?)(?:[.,]| \()", s))
+    ]
     assert named == [a for a in in_full if a in named], (named, in_full)
     assert callable(areas.verdicts) and ai.decision  # the two read the same AreaInsight fields
