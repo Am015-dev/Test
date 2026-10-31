@@ -210,6 +210,12 @@ def _row_to_dict(
     d["is_unfinished"] = bool(row.is_unfinished)
     # only pages read with the under-construction check count as checked
     d["page_checked"] = checked_for_unfinished(row.detail_checked_at)
+    # When the listing page was last read (None = never); what it says; how many photos.
+    d["page_checked_at"] = row.detail_checked_at
+    d["description"] = row.description
+    d["photo_count"] = row.photo_count
+    # ≤2 photos: typically a render, a floor plan or an agency logo, not the flat itself.
+    d["few_photos"] = row.photo_count is not None and row.photo_count <= 2
     d["is_fresh"] = True  # load_listings re-derives it against the whole loaded set
     d["strategy_tags"] = _strategy_tags(d)
     rec = _recommend(d)

@@ -41,6 +41,7 @@ from ..config import Strategy, get_settings
 from .base import RAW_HTML_DIR, USER_AGENT, Collector
 from .parse_helpers import (
     _strip_accents,
+    clean_description,
     parse_float,
     parse_floor,
     parse_int,
@@ -239,6 +240,47 @@ def parse_listed_date(html: str) -> datetime | None:
         return datetime.fromisoformat(raw.replace("Z", "+00:00")).replace(tzinfo=None)
     except ValueError:
         return None
+
+
+# The page's embedded app state carries the listing's photo total as ``"image_count": N``
+# (HTML-escaped: ``&quot;image_count&quot;:4``). The JSON-LD ``image`` list holds the
+# listing's own photo URLs (``.../<uuid>-source.jpg?width=...``), one per photo.
+_IMAGE_COUNT_RE = re.compile(r'"image_count"\s*:\s*(\d+)')
+_SOURCE_IMG_RE = re.compile(r"/([0-9a-f-]{36})-source\.(?:jpe?g|webp|png)", re.IGNORECASE)
+
+
+def parse_photo_count(html: str) -> int | None:
+    """How many photos the listing has, or None when the page says nothing about it.
+
+    Two sources: XE's ``image_count`` and the distinct photo files in the listing's own
+    JSON-LD ``image`` list. The page also embeds "similar listings" with their own data, so
+    a stray ``image_count`` can belong to another ad; when both are present and the count is
+    smaller than the photos actually listed for THIS ad, the JSON-LD list wins (it may be
+    capped, so a larger ``image_count`` is kept)."""
+    m = _IMAGE_COUNT_RE.search(unescape(html))
+    declared = int(m.group(1)) if m else None
+    listed: set[str] = set()
+    has_listing = False
+    for block in _LD_JSON_RE.findall(html):
+        try:
+            data = json.loads(block)
+        except (ValueError, TypeError):
+            continue
+        for node in data if isinstance(data, list) else [data]:
+            if not isinstance(node, dict) or node.get("@type") != "RealEstateListing":
+                continue
+            has_listing = True
+            images = node.get("image") or []
+            for url in [images] if isinstance(images, str) else images:
+                found = _SOURCE_IMG_RE.search(url) if isinstance(url, str) else None
+                if found:
+                    listed.add(found.group(1).lower())
+    if declared is None:
+        # A listing page that lists no photos has 0; None only when there is no listing data.
+        return len(listed) if has_listing else None
+    if listed and declared < len(listed):
+        return len(listed)
+    return declared
 
 
 def parse_detail_coordinates(html: str) -> tuple[float | None, float | None]:
@@ -609,8 +651,12 @@ class XeCollector(Collector):
             raw["area_m2"] = detail["area_m2"]
         if unfinished_on_detail(html, detail):
             raw["is_unfinished"] = True
+        photos = parse_photo_count(html)
+        if photos is not None:
+            raw["photo_count"] = photos
         desc = detail.get("description")
         if desc:
+            raw["description"] = clean_description(desc)
             rented, listed_rent = parse_rent(desc)
             if rented:
                 raw["is_currently_rented"] = True
