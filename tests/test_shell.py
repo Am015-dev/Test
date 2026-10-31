@@ -132,6 +132,7 @@ def test_compare_is_a_three_column_facts_table_for_two_flats(env):  # noqa: F811
     assert all(r.count("|") == 4 for r in rows)  # field · Α · Β
     fields = [r.split("|")[1].strip() for r in rows[2:]]
     assert fields == [
+        "Βαθμολογία",  # C7: the score is the first row
         "Τιμή",
         "€/τ.μ.",
         "τ.μ.",
@@ -141,7 +142,7 @@ def test_compare_is_a_three_column_facts_table_for_two_flats(env):  # noqa: F811
         "Μικτή απόδοση",
         "Σταθμός",
     ]
-    assert len(fields) <= 8  # C3: at most eight rows, one value per cell
+    assert len(fields) <= 9  # C3's eight rows + C7's score, one value per cell
     for r in rows[2:-1]:  # «Μετρό Χολαργός · 360 μ.» (the station row) is one value
         assert all(" · " not in c for c in r.split("|")[2:4]), r
     # then the two compact cards, two buttons each

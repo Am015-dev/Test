@@ -348,6 +348,10 @@ def rent_facts(shown: list[picks_rent.RentPick], r: dict, all_rentals: list[dict
                 "over_budget_eur": p.over_budget or None,
                 "risks": p.risks,
                 "seller_text": picks.excerpt(d.get("description")),
+                "score_0_100": p.score,
+                "score_basis": p.score_basis,
+                "exact_match": not p.relaxed,
+                "relaxed": p.relaxed or None,
             }
         )
     wanted = {row["area"] for row in rows}
@@ -593,6 +597,18 @@ METHOD = f"""
 """
 
 
+def counts_line(exact: int, near: int, what: str) -> str:
+    """C7's result sentence with both counts (rentals)."""
+    tail = "(ένας όρος χαλαρωμένος, γραμμένος σε κάθε κάρτα)"
+    noun = "κοντινή" if near == 1 else "κοντινές"
+    if exact:
+        return (
+            f"**{exact}** {buyer._noun(exact)} ενοικίασης {what} ακριβώς όπως ζήτησες "
+            f"και **{near}** {noun} {tail}."
+        )
+    return f"Καμία ακριβώς όπως ζήτησες ({what})· **{near}** {noun} {tail}."
+
+
 def card_more(p: picks_rent.RentPick) -> list[str]:
     """What sits behind «Από πού βγαίνουν» on the rent card: the four checks, the risks, the
     listing's own words and the basis of the comparison (furnished / available from are the
@@ -613,10 +629,12 @@ def card_more(p: picks_rent.RentPick) -> list[str]:
 
 
 def card_adv(p: picks_rent.RentPick) -> dict:
-    """Line 5 of the compact card (``buyer.comps_text``) from the rental comparables."""
-    if p.vs_area_pct is None:
-        return {}
-    return {"cmp": {"pct": p.vs_area_pct, "n": p.comps_n, "ppm": p.comps_ppm}}
+    """Line 5 of the compact card (``buyer.comps_text``) from the rental comparables, the
+    rent-value «Βαθμολογία» with its basis, and (near match) the loosened answer (C7)."""
+    adv = {"score": p.score, "score_basis": p.score_basis, "relaxed": p.relaxed}
+    if p.vs_area_pct is not None:
+        adv["cmp"] = {"pct": p.vs_area_pct, "n": p.comps_n, "ppm": p.comps_ppm}
+    return adv
 
 
 def card(i: int | None, p: picks_rent.RentPick, k: str, verdicts: bool = False,
@@ -721,13 +739,15 @@ def _results(r: dict, rows: list[dict]) -> None:
         max_age=r.get("age"),
         furnished=bool(r.get("furnished")),
     )
-    found = picks_rent.find(rows, budget, **rules, top=10**6)
+    found = picks_rent.find(rows, budget, **rules, top=10**6, near=True)
     review = guide._review()
     every, dropped = guide.arrange(found, review)
+    exact = [p for p in every if not p.relaxed]
+    near = len(every) - len(exact)
     what = f"έως {eur(budget * (1 + picks_rent.BUDGET_BAND))}/μήνα (το ποσό σου + 10 %)" + (
         ", κοντά σε σταθμό" if where == "rail" else ""
     )
-    relax = picks_rent.relaxations(rows, budget, **rules) if len(every) < picks.PAGE else []
+    relax = picks_rent.relaxations(rows, budget, **rules) if len(exact) < picks.PAGE else []
     if not every:
         st.markdown(f"Καμία αγγελία ενοικίασης {what}.")
         if relax:
@@ -735,14 +755,21 @@ def _results(r: dict, rows: list[dict]) -> None:
         else:
             st.info("Ούτε με έναν όρο λιγότερο βρίσκω κάτι. Άλλαξε το ποσό.")
     else:
-        if sentence := recommend(every):
+        if sentence := recommend(exact or every):
             st.markdown(sentence)
-        st.markdown(f"**{len(every)}** {buyer._noun(len(every))} ενοικίασης {what}.")
+        if near:
+            st.markdown(counts_line(len(exact), near, what))
+        else:
+            st.markdown(f"**{len(every)}** {buyer._noun(len(every))} ενοικίασης {what}.")
         if relax:
             _relax(
-                relax, f"Μόνο {len(every)}. Με έναν όρο λιγότερο (σε παρένθεση πόσες προστίθενται):"
+                relax,
+                f"Μόνο {len(exact)} ακριβώς όπως ζήτησες. Κάνε μόνιμο έναν όρο λιγότερο "
+                "(σε παρένθεση πόσες προστίθενται):",
             )
         facts = rent_facts(every, r, rows)
+        if any(p.relaxed for p in every[:10]):
+            facts["near_matches_note"] = guide.NEAR_NOTE
         _brief(facts)
         n = st.session_state.setdefault("rent_shown", picks.PAGE)
         visible = every[:n]

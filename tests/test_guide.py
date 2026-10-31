@@ -99,7 +99,8 @@ def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env, monkeypatch
         at.session_state["guide"]["age"] == 10
         and "νεόδμητο" in at.button_group(key="guide_chips").options
     )
-    assert "Καμία αγγελία" in text  # no seed flat is within the (zero) walking limit
+    # no seed flat is within the (zero) walking limit: no exact match, the near ones follow
+    assert "Καμία αγγελία" in text or "Καμία ακριβώς όπως ζήτησες" in text
     relax = [b for b in at.button if b.key and b.key.startswith("relax-")]
     no_rail = next(b for b in relax if b.label.startswith("Χωρίς όρο σταθμού (+"))
     added = int(no_rail.label.split("(+")[1].split(",")[0].rstrip(")"))
@@ -236,3 +237,42 @@ def test_assistant_gets_its_own_facts_format(monkeypatch):
     monkeypatch.setattr(assistant, "brief", lambda f, client=None: seen.setdefault("f", f) and "ok")
     monkeypatch.setattr(assistant, "enabled", lambda: True)
     assert assistant.brief(facts) == "ok" and seen["f"] is facts
+
+
+def test_near_matches_follow_with_their_label_counts_and_score(env, monkeypatch):  # noqa: F811
+    """C7: with no exact match the result still lists near matches, each card says which one
+    answer it is outside of, the sentence carries both counts, and every card has the score."""
+    monkeypatch.setattr(picks, "NEAR_RAIL_M", 0)  # no seed flat counts as «κοντά σε μετρό»
+    at = walk(fresh(FIND), budget="guide-b200", where="rail", age="10")
+    ok(at, "near")
+    text = _text(at)
+    m = re.search(r"Καμία ακριβώς όπως ζήτησες \([^)]*\)· \*\*(\d+)\*\* κοντινέ?[ςή]", text)
+    assert m, text[-2000:]
+    near = int(m.group(1))
+    cards = [m.value for m in at.markdown if 'class="hg-card"' in m.value]
+    assert cards and len(cards) == min(near, picks.PAGE)
+    assert all(">Βαθμολογία " in c for c in cards)
+    assert all("Έξω από: " in c for c in cards)  # no exact match: every card is a near one
+    # the relaxation buttons stay as a shortcut to make a loosening permanent
+    assert any((b.key or "").startswith("relax-") for b in at.button)
+
+
+def test_counts_line_wording():
+    line = guide.counts_line(4, 31, "140.800 €–179.200 €, νεόδμητο", 3)
+    assert line.startswith("**4** αγγελίες 140.800 €–179.200 €, νεόδμητο ακριβώς όπως ζήτησες")
+    assert "και **31** κοντινές (ένας όρος χαλαρωμένος, γραμμένος σε κάθε κάρτα)." in line
+    assert guide.counts_line(0, 1, "x", 0).startswith(
+        "Καμία ακριβώς όπως ζήτησες (x)· **1** κοντινή"
+    )
+
+
+def test_assistant_facts_mark_near_matches():
+    class P:
+        def __init__(self, relaxed, score):
+            self.relaxed, self.buyer_score = relaxed, score
+
+    facts = guide.mark_near({"listings": [{}, {}]}, [P("", 70), P("ποσό +18 %", 55)])
+    a, b = facts["listings"]
+    assert a["exact_match"] is True and a["relaxed"] is None and a["score_0_100"] == 70
+    assert b["exact_match"] is False and b["relaxed"] == "ποσό +18 %"
+    assert "near_matches_note" in facts

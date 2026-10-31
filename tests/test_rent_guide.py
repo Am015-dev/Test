@@ -202,7 +202,9 @@ def test_relaxation_has_exact_counts(rent_env):
     assert relax
     first = relax[0]
     added = int(first.label.split("(+")[1].rstrip(")"))
-    before = len(_cards(at))
+    # the exact matches before (C7: near matches follow them and are not counted here)
+    m0 = re.search(r"\*\*(\d+)\*\* αγγελί\w+ ενοικίασης", _text(at))
+    before = int(m0.group(1)) if m0 else 0
     first.click().run()
     ok(at, "relax")
     m = re.search(r"\*\*(\d+)\*\* αγγελίες ενοικίασης", _text(at))
@@ -377,3 +379,16 @@ def test_rent_flow_on_the_real_loader(env):  # noqa: F811
     want = len(picks_rent.find(real, 1000, bedrooms=2, furnished=True, top=10**6))
     assert want and f"**{want}** αγγελίες ενοικίασης" in text
     assert "Παρόμοια (" in text and "Επιπλωμένο" in text
+
+
+def test_rent_card_has_the_value_score_its_basis_and_the_near_chip():
+    from scout.ui import buyer, rent_guide
+
+    rows = [*RENTALS, rental(90, 1150, 80)]  # +15 % over 1.000: a near match on the amount
+    got = picks_rent.find(rows, 1000, bedrooms=2, top=10**6, near=True)
+    p = next(x for x in got if x.listing["id"] == 10_090)
+    assert p.relaxed == "ποσό +15 %"
+    html = buyer.card_html(p.listing, rent_guide.card_adv(p), False, compact=True)
+    assert f">Βαθμολογία {p.score}<" in html.split("hg-l2")[0]
+    assert f"Βαθμολογία {p.score} από 100: τιμή έναντι παρόμοιων" in html
+    assert f"Έξω από: {p.relaxed}" in html
