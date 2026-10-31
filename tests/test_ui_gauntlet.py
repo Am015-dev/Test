@@ -330,7 +330,7 @@ def test_where_to_buy_cards_table_and_handoff(env):
     text = " ".join(m.value for m in at.markdown)
     cards = [m.value[5:] for m in at.markdown if m.value.startswith("#### ")]
     assert sorted(cards) == ["1. Γαλάτσι", "2. Χαλάνδρι"], cards
-    assert "ενοίκιο n=42" in text and "ενοίκιο n=—" in text
+    assert "n=42" in text and "δείγμα ενοικίων μη καταγεγραμμένο" in text
     assert "Για απόδοση:" in text and "Προσοχή" in text
     df = at.dataframe[0].value
     assert list(df["Περιοχή"]) == ["Γαλάτσι", "Χαλάνδρι"]

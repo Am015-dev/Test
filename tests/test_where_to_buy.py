@@ -116,10 +116,8 @@ def test_ranking_feeds_the_page_helpers():
 def test_card_texts_show_n_over_m_and_unchecked():
     assert areas.uc_text(_insight(uc_unfinished=33, uc_checked=51)) == "33/51 ελεγμένα"
     assert "δεν έχει ελεγχθεί" in areas.uc_text(_insight())
-    assert areas.confidence_text(_insight(n_fresh=150, rent_samples=40)) == (
-        "Υψηλή (n=150, ενοίκιο n=40)"
-    )
-    assert areas.confidence_text(_insight(rent_samples=None)).endswith("ενοίκιο n=—)")
+    assert areas.confidence_text(_insight(n_fresh=150, rent_samples=40)) == ("Υψηλή (n=150)")
+    assert "n=—" not in areas.confidence_text(_insight(rent_samples=None))
 
 
 def test_new_vs_old_text():
@@ -140,4 +138,4 @@ def test_percent_has_a_space_in_greek_style():
 def test_yield_text_shows_old_and_new():
     assert areas.yield_text(_insight(gross_yield=0.055)) == "5,5 %"
     x = _insight(gross_yield=0.055, gross_yield_new=0.036)
-    assert areas.yield_text(x) == "5,5 % στο σύνολο, 3,6 % στα νεόδμητα"
+    assert areas.yield_text(x) == "5,5 % στα παλιά · 3,6 % στα νεόδμητα"
