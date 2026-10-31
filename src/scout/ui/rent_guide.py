@@ -474,10 +474,16 @@ def _panel(facts: dict) -> None:
 
 
 def mode_step(g: dict) -> None:
-    """Step 0: buy or rent."""
+    """Step 0: buy or rent. Until rentals exist in the data, «Να νοικιάσω» is shown but
+    cannot be tapped, and the line under it says why (``SOON``)."""
     st.markdown("### Τι ψάχνεις;")
+    have_rentals = bool(rentals())
     with st.container(key="guide-mode"):
         for k, label in MODES.items():
+            if k == "rent" and not have_rentals:
+                st.button(label, key=f"guide-mode-{k}", disabled=True, width="stretch")
+                st.caption(SOON)
+                continue
             guide._choice(label, f"guide-mode-{k}", set_mode, (k,), g.get("mode") == k)
 
 
@@ -730,7 +736,7 @@ def _results(r: dict, rows: list[dict]) -> None:
     else:
         if sentence := recommend(every):
             st.markdown(sentence)
-        st.markdown(f"**{len(every)}** αγγελίες ενοικίασης {what}.")
+        st.markdown(f"**{len(every)}** {buyer._noun(len(every))} ενοικίασης {what}.")
         if relax:
             _relax(
                 relax, f"Μόνο {len(every)}. Με έναν όρο λιγότερο (σε παρένθεση πόσες προστίθενται):"
