@@ -310,7 +310,7 @@ def listing_grid(rows: list[dict], metric: str = "score") -> None:
 
 # Score → colour (absolute score, same scale as the card chip): red weak → green good.
 MAP_SCORE_GOOD, MAP_SCORE_MID = 50, 30
-_MAP_MAX_POINTS = 5000  # beyond this the browser chokes; we keep the best-scored ones
+_MAP_MAX_POINTS = 1500  # beyond this the browser chokes; we keep the best-scored ones
 # Approx ("κέντρο περιοχής") points share one coordinate per area — hundreds stack on one pixel.
 # Spread them deterministically in a ~350 m disc so they stay individually hoverable.
 _JITTER_DEG = 0.0032
@@ -350,12 +350,35 @@ def _map_view(lats: list[float], lngs: list[float]) -> tuple[float, float, float
     return (lat0 + lat1) / 2, (lng0 + lng1) / 2, zoom
 
 
+YIELD_LOW, YIELD_HIGH = 0.035, 0.05  # gross-yield band edges used by the map colours
+_YIELD_COLORS = {"low": [215, 90, 60], "mid": [225, 170, 40], "high": [30, 150, 90]}
+_NO_RENT_COLOR = [150, 150, 160]
+
+
+def gross_yield_of(d: dict) -> float | None:
+    """12 × monthly rent ÷ price — same definition as the cards (buyer.gross_yield)."""
+    rent = d.get("listed_rent") or d.get("est_monthly_rent")
+    return 12 * rent / d["price"] if rent and d.get("price") else None
+
+
+def yield_color(gy: float | None) -> list[int]:
+    """Three bands (< 3,5 % · 3,5–5 % · > 5 %); grey when there is no rent figure."""
+    if gy is None:
+        return _NO_RENT_COLOR
+    return _YIELD_COLORS["low" if gy < YIELD_LOW else "mid" if gy <= YIELD_HIGH else "high"]
+
+
+def _pct_gr(v: float) -> str:
+    return f"{v * 100:.1f}".replace(".", ",") + " %"
+
+
 def map_legend() -> None:
     dots = [
-        (score_color(60), f"σκορ ≥ {MAP_SCORE_GOOD} (καλό)"),
-        (score_color(40), f"{MAP_SCORE_MID}–{MAP_SCORE_GOOD}"),
-        (score_color(10), f"< {MAP_SCORE_MID} (αδύναμο)"),
-        ([30, 90, 255], "σταθμός μετρό"),
+        (_YIELD_COLORS["low"], "Μικτή απόδοση < 3,5 %"),
+        (_YIELD_COLORS["mid"], "3,5–5 %"),
+        (_YIELD_COLORS["high"], "> 5 %"),
+        (_NO_RENT_COLOR, "χωρίς εκτίμηση ενοικίου"),
+        ([30, 90, 255], "σταθμός ΗΣΑΠ/Μετρό"),
     ]
     items = "".join(
         f'<span style="margin-right:14px;white-space:nowrap">'
@@ -364,14 +387,29 @@ def map_legend() -> None:
         f"{_esc(label)}</span>"
         for c, label in dots
     )
-    st.markdown(f'<div style="font-size:0.85rem">{items}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="font-size:0.9rem;line-height:1.7">{items}</div>'
+        '<div style="font-size:0.9rem">Μικρό και αχνό = θέση κατά προσέγγιση '
+        "(κέντρο περιοχής).</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _floor_gr(f: float) -> str:
+    return "υπόγειο" if f < 0 else "ισόγειο" if f == 0 else f"{f:g}ος όροφος"
+
+
+def _status_gr(d: dict) -> str:
+    """Glossary wording: unfinished, page read with the check, or not read yet."""
+    if d.get("is_unfinished"):
+        return "Υπό κατασκευή"
+    return "Ελέγχθηκε η περιγραφή" if d.get("page_checked") else "Δεν έχει ελεγχθεί ακόμα"
 
 
 def results_map(
     rows: list[dict],
     key: str,
     height: int = 420,
-    size_by_price: bool = False,
     show_metro: bool = True,
 ) -> None:
     """Score-coloured, auto-zoomed map of listing dicts with a Greek tooltip.
@@ -385,7 +423,7 @@ def results_map(
     if len(pts) > _MAP_MAX_POINTS:
         pts = sorted(pts, key=lambda d: d.get("score") or 0, reverse=True)[:_MAP_MAX_POINTS]
         st.caption(
-            f"Εμφανίζονται οι {fmt._gr_int(_MAP_MAX_POINTS)} με το υψηλότερο σκορ — "
+            f"Εμφανίζονται οι πρώτες {fmt._gr_int(_MAP_MAX_POINTS)} — "
             "φίλτραρε περιοχή ή τιμή για να δεις όλες."
         )
     import pandas as pd
@@ -394,21 +432,29 @@ def results_map(
     recs = []
     for d in pts:
         lat, lng = map_position(d)
-        score, price, yb = d.get("score"), d.get("price"), d.get("year_built")
+        price = d.get("price")
         approx = d.get("location_precision") != "exact"
+        fl = d.get("floor")
+        gy = gross_yield_of(d)
         recs.append(
             {
                 "lat": lat,
                 "lon": lng,
-                "fill": [*score_color(score), 185 if approx else 235],
-                "r": min(max((price or 0) / 60_000, 3), 9) if size_by_price else 4,
+                # exact positions solid; centroid positions small and ~40 % alpha
+                "fill": [*yield_color(gy), 100 if approx else 240],
+                "r": 3.5 if approx else 6,
                 "title": _esc((d.get("title") or "")[:70]),
                 "price": fmt.euro(price),
+                "m2": f"{d['area_m2']:g} τ.μ." if d.get("area_m2") else "— τ.μ.",
                 "ppm2": fmt.euro_per_m2(d.get("price_per_m2")),
-                "score": f"{score:.0f}" if score is not None else "—",
-                "year": str(yb) if yb else "—",
+                "floor": "όροφος —" if fl is None else _floor_gr(fl),
+                "year": f"κατασκευή {d['year_built']}" if d.get("year_built") else "κατασκευή —",
+                "status": _status_gr(d),
+                "yield": (
+                    f"Μικτή απόδοση {_pct_gr(gy)}" if gy is not None else "Χωρίς εκτίμηση ενοικίου"
+                ),
                 "hood": _esc(d.get("neighborhood") or d.get("search_area") or "—"),
-                "prec": "📍 κατά προσέγγιση θέση" if approx else "",
+                "prec": "θέση κατά προσέγγιση" if approx else "",
             }
         )
     df = pd.DataFrame(recs)
@@ -446,9 +492,9 @@ def results_map(
             )
         )
     tooltip = {
-        "html": "<b>{title}</b><br/>{price} · {ppm2}<br/>Σκορ: <b>{score}</b> · "
-        "Έτος κατασκευής: {year}<br/>{hood}<br/><i>{prec}</i>",
-        "style": {"fontSize": "12px", "maxWidth": "280px"},
+        "html": "<b>{price}</b> · {m2} · {ppm2}<br/>{floor} · {year}<br/>{status}<br/>"
+        "{yield}<br/>{hood}<br/><i>{prec}</i>",
+        "style": {"fontSize": "14px", "maxWidth": "260px", "whiteSpace": "normal"},
     }
     st.pydeck_chart(
         pdk.Deck(

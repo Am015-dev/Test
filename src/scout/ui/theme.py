@@ -96,7 +96,7 @@ p, li, [data-testid="stMarkdownContainer"] {{ line-height: 1.6; }}
 /* Captions & small print — quiet, not shouty. */
 [data-testid="stCaptionContainer"], .stCaption, small {{
     color: var(--hg-muted);
-    font-size: 0.82rem;
+    font-size: .875rem;
     line-height: 1.5;
 }}
 
@@ -157,7 +157,7 @@ hr, [data-testid="stDivider"] {{
 /* No text-transform: uppercase — on a lang="en" page Chrome keeps the Greek accents
  * ("ΑΓΑΠΗΜΈΝΑ"), which is wrong Greek typography. */
 [data-testid="stMetricLabel"] {{
-    font-size: .78rem !important;
+    font-size: .875rem !important;
     font-weight: 600;
     color: var(--hg-muted);
 }}
@@ -169,7 +169,7 @@ hr, [data-testid="stDivider"] {{
     color: var(--hg-ink);
     line-height: 1.15;
 }}
-[data-testid="stMetricDelta"] {{ font-size: .8rem; font-weight: 600; }}
+[data-testid="stMetricDelta"] {{ font-size: .875rem; font-weight: 600; }}
 /* Wrap long values ("cheaper than area") instead of truncating them to "chea…". */
 [data-testid="stMetric"] {{ min-width: 0; }}
 [data-testid="stMetricValue"], [data-testid="stMetricValue"] * {{
@@ -260,7 +260,7 @@ a:hover {{ color: var(--hg-accent-2); }}
 [data-testid="stTable"] thead th {{
     background: var(--hg-canvas);
     color: var(--hg-muted);
-    font-size: .74rem;
+    font-size: .875rem;
     font-weight: 600;
     letter-spacing: .04em;
    
@@ -363,12 +363,12 @@ footer {{ visibility: hidden; height: 0; }}
     border: 1px solid hsl(var(--hue), 55%, 84%);
 }}
 .ph-score span {{ font-size: 1.25rem; font-weight: 750; line-height: 1; }}
-.ph-score small {{ font-size: .56rem; letter-spacing: .06em; opacity: .8; }}
+.ph-score small {{ font-size: .875rem; letter-spacing: .06em; opacity: .8; }}
 .ph-price-wrap {{ flex: 1 1 auto; min-width: 0; }}
 .ph-price {{ font-size: 1.5rem; font-weight: 750; color: var(--hg-ink); line-height: 1.1; }}
-.ph-ppm2 {{ font-size: .82rem; color: var(--hg-muted); margin-top: 2px; }}
+.ph-ppm2 {{ font-size: .875rem; color: var(--hg-muted); margin-top: 2px; }}
 .ph-arch {{
-    flex: 0 0 auto; font-size: .68rem; font-weight: 650; padding: 4px 9px; border-radius: 999px;
+    flex: 0 0 auto; font-size: .875rem; font-weight: 650; padding: 4px 9px; border-radius: 999px;
     letter-spacing: .03em; white-space: nowrap;
 }}
 .ph-arch-new {{ background: #DCFCE7; color: #15803D; }}
@@ -379,9 +379,9 @@ footer {{ visibility: hidden; height: 0; }}
 .ph-arch-std {{ background: #F1F5F9; color: #64748B; }}
 .ph-hood {{ font-size: .9rem; color: var(--hg-ink-soft); font-weight: 550; margin-top: -2px; }}
 .ph-specs {{ display: flex; flex-wrap: wrap; gap: 6px; }}
-.ph-spec {{ font-size: .76rem; color: var(--hg-ink-soft); background: var(--hg-canvas);
+.ph-spec {{ font-size: .875rem; color: var(--hg-ink-soft); background: var(--hg-canvas);
     border: 1px solid var(--hg-line-2); border-radius: 7px; padding: 3px 8px; }}
-.ph-pill {{ font-size: .72rem; font-weight: 650; border-radius: 7px; padding: 3px 8px; }}
+.ph-pill {{ font-size: .875rem; font-weight: 650; border-radius: 7px; padding: 3px 8px; }}
 .ph-en-good {{ background: #DCFCE7; color: #15803D; }}
 .ph-en-mid {{ background: #FEF9C3; color: #A16207; }}
 .ph-en-poor {{ background: #FFEDD5; color: #C2410C; }}
@@ -391,7 +391,7 @@ footer {{ visibility: hidden; height: 0; }}
     border-bottom: 1px solid var(--hg-line-2); padding: 10px 0; }}
 .ph-sig {{ flex: 1; display: flex; flex-direction: column; gap: 1px; }}
 .ph-sig b {{ font-size: 1rem; font-weight: 700; color: var(--hg-ink); }}
-.ph-sig span {{ font-size: .66rem; color: var(--hg-muted); letter-spacing: .03em; }}
+.ph-sig span {{ font-size: .875rem; color: var(--hg-muted); letter-spacing: .03em; }}
 .ph-sig-pos b {{ color: #15803D; }}
 .ph-sig-neg b {{ color: #B91C1C; }}
 .ph-grade {{ font-size: 1rem; font-weight: 800; color: #fff; border-radius: 8px;
@@ -400,19 +400,19 @@ footer {{ visibility: hidden; height: 0; }}
 .ph-grade-B {{ background: #65A30D; }}
 .ph-grade-C {{ background: #CA8A04; }}
 .ph-grade-D {{ background: #9CA3AF; }}
-.ph-conf {{ display: flex; flex-direction: column; align-items: center; font-size: .8rem;
+.ph-conf {{ display: flex; flex-direction: column; align-items: center; font-size: .875rem;
     font-weight: 700; color: var(--hg-muted); align-self: center; line-height: 1; }}
-.ph-conf small {{ font-size: .55rem; letter-spacing: .03em; }}
-.ph-thesis {{ font-size: .8rem; line-height: 1.35; color: var(--hg-ink);
+.ph-conf small {{ font-size: .875rem; letter-spacing: .03em; }}
+.ph-thesis {{ font-size: .875rem; line-height: 1.35; color: var(--hg-ink);
     background: #FFF7ED; border: 1px solid #FED7AA; border-radius: 9px;
     padding: 8px 10px; margin: 2px 0; }}
-.ph-incomplete {{ font-size: .72rem; line-height: 1.3; color: #92400E;
+.ph-incomplete {{ font-size: .875rem; line-height: 1.3; color: #92400E;
     background: #FEFCE8; border: 1px solid #FEF08A; border-radius: 8px;
     padding: 6px 9px; margin: 2px 0; }}
 /* The recommendation line — BUY/WATCH/PASS verdict + concrete action. */
-.ph-rec {{ font-size: .8rem; line-height: 1.35; border-radius: 10px; padding: 8px 11px;
+.ph-rec {{ font-size: .875rem; line-height: 1.35; border-radius: 10px; padding: 8px 11px;
     margin: 2px 0; display: flex; gap: 8px; align-items: baseline; }}
-.ph-rec-badge {{ font-size: .66rem; font-weight: 800; letter-spacing: .04em;
+.ph-rec-badge {{ font-size: .875rem; font-weight: 800; letter-spacing: .04em;
     padding: 2px 7px; border-radius: 999px; flex: 0 0 auto; color: #fff; }}
 .ph-rec-BUY {{ background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; }}
 .ph-rec-BUY .ph-rec-badge {{ background: #059669; }}
@@ -422,18 +422,18 @@ footer {{ visibility: hidden; height: 0; }}
 .ph-rec-PASS .ph-rec-badge {{ background: #DC2626; }}
 /* Strategy-fit tags: small teal chips summarising the investment angle. */
 .ph-strats {{ display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0; }}
-.ph-strat {{ font-size: .68rem; font-weight: 600; color: #0F766E; background: #CCFBF1;
+.ph-strat {{ font-size: .875rem; font-weight: 600; color: #0F766E; background: #CCFBF1;
     border: 1px solid #99F6E4; border-radius: 999px; padding: 2px 9px; }}
 /* Internal-consistency warning: stronger (rose) than the limited-data note — the numbers
    themselves look wrong, not merely absent. */
-.ph-inconsistent {{ font-size: .72rem; line-height: 1.3; color: #9F1239;
+.ph-inconsistent {{ font-size: .875rem; line-height: 1.3; color: #9F1239;
     background: #FFF1F2; border: 1px solid #FECDD3; border-radius: 8px;
     padding: 6px 9px; margin: 2px 0; }}
 .ph-card-foot {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; }}
 .ph-badges {{ display: flex; flex-wrap: wrap; gap: 5px; }}
-.ph-badge {{ font-size: .66rem; font-weight: 600; color: var(--hg-accent);
+.ph-badge {{ font-size: .875rem; font-weight: 600; color: var(--hg-accent);
     background: #ECFDF5; border-radius: 6px; padding: 3px 7px; }}
-.ph-cta {{ flex: 0 0 auto; font-size: .8rem; font-weight: 650; color: #fff !important;
+.ph-cta {{ flex: 0 0 auto; font-size: .875rem; font-weight: 650; color: #fff !important;
     background: var(--hg-accent); border-radius: 9px; padding: 7px 13px; text-decoration: none !important;
     white-space: nowrap; transition: background .15s ease; }}
 .ph-cta:hover {{ background: var(--hg-accent-2); }}
@@ -495,12 +495,12 @@ footer {{ visibility: hidden; height: 0; }}
 .st-key-hero [data-testid="stFormSubmitButton"] button {{ min-height: 2.9rem;
     border-radius: 12px; font-size: 1rem; }}
 .st-key-examples {{ align-items: center; row-gap: .45rem; }}
-.hg-try {{ font-size: .8rem; color: var(--hg-muted); font-weight: 600; }}
+.hg-try {{ font-size: .875rem; color: var(--hg-muted); font-weight: 600; }}
 .st-key-examples button {{
     border-radius: 999px !important; min-height: 0 !important; padding: .25rem .75rem !important;
     background: #fff; border: 1px solid #CCE7E2 !important; color: var(--hg-accent) !important;
 }}
-.st-key-examples button p {{ font-size: .82rem !important; font-weight: 600; }}
+.st-key-examples button p {{ font-size: .875rem !important; font-weight: 600; }}
 .st-key-examples button:hover {{ background: #ECFDF8; border-color: var(--hg-accent) !important; }}
 
 /* The parsed search as chips. */
@@ -529,7 +529,7 @@ footer {{ visibility: hidden; height: 0; }}
 .hg-head {{ display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px;
     line-height: 1.35; }}
 .hg-title {{ font-size: .98rem; font-weight: 600; color: var(--hg-ink); }}
-.hg-loc {{ font-size: .86rem; color: var(--hg-muted); }}
+.hg-loc {{ font-size: .875rem; color: var(--hg-muted); }}
 .hg-facts {{ display: flex; flex-wrap: wrap; gap: 0; margin-top: 6px; font-size: .88rem;
     color: var(--hg-ink-soft); }}
 .hg-facts span {{ white-space: nowrap; }}
@@ -537,15 +537,15 @@ footer {{ visibility: hidden; height: 0; }}
 .hg-facts b {{ font-weight: 700; color: var(--hg-ink); }}
 .hg-badges {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
 /* Badges wrap inside a narrow (phone) card instead of overflowing it. */
-.hg-b {{ font-size: .76rem; font-weight: 600; border-radius: 6px; padding: 3px 8px;
+.hg-b {{ font-size: .875rem; font-weight: 600; border-radius: 6px; padding: 3px 8px;
     line-height: 1.3; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }}
 .hg-rent {{ margin-top: 6px; font-size: .88rem; color: var(--hg-ink-soft); }}
 .hg-rent b {{ color: var(--hg-ink); font-weight: 700; }}
-.hg-rent span {{ color: var(--hg-muted); font-size: .8rem; }}
-.hg-note-bad {{ margin-top: 8px; padding: .4rem .6rem; border-radius: 8px; font-size: .84rem;
+.hg-rent span {{ color: var(--hg-muted); font-size: .875rem; }}
+.hg-note-bad {{ margin-top: 8px; padding: .4rem .6rem; border-radius: 8px; font-size: .875rem;
     font-weight: 600; background: #FEE2E2; color: #991B1B; border-left: 4px solid #DC2626; }}
 /* Score breakdown under the price row: visible text (works on phones, unlike a tooltip). */
-.hg-parts {{ display: flex; flex-wrap: wrap; gap: 2px 0; font-size: .78rem; margin-top: -2px;
+.hg-parts {{ display: flex; flex-wrap: wrap; gap: 2px 0; font-size: .875rem; margin-top: -2px;
     color: var(--hg-muted); }}
 .hg-parts span {{ white-space: nowrap; }}
 .hg-parts span + span::before {{ content: "·"; color: var(--hg-faint); margin: 0 6px; }}
@@ -561,7 +561,7 @@ footer {{ visibility: hidden; height: 0; }}
 .hg-pos-dot {{ position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px;
     border-radius: 50%; background: var(--hg-ink); border: 2px solid #fff;
     box-shadow: 0 0 0 1px var(--hg-ink); }}
-.hg-pos-legend {{ display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: .78rem;
+.hg-pos-legend {{ display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: .875rem;
     color: var(--hg-muted); }}
 .hg-pos-legend i {{ display: inline-block; width: 10px; height: 10px; margin-right: 5px;
     vertical-align: middle; border-radius: 2px; }}
@@ -575,28 +575,28 @@ footer {{ visibility: hidden; height: 0; }}
 .hg-b-muted {{ background: #F1F5F9; color: #475569; }}
 .hg-b-warn {{ background: #FEF3C7; color: #92400E; }}
 .hg-b-bad {{ background: #FEE2E2; color: #991B1B; }}
-.hg-advice {{ margin: .35rem 0 .1rem; padding: .45rem .65rem; border-radius: 10px; font-size: .86rem;
+.hg-advice {{ margin: .35rem 0 .1rem; padding: .45rem .65rem; border-radius: 10px; font-size: .875rem;
     line-height: 1.35; border-left: 4px solid; }}
 .hg-advice-good {{ background: #F0FDF4; border-color: #16A34A; color: #14532D; }}
 .hg-advice-warn {{ background: #FFFBEB; border-color: #D97706; color: #78350F; }}
 .hg-advice-bad {{ background: #FEF2F2; border-color: #DC2626; color: #7F1D1D; }}
 .hg-score {{ display: inline-flex; align-items: baseline; gap: 5px; border-radius: 10px;
     padding: 5px 10px; border: 1px solid; white-space: nowrap; cursor: help; }}
-.hg-score small {{ font-size: .7rem; font-weight: 600; opacity: .85; }}
+.hg-score small {{ font-size: .875rem; font-weight: 600; opacity: .85; }}
 .hg-score b {{ font-size: 1.2rem; font-weight: 800; line-height: 1; }}
-.hg-score i {{ font-style: normal; font-size: .72rem; font-weight: 700; opacity: .8;
+.hg-score i {{ font-style: normal; font-size: .875rem; font-weight: 700; opacity: .8;
     border-left: 1px solid currentColor; padding-left: 5px; }}
 .hg-score-hi {{ background: #ECFDF5; color: #047857; border-color: #A7F3D0; }}
 .hg-score-mid {{ background: #FFFBEB; color: #92400E; border-color: #FDE68A; }}
 .hg-score-lo {{ background: #F8FAFC; color: #475569; border-color: var(--hg-line); }}
-[class*="st-key-card-"] [data-testid="stCaptionContainer"] {{ font-size: .8rem; }}
+[class*="st-key-card-"] [data-testid="stCaptionContainer"] {{ font-size: .875rem; }}
 
 /* Card actions: compact, equal buttons; the active "★" star is amber, not teal. */
 [class*="st-key-act-"] {{ margin-top: .25rem; }}
 [class*="st-key-act-"] button, [class*="st-key-act-"] a {{
     min-height: 2.25rem !important; padding: .25rem .6rem !important;
 }}
-[class*="st-key-act-"] button p, [class*="st-key-act-"] a p {{ font-size: .86rem !important; }}
+[class*="st-key-act-"] button p, [class*="st-key-act-"] a p {{ font-size: .875rem !important; }}
 [class*="st-key-act-"] [data-testid="stBaseButton-primary"] {{
     background: #FEF3C7; border-color: #FCD34D; color: #92400E;
 }}
@@ -622,7 +622,7 @@ footer {{ visibility: hidden; height: 0; }}
     .st-key-filters [data-testid="stColumn"]:first-child:nth-last-child(3) {{
         flex-basis: 100% !important; min-width: 100% !important;
     }}
-    .st-key-filters label p {{ font-size: .8rem !important; }}
+    .st-key-filters label p {{ font-size: .875rem !important; }}
     /* actions: a 2-up grid instead of a tall stack; a lone first button (3 total) spans. */
     [class*="st-key-act-"] [data-testid="stHorizontalBlock"] {{
         flex-direction: row !important; flex-wrap: wrap !important; gap: .45rem !important;
@@ -635,6 +635,27 @@ footer {{ visibility: hidden; height: 0; }}
         flex-basis: 100% !important; min-width: 100% !important;
     }}
 }}
+
+/* ------------------------------------------------------------------ *
+ * App shell: top page pills (one tap on a phone) + compare facts table.
+ * ------------------------------------------------------------------ */
+.st-key-nav_pill [data-testid="stButtonGroup"], .st-key-nav_pill > div > div {{ flex-wrap: wrap; gap: .4rem; }}
+.st-key-nav_pill button {{ min-height: 2.5rem; padding: .3rem .85rem; font-size: .9375rem; }}
+/* Selected pill: filled AND bold with a check, so it never relies on colour alone. */
+.st-key-nav_pill button[aria-checked="true"], .st-key-nav_pill button[aria-pressed="true"] {{
+    font-weight: 750; text-decoration: underline; text-underline-offset: 4px;
+}}
+[data-testid="stMarkdownContainer"] table {{
+    width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .9375rem;
+}}
+[data-testid="stMarkdownContainer"] th, [data-testid="stMarkdownContainer"] td {{
+    padding: .55rem .5rem; vertical-align: top; overflow-wrap: anywhere;
+    border-bottom: 1px solid var(--hg-line-2);
+}}
+[data-testid="stMarkdownContainer"] td:first-child {{ width: 32%; color: var(--hg-muted); }}
+/* Nothing may push a page wider than the phone (the select's hidden input did on the map). */
+[data-testid="stMain"] {{ overflow-x: clip; }}
+[data-testid="stMain"] [data-baseweb="select"] input {{ max-width: 100%; }}
 </style>
 """
 

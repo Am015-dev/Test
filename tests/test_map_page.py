@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 
 import pytest
@@ -23,52 +24,57 @@ def _count(at) -> int:
     raise AssertionError("map count not shown")
 
 
-def test_map_filters_narrow_the_points(env):  # noqa: F811
+def test_map_has_three_filters_and_they_narrow_the_points(env):  # noqa: F811
     at = fresh(MAP)
     ok(at, "open")
     total = _count(at)
     assert total > 0
-    assert len(at.dataframe) == 1  # the top-20 table
-    # areas are grouped by municipality and labelled with counts
+    # exactly three filters: area, price max, min year (no checkboxes, no score/age sliders)
+    assert len(at.multiselect) + len(at.slider) == 3
+    assert not at.checkbox
+    # areas are grouped by municipality
     areas = at.multiselect(key="map_areas")
-    assert any(o.startswith("Χολαργός (") for o in areas.options), areas.options
+    assert any(o == "Χολαργός" for o in areas.options), areas.options
     areas.set_value(["Χολαργός"]).run()
     ok(at, "area")
     by_area = _count(at)
     assert 0 < by_area < total
-    seen = []
-    for threshold in range(5, 100, 5):
-        at.slider(key="map_score").set_value(threshold).run()
-        ok(at, f"score {threshold}")
-        seen.append(_count(at))
-    assert seen == sorted(seen, reverse=True)
-    assert any(0 < n < by_area for n in seen), seen  # the min score really narrows the map
-    at.slider(key="map_score").set_value(100).run()
-    ok(at, "score 100")
-    assert _count(at) == 0
-    assert any("χαλάρωσε τα φίλτρα" in i.value for i in at.info)
-    at.slider(key="map_score").set_value(0).run()
-    assert _count(at) == by_area
-
-
-def test_map_other_filters_run(env):  # noqa: F811
-    at = fresh(MAP)
-    total = _count(at)
-    lo, hi = at.slider(key="map_price").value
-    at.slider(key="map_price").set_value((lo, lo + (hi - lo) // 20 * 10)).run()
+    at.multiselect(key="map_areas").set_value([]).run()
+    lo = at.slider(key="map_price").min
+    at.slider(key="map_price").set_value(lo).run()
     ok(at, "price")
     assert _count(at) < total
-    at.slider(key="map_price").set_value((lo, hi)).run()
-    at.slider(key="map_age").set_value(10).run()
-    ok(at, "age")
-    with_unknown = _count(at)
-    at.checkbox(key="map_age_unknown").uncheck().run()
-    ok(at, "age unknown")
-    assert _count(at) <= with_unknown
-    for key in ("map_fresh", "map_hide", "map_size"):
-        at.checkbox(key=key).set_value(not at.checkbox(key=key).value).run()
-        ok(at, key)
-    assert _count(at) >= 0
+    at.slider(key="map_price").set_value(at.slider(key="map_price").max).run()
+    assert _count(at) == total
+    year = at.slider(key="map_year")
+    year.set_value(year.max).run()
+    ok(at, "year")
+    assert _count(at) < total
+
+
+def test_map_hides_unfinished_flats_and_says_so(env):  # noqa: F811
+    at = fresh(MAP)
+    ok(at, "open")
+    notes = " ".join(c.value for c in at.caption)
+    assert re.search(r"[\d.]+ υπό κατασκευή δεν εμφανίζονται", notes), notes
+
+
+def test_map_cards_replace_the_wide_table(env):  # noqa: F811
+    at = fresh(MAP)
+    assert len(at.dataframe) == 0
+    assert any("Οι 5 καλύτερες στον χάρτη" in m.value for m in at.markdown)
+
+
+def test_map_popup_shows_card_facts_in_greek():
+    """The tooltip template names price, m², €/τ.μ., floor, year and status — no English."""
+    src = inspect.getsource(components.results_map)
+    for field in ("{price}", "{m2}", "{ppm2}", "{floor}", "{year}", "{status}"):
+        assert field in src
+    assert not re.search(r"\b(Score|Price|Floor|Year|Status)\b", src.split("tooltip =")[1][:400])
+    unfinished = components._status_gr({"is_unfinished": True, "page_checked": True})
+    assert unfinished == "Υπό κατασκευή"
+    assert components._status_gr({"page_checked": True}) == "Ελέγχθηκε η περιγραφή"
+    assert components._status_gr({"page_checked": False}) == "Δεν έχει ελεγχθεί ακόμα"
 
 
 def test_approx_points_are_jittered_deterministically():
@@ -86,3 +92,22 @@ def test_score_color_runs_red_to_green():
     red, green = components.score_color(0), components.score_color(70)
     assert red[0] > red[1] and green[1] > green[0]
     assert components.score_color(None) == [150, 150, 160]
+
+
+def test_map_colours_by_gross_yield_in_three_bands():
+    low, mid, high = (components.yield_color(g) for g in (0.03, 0.04, 0.06))
+    assert len({tuple(low), tuple(mid), tuple(high)}) == 3
+    assert components.yield_color(0.035) == mid and components.yield_color(0.05) == mid
+    assert components.yield_color(None) == [150, 150, 160]  # no rent figure: grey
+    d = {"price": 200_000, "est_monthly_rent": 700}
+    assert components.gross_yield_of(d) == pytest.approx(0.042)
+    assert components.gross_yield_of({"price": 200_000}) is None
+
+
+def test_map_page_says_how_few_positions_are_exact(env):  # noqa: F811
+    at = fresh(MAP)
+    first = next(c.value for c in at.caption if "θέση" in c.value and "κέντρο" in c.value)
+    assert re.match(
+        r"(Μόνο [\d.]+ αγγελίες έχουν ακριβή θέση· οι υπόλοιπες στο κέντρο|Καμία)", first
+    )
+    assert not any("Σκορ 0–100" in c.value for c in at.caption)
