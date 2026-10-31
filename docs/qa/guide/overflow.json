@@ -1,0 +1,34 @@
+{
+  "01-budget": {
+    "overflow": false,
+    "wide": []
+  },
+  "01-budget-loan": {
+    "overflow": false,
+    "wide": []
+  },
+  "02-goal": {
+    "overflow": false,
+    "wide": []
+  },
+  "03-where": {
+    "overflow": false,
+    "wide": []
+  },
+  "04-kind": {
+    "overflow": false,
+    "wide": []
+  },
+  "05-result": {
+    "overflow": false,
+    "wide": []
+  },
+  "06-ten-more": {
+    "overflow": false,
+    "wide": []
+  },
+  "07-dropped": {
+    "overflow": false,
+    "wide": []
+  }
+}
