@@ -109,6 +109,12 @@ jobs:
           timeout 14m python scripts/check_photos.py --limit 150 --max-minutes 12
           --areas "$WEEKLY_AREAS" || true
 
+      - name: Recompute nearest station for exact-coordinate rows (offline, seconds)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: python scripts/recompute_metro.py
+
       - name: Rescore whole panel from the DB (no network)
         if: always()
         timeout-minutes: 15

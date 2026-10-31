@@ -76,8 +76,8 @@ def test_haversine_zero_distance():
 
 def test_haversine_known_order_of_magnitude():
     # Holargos to Ethniki Amyna is roughly ~1km.
-    h = METRO_STATIONS["Holargos"]
-    e = METRO_STATIONS["Ethniki Amyna"]
+    h = METRO_STATIONS["Μετρό Χολαργός"]
+    e = METRO_STATIONS["Μετρό Εθνική Άμυνα"]
     d = haversine_m(*h, *e)
     assert 500 < d < 2500
 
@@ -105,9 +105,9 @@ def test_estimate_rent_uses_median_when_no_listed():
 
 def test_nearest_metro_haversine_fallback():
     # Coordinates right on the Holargos station -> nearest is Holargos.
-    lat, lng = METRO_STATIONS["Holargos"]
+    lat, lng = METRO_STATIONS["Μετρό Χολαργός"]
     result = nearest_metro(lat, lng, use_osrm=False)
-    assert result.nearest_metro == "Holargos"
+    assert result.nearest_metro == "Μετρό Χολαργός"
     assert result.metro_distance_m == 0
 
 
@@ -119,8 +119,8 @@ def test_nearest_metro_none_without_coords():
 
 def test_enrich_listing_offline_computes_derived_fields():
     lst = make_listing(
-        lat=METRO_STATIONS["Holargos"][0],
-        lng=METRO_STATIONS["Holargos"][1],
+        lat=METRO_STATIONS["Μετρό Χολαργός"][0],
+        lng=METRO_STATIONS["Μετρό Χολαργός"][1],
         price=200_000,
         area_m2=80.0,
         listed_rent=900,
@@ -131,7 +131,7 @@ def test_enrich_listing_offline_computes_derived_fields():
     )
     enriched = enrich_listing(lst, median_rent_per_m2=10.0, use_network=False)
     assert enriched.price_per_m2 == 2500.0
-    assert enriched.nearest_metro == "Holargos"
+    assert enriched.nearest_metro == "Μετρό Χολαργός"
     assert enriched.metro_distance_m == 0
     assert enriched.est_monthly_rent == 900
     assert enriched.gross_yield == round(900 * 12 / 200_000, 4)
