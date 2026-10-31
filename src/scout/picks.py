@@ -203,6 +203,7 @@ class Pick:
     station: str | None
     checked: bool = False
     few_photos: bool = False
+    bad_photos: bool = False  # photo check: render / plan / site / stock, not the flat
     status: str = ""  # first line under the title: page read or not
     lines: list[str] = field(default_factory=list)  # one short line per number, with its basis
     risks: list[str] = field(default_factory=list)
@@ -230,8 +231,9 @@ class Pick:
 
     def sort_key(self) -> tuple:
         # A page we have read beats one we have not, whatever its yield; real photos beat
-        # "≤2 photos" (often a render or a logo); then the investor ranking.
-        return (self.checked, not self.few_photos, self.rank_score)
+        # "≤2 photos" (often a render or a logo); then the investor ranking. Photos the
+        # photo check classed as render/plan/site/stock sit below real or unchecked ones.
+        return (self.checked, not self.bad_photos, not self.few_photos, self.rank_score)
 
 
 def _r(x: float, step: int) -> int:
@@ -255,13 +257,30 @@ CHECKED = "Ελέγχθηκε η περιγραφή{when} — δεν αναφέ�
 UNCHECKED = "Δεν έχει ελεγχθεί ακόμα"
 FEW_PHOTOS = "Το πολύ 2 φωτογραφίες — συχνά μόνο ψηφιακή απεικόνιση ή λογότυπο"
 EXCERPT_CHARS = 300
+PHOTO_KINDS = {
+    "photo": "πραγματικές",
+    "render": "σχέδια ή ψηφιακή απεικόνιση",
+    "plan": "σχέδια ή ψηφιακή απεικόνιση",
+    "site": "εργοτάξιο",
+    "stock": "κοινές με άλλες αγγελίες του μεσίτη",
+}
+BAD_PHOTO_KINDS = frozenset({"render", "plan", "site", "stock"})
+
+
+def photo_line(d: dict) -> str:
+    """'Φωτογραφίες: πραγματικές' etc. from the photo check; «δεν ελέγχθηκαν» when none."""
+    return f"Φωτογραφίες: {PHOTO_KINDS.get(d.get('photo_kind') or '', 'δεν ελέγχθηκαν')}"
 
 
 def status_line(d: dict) -> str:
     if not d.get("page_checked"):
-        return UNCHECKED
-    when = d.get("page_checked_at")
-    return CHECKED.format(when=f" ({when:%d/%m/%Y})" if isinstance(when, (date, datetime)) else "")
+        text = UNCHECKED
+    else:
+        when = d.get("page_checked_at")
+        text = CHECKED.format(
+            when=f" ({when:%d/%m/%Y})" if isinstance(when, (date, datetime)) else ""
+        )
+    return f"{text} · {photo_line(d)}"
 
 
 def excerpt(text: str | None, limit: int = EXCERPT_CHARS) -> str | None:
@@ -417,6 +436,7 @@ def _build(
         station=st_name,
         checked=checked,
         few_photos=few,
+        bad_photos=(d.get("photo_kind") or "") in BAD_PHOTO_KINDS,
         status=status_line(d),
         lines=lines,
         risks=risks[:3],

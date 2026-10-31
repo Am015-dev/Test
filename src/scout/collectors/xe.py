@@ -251,6 +251,27 @@ def parse_listed_date(html: str) -> datetime | None:
 _SOURCE_IMG_RE = re.compile(r"/([0-9a-f-]{36})-source\.(?:jpe?g|webp|png)", re.IGNORECASE)
 
 
+def parse_photo_urls(html: str) -> list[str]:
+    """The listing's own photo URLs, one per distinct file, in page order (first format
+    seen wins) — the same JSON-LD ``RealEstateListing.image`` list ``parse_photo_count``
+    counts. Empty when the page lists none."""
+    urls: dict[str, str] = {}
+    for block in _LD_JSON_RE.findall(html):
+        try:
+            data = json.loads(block)
+        except (ValueError, TypeError):
+            continue
+        for node in data if isinstance(data, list) else [data]:
+            if not isinstance(node, dict) or node.get("@type") != "RealEstateListing":
+                continue
+            images = node.get("image") or []
+            for url in [images] if isinstance(images, str) else images:
+                found = _SOURCE_IMG_RE.search(url) if isinstance(url, str) else None
+                if found:
+                    urls.setdefault(found.group(1).lower(), url)
+    return list(urls.values())
+
+
 def parse_photo_count(html: str) -> int | None:
     """Distinct photo files in the listing's own JSON-LD ``RealEstateListing.image`` list.
 
