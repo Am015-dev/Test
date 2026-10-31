@@ -78,12 +78,13 @@ async function closeSidebar(page) {
 // ---- (a) the guide: one shot per step, result, ten more, reopen by chip --------------------
 async function flowGuide(browser) {
   const [ctx, page] = await newPage(browser, 390, 844, true);
-  await shot(page, 'a1-guide-step1-budget');
+  await shot(page, 'a0-guide-step0-mode');
+  await tap(page, 'Να αγοράσω'); await shot(page, 'a1-guide-step1-budget');
   await tap(page, '300 χιλ. €'); await shot(page, 'a2-guide-step2-goal');
   await tap(page, 'Απόδοση ενοικίου'); await shot(page, 'a3-guide-step3-where');
   await tap(page, 'Κοντά σε μετρό/ΗΣΑΠ'); await shot(page, 'a4-guide-step4-kind');
   await page.getByText('Νεόδμητο (έως 10 ετών)', { exact: true }).first().click(); await settle(page);
-  await tap(page, 'Η πρότασή μου →'); await shot(page, 'a5-guide-result');
+  await tap(page, 'Η πρότασή μου'); await shot(page, 'a5-guide-result');
   const more = page.getByRole('button', { name: /^Δείξε άλλες/ }).first();
   if (await more.count()) { await more.scrollIntoViewIfNeeded(); await more.click(); await shot(page, 'a6-guide-ten-more'); }
   else log('NO «Δείξε άλλες» button');
@@ -119,7 +120,7 @@ async function flowMap(browser) {
   await nav(page, 'Χάρτης'); await sleep(3000);
   await shot(page, 'b1-map-card-under-map');
   const h0 = await mapHeader(page);
-  const next = btn(page, 'Επόμενο ›');
+  const next = btn(page, 'Επόμενο');
   if (await next.count()) { await next.click(); await settle(page, 2500); } else log('NO «Επόμενο ›»');
   const h1 = await mapHeader(page);
   await shot(page, 'b2-map-after-next', { wait: false });

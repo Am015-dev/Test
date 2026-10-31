@@ -2434,8 +2434,9 @@ def main() -> None:
         st.button("Ανανέωση δεδομένων", key="refresh", on_click=_refresh_data, width="stretch")
     # One header line, the data line under it, then the pills (every page).
     listings = get_listings()
-    st.markdown('<div class="hg-app-head">Σκάουτ ακινήτων</div>', unsafe_allow_html=True)
-    st.caption(_data_status(listings))
+    with st.container(key="app-head"):  # theme.py: the wordmark and the quiet data line
+        st.markdown('<div class="hg-app-head">Σκάουτ ακινήτων</div>', unsafe_allow_html=True)
+        st.caption(_data_status(listings))
     # Pills mirror the current page (pages also navigate by setting session_state["page"]).
     st.session_state["nav_pill"] = _PILL_OF.get(page)
     st.pills(

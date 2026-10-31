@@ -488,6 +488,8 @@ def mode_step(g: dict) -> None:
 
 
 def _progress(step: int) -> None:
+    if step >= STEPS:
+        return guide.result_head(go)
     with st.container(key="guide-progress"):
         c = st.columns([1, 2], vertical_alignment="center")
         c[0].button("Πίσω", key="guide-back", on_click=go, args=(step - 1,))
@@ -702,7 +704,6 @@ def _dropped(rows: list[picks_rent.RentPick]) -> None:
 
 
 def _results(r: dict, rows: list[dict]) -> None:
-    st.markdown("### Η πρότασή μου")
     st.session_state["rent_chips"] = None
     st.pills(
         "Οι απαντήσεις σου",
