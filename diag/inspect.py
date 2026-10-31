@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, "src")
-from selectolax.parser import HTMLParser  # noqa: E402
+from selectolax.lexbor import LexborHTMLParser as HTMLParser  # noqa: E402
 
 from scout.collectors.xe import XeCollector, parse_detail_jsonld  # noqa: E402
 from scout.config import get_settings  # noqa: E402
