@@ -79,7 +79,8 @@ def test_classify_sends_three_images_and_applies_the_majority(monkeypatch):
     client = StubClient('Ορίστε: {"labels": ["Render", "render", "photo"]}')
     assert cp.classify(client, [("image/jpeg", JPEG)] * 3) == "render"
     call = client.calls[0]
-    assert call["model"] == "claude-haiku-5-5" and call["temperature"] == 0
+    assert call["model"] == "claude-haiku-5-5" and "temperature" not in call
+    assert call["max_tokens"] >= 300 and call["thinking"] == cp.THINKING_OFF
     blocks = call["messages"][0]["content"]
     assert [b["type"] for b in blocks] == ["image", "image", "image", "text"]
     assert blocks[0]["source"]["media_type"] == "image/jpeg"

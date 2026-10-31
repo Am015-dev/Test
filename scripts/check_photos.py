@@ -49,6 +49,11 @@ log = logging.getLogger("check_photos")
 KINDS = ("photo", "render", "plan", "site", "stock")
 DEFAULT_MODEL = "claude-haiku-5-5"
 MIN_IMAGES = 3
+# The answer is ~15 tokens, but with thinking on the model spends the budget before it
+# writes them (seen live: stop_reason=max_tokens after `{"labels": `). Thinking off, as
+# scout.ui.assistant does; the SDK/API take no temperature for this model family.
+MAX_TOKENS = 300
+THINKING_OFF = {"type": "between_tools"}
 MAX_IMAGE_BYTES = 4_500_000  # API limit is 5 MB per image
 # When no label has a majority, the least flattering one wins: a real photo needs a majority.
 TIE_ORDER = ("render", "plan", "site", "stock", "photo")
@@ -98,7 +103,8 @@ def classify(client, images: list[tuple[str, bytes]]) -> str | None:
     content.append({"type": "text", "text": PROMPT})
     resp = client.messages.create(
         model=vision_model(),
-        max_tokens=100,  # the SDK/API take no temperature for this model family
+        max_tokens=MAX_TOKENS,
+        thinking=THINKING_OFF,
         messages=[{"role": "user", "content": content}],
     )
     text = "".join(getattr(b, "text", "") for b in resp.content)
