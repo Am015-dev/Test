@@ -516,3 +516,80 @@ machine you measure on, the guide result ≤ 2 s cold; `docs/qa/speed/AFTER.md` 
 tests unchanged and green (results identical: assert the first ten picks before/after on the
 published DB in a test guarded by the DB's presence). Coordinate with C7: `picks.buyer_score`
 is the one score function; cache around it, do not fork it.
+
+## Round 6 — the first-screen test
+
+The owner used the app on 31/10 at 23:10 and wrote: «full of AI prose», «you have hidden the
+link to the page, I have to click and scroll», «very bad user interface», «very limited
+answers». The coordinator walked the same flow (250 χιλ. · απόδοση · κοντά σε μετρό ·
+οποιαδήποτε ηλικία · 1 υπν.) and agrees. One rule for the round, every screen: **within one
+phone screen (390×844), without scrolling, the buyer sees the answer, the link to the ad and
+one next tap.** Nothing a model generated is shown on a first screen; counts, method and
+formulas go behind one tap; no sentence on a first screen is longer than 20 words.
+
+### C14 — link first (coordinator, done in `fix/link-first`)
+
+«Δες την αγγελία στο XE.gr» is the first thing under every card (full width) and the first
+control on the listing page under the picker. A card with no photo shows no box at all.
+
+### C15 — a wide, honest guide (W29, `picks.py`, `picks_rent.py`, the counts sentence in `guide.py` / `rent_guide.py`)
+
+With the owner's answers the guide showed 35 flats and stopped. Two causes: a hidden floor
+drops every flat more than 12 % under the budget (a 250.000 € buyer never sees a 180.000 €
+flat), and with 30 or more exact matches the near tier is switched off. Rule: no floor under
+the budget for sales (the «too cheap against comparables» signal stays as a chip and in the
+trust order, never as a filter); near matches whenever the exact list is under 100
+(`NEAR_MIN = 100`), the third tier as now; the head sentence says what each answer costs in
+one line («Με 250 χιλ. βρίσκω 1.420 σπίτια· «κοντά σε μετρό» αφήνει 410, «1 υπν.» 95.») and the
+existing relaxation buttons carry those counts. Definition of done: owner's answers give ≥ 300
+flats across the tiers on the published DB with no repeats; `tests/test_picks_more.py` updated
+(floor gone, threshold 100, counts line); before/after 390 px shots in `docs/qa/wide/`.
+
+### C16 — one number per flat (W30, `guide.py` line ~689 override, `picks.Pick.rent`, `buyer._rent` / `rent_text`, `rent_guide` equivalent)
+
+The same flat (220.000 €, 50 τ.μ., Αμπελόκηποι) shows «~630 €/μήνα · 3,4 %» on the guide card
+and «~580 €/μήνα · 3,1 %» on its own page, because the guide overrides `est_monthly_rent` with
+its own rent model. Rule: rent estimate, gross yield and score are computed once per flat and
+read the same on the guide card, the search card, the map list, the compare table, the
+listing page and the assistant's facts. Pick the better of the two estimates (document why)
+and delete the other path. Definition of done: a test renders one flat through guide, search
+and listing page and asserts identical rent, yield and score strings; the example above shows
+one rent everywhere; gate green.
+
+### C17 — verdict first, two actions (W31, `buyer.card_html` lines, `buyer.result_card` actions, `buyer.page_listing` order, `guide.result_head` / `recommend`, `rent_guide` equivalents)
+
+Card lines: 1 price · τ.μ. · €/τ.μ. · «Βαθμολογία NN»; 2 floor · year · neighbourhood (station
+only when ≤ 600 m; the «(από το όνομα της γειτονιάς)» clause moves into «Από πού βγαίνουν»);
+3 one status chip; 4 rent · yield; 5 «15 % κάτω από τα διπλανά (46)» — never «Παρόμοια (46):».
+Under the card: the link (C14), then exactly two buttons, «Λεπτομέρειες» and «Αγαπημένο»;
+«Εγκρίνω» / «Δεν μου κάνει» leave the guide result (the saved-searches page keeps them).
+Result head: at most three lines above the first card — the counts line (C15), the
+recommendation as one spoken sentence («Σου προτείνω Αμπελόκηπους: εκεί βγαίνει 3,6 % και 17
+από τα 35 σπίτια είναι εκεί.»), and nothing else; «Πώς υπολογίζω» stays at the bottom. Listing
+page order: link → photo (if any) → card → «Τι να κάνεις» (three bullets: price against the
+neighbours, rent and yield, what to check before you call) → everything else (calculator, the
+six checks, description, history, area button) in collapsed expanders. Definition of done:
+at 390×844 the guide result's first screen shows the counts line, the recommendation and the
+first card with its link; the listing page's first screen shows link, price line and the
+verdict; Playwright asserts both (`docs/qa/first-screen/check.js`); AppTest for the two
+buttons; 390 px before/after.
+
+### C18 — no machine prose, no clutter (W32, `app.py` header / data line / `page_map` notes, `theme.py`, `buyer.page_search` counts, `assistant` brief placement, `areas.py` insight box)
+
+Header: the pills in one row (3+3 is acceptable only with the sources line gone); the
+«XE.gr, Golden Home … 12.741 ενεργές» line moves to the footer; page title and «Πίσω» share one
+line. Hide what Streamlit draws that is not ours (`[data-testid="stStatusWidget"]`, the viewer
+badge, `[data-testid="stDecoration"]`); the owner's own «Manage app» avatar is Streamlit
+Cloud's and cannot be hidden by CSS — say so in the PR. «Σημείωμα επενδυτή» leaves the guide
+result (it restates the cards with «#1, #2»); the assistant keeps its own place. Search page:
+«Κρύβονται 10.121: 41 όχι κατοικία · 344 …» becomes one short line with the breakdown behind
+one tap. Map page: the three grey notes become one line. Areas page: the «Για αγορά προς
+ενοικίαση» box becomes four one-line verdicts, area name first in bold, one number each.
+Definition of done: on the guide result at 390×844 the first card starts within the top 45 %
+of the screen (Playwright, `docs/qa/first-screen/check.js`); no first screen contains «#1»,
+«σύστημα», «μοντέλο», a bracketed count, or a sentence over 20 words (a test over the rendered
+text of guide result, search, map, areas); 390 px before/after of all four pages.
+
+Merge order: C14 → C16 → C15 → C17 → C18; #97 (voice) merges as soon as it is green and
+every C17/C18 string it touches is re-based on it, the round-6 wording winning where they
+overlap. Every worker merges `origin/main` before each push and runs the full gate.
