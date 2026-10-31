@@ -536,7 +536,7 @@ def test_decision_appreciation_names_line4_and_trend_basis():
     x = ai.rank_areas(rows, year=YEAR)[0]
     s = [t for t in ai.decision([x], 300_000) if t.startswith("Για ανατίμηση")][0]
     assert (
-        "Γαλάτσι. Εκεί φτιάχνεται η Γραμμή 4 του μετρό (Άλσος Βεΐκου, Γαλάτσι, Ελικώνος, για το 2032)"
+        "Γαλάτσι. Εκεί φτιάχνεται η Γραμμή 4 του μετρό (Άλσος Βεΐκου, Γαλάτσι, Ελικώνος, γύρω στο 2032)"
         in s
     )
     assert "από τον Ιούλιο" in s and "60 και 60 αγγελίες" in s
@@ -672,7 +672,7 @@ def test_exit_check_uses_trend_and_line4():
     c = ai.investor_checks(d, None, x)[5]
     assert c[2] == ai.GOOD
     assert "+4,1 % σε 6 μήνες" in c[1] and "15 και 15 αγγελίες" in c[1]
-    assert "σταθμός της Γραμμής 4 του μετρό: Άλσος Βεΐκου, για το 2032" in c[1]
+    assert "σταθμός της Γραμμής 4 του μετρό: Άλσος Βεΐκου, γύρω στο 2032" in c[1]
     # a sub-area without a station name only gets the area-level stations
     other = _subject(neighborhood="Γαλάτσι (Λαμπρινή)")
     assert "Άλσος Βεΐκου, Γαλάτσι, Ελικώνος" in ai.investor_checks(other, None, x)[5][1]

@@ -807,7 +807,7 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
     if grow:
         t, x = max(grow, key=lambda p: p[0][0])
         l4 = (
-            f". Εκεί φτιάχνεται η Γραμμή 4 του μετρό ({', '.join(x.line4)}, για το {OPENING})"
+            f". Εκεί φτιάχνεται η Γραμμή 4 του μετρό ({', '.join(x.line4)}, γύρω στο {OPENING})"
             if x.line4
             else ""
         )
@@ -972,9 +972,9 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
     t = exit_trend(insight) if insight is not None else None
     st_name = line4_station(d)
     l4 = (
-        f". Εδώ φτιάχνεται σταθμός της Γραμμής 4 του μετρό: {st_name}, για το {OPENING}"
+        f". Εδώ φτιάχνεται σταθμός της Γραμμής 4 του μετρό: {st_name}, γύρω στο {OPENING}"
         if st_name
-        else (f" · {line4_text(insight.line4)}" if insight is not None and insight.line4 else "")
+        else (f". {line4_text(insight.line4)}" if insight is not None and insight.line4 else "")
     )
     if t is None:
         series = "δεν ξέρουμε ακόμα πώς κινούνται οι τιμές" + (
