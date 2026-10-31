@@ -126,7 +126,7 @@ def walk_rent(at, budget="guide-rb800", beds="2", where="best", age="any", furni
     at.button_group(key="rent_age").set_value(age).run()
     at.button(key="guide-rshow").click().run()
     ok(at, "step 4")
-    assert "Βήμα 5 από 5" in _text(at) and "### Η πρότασή μου" in _text(at)
+    assert "Βήμα" not in _text(at) and "### Η πρότασή μου" in _text(at)
     return at
 
 

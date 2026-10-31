@@ -84,6 +84,31 @@ def test_detail_page_is_not_a_menu_item_but_opens_from_a_card(env):  # noqa: F81
     assert "Αγγελία" not in at.radio(key="page").options
 
 
+def test_listing_page_back_returns_where_it_was_opened(env):  # noqa: F811
+    at = _app()
+    at.pills(key="nav_pill").set_value("Αναζήτηση").run()
+    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+    ok(at, "detail")
+    assert at.session_state["page"] == "Αγγελία"
+    assert any(m.value == "## Αγγελία" for m in at.markdown)
+    at.button(key="listing-back").click().run()
+    ok(at, "back")
+    assert at.session_state["page"] == "Αναζήτηση"
+    # nothing to return to: «Πίσω» goes home
+    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+    at.session_state["detail_from"] = None
+    at.button(key="listing-back").click().run()
+    assert at.session_state["page"] == HOME
+
+
+def test_empty_favourites_offer_the_guide(env):  # noqa: F811
+    at = _app()
+    at.pills(key="nav_pill").set_value("Αγαπημένα").run()
+    at.button(key="watch_to_guide").click().run()
+    ok(at, "to guide")
+    assert at.session_state["page"] == HOME
+
+
 def test_tapping_the_selected_pill_again_keeps_the_page(env):  # noqa: F811
     at = _app()
     at.pills(key="nav_pill").set_value("Χάρτης").run()

@@ -196,15 +196,18 @@ def render_series(x: ai.AreaInsight) -> None:
     st.markdown(f"`{sparkline([p for _, p, _ in x.trend_series])}`  \n{series_text(x)}")
 
 
-_VERDICT_COLOR = {ai.GOOD: "green", ai.MID: "orange", ai.WARN: "red", ai.UNKNOWN: "gray"}
+_VERDICT_TONE = {ai.GOOD: "good", ai.MID: "mid", ai.WARN: "warn", ai.UNKNOWN: "unk"}
 
 
 def render_checks(checks: list[tuple[str, str, str]]) -> None:
     """The six investor checks as a phone-width list: label, value with its basis, verdict
     word (coloured text, no icons). Used by the listing page and the guide."""
     for label, value, verdict in checks:
-        color = _VERDICT_COLOR.get(verdict, "gray")
-        st.markdown(f"**{label}:** :{color}[**{verdict}**]  \n{value}")
+        tone = _VERDICT_TONE.get(verdict, "unk")  # colours: theme.py .hg-v-* (status tokens)
+        st.markdown(
+            f'**{label}:** <span class="hg-v hg-v-{tone}">{verdict}</span>  \n{value}',
+            unsafe_allow_html=True,
+        )
 
 
 FILTERS_CAPTION = (
@@ -431,7 +434,7 @@ def _liquidity_rows(x: ai.AreaInsight) -> list[tuple[str, str]]:
 
 
 def _card(rank: int | None, x: ai.AreaInsight, *, key: str) -> None:
-    with st.container(border=True):
+    with st.container(border=True, key=f"area-card-{key}"):
         st.markdown(f"#### {rank}. {x.area}" if rank else f"##### {x.area}")
         st.markdown(x.why)
         rows = [
@@ -594,7 +597,7 @@ def page_areas(listings: list[dict]) -> None:
             st.markdown(line)
     st.caption(coverage_line(shown, listings) + ". " + FILTERS_CAPTION)
 
-    st.markdown("### Οι 3 πρώτες")
+    st.markdown("### Οι 3 πρώτες στη συνολική βαθμολογία")
     for i, x in enumerate(shown[:3], 1):
         _card(i, x, key=str(i))
 

@@ -90,7 +90,11 @@ def test_buyer_card_status_unknowns_and_photos():
     from scout.ui.buyer import card_html
 
     unchecked = card_html({**BUYER, "floor": None, "year_built": None}, {})
-    assert 'hg-st-unk">Δεν έχει ελεγχθεί ακόμα · Φωτογραφίες: δεν ελέγχθηκαν<' in unchecked
+    # the photo clause is its own neutral chip (C6), never inside the status tone
+    assert (
+        'hg-st-unk">Δεν έχει ελεγχθεί ακόμα</span><span class="hg-sep" aria-hidden="true"> · '
+        '</span><span class="hg-st hg-st-neu">Φωτογραφίες: δεν ελέγχθηκαν<'
+    ) in unchecked
     assert "όροφος: δεν δηλώνεται" in unchecked and "έτος: δεν δηλώνεται" in unchecked
     assert "Λίγα παρόμοια" in unchecked
     shell = card_html(

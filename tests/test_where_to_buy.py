@@ -171,8 +171,8 @@ def test_render_checks_prints_label_verdict_and_value(monkeypatch):
     areas.render_checks(
         [("Απόδοση", "Μικτή 5,6 %", "καλό"), ("Ζήτηση ενοικίου", "δεν έχουμε", "άγνωστο")]
     )
-    assert seen[0] == "**Απόδοση:** :green[**καλό**]  \nΜικτή 5,6 %"
-    assert ":gray[**άγνωστο**]" in seen[1]
+    assert seen[0] == '**Απόδοση:** <span class="hg-v hg-v-good">καλό</span>  \nΜικτή 5,6 %'
+    assert '<span class="hg-v hg-v-unk">άγνωστο</span>' in seen[1]
 
 
 def test_page_pipeline_attaches_all_insight_fields():

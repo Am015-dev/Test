@@ -48,7 +48,7 @@ WHERE = {
     "best": "Όπου βγαίνει ο καλύτερος αριθμός",
 }
 AGES = {"10": "Νεόδμητο (έως 10 ετών)", "20": "Έως 20 ετών", "any": "Οτιδήποτε"}
-BEDS = {"any": "Όσα να 'ναι", "1": "1", "2": "2", "3": "3+"}
+BEDS = {"any": "Οποιαδήποτε", "1": "1", "2": "2", "3": "3+"}
 MIN_AREA = 20  # an area is offered as a chip with at least this many active listings
 DEFAULTS = {
     "mode": None,  # "buy" | "rent"; None = step 0 «Τι ψάχνεις;»
@@ -321,8 +321,9 @@ def recommend(
     area = max(by, key=keys.get(goal, keys["yield"]))
     ps, x = by[area], facts.get(area)
     out = (
-        f"Πρόταση: **{html.escape(area)}** — {len(ps)} από τις {len(found)} αγγελίες της λίστας, "
-        f"διάμεση μικτή απόδοση τους {picks.gr_pct(med(ps, lambda p: p.gross))}"
+        f"Πρόταση: **{html.escape(area)}** · μικτή απόδοση "
+        f"{picks.gr_pct(med(ps, lambda p: p.gross))}  \n"
+        f"Διάμεση στις {len(ps)} από τις {len(found)} αγγελίες της λίστας εκεί"
     )
     extra = []
     if goal == "yield" and x is not None and x.rent_ppm:
@@ -347,9 +348,9 @@ def recommend(
         top_area = area_insights.area_name(top.get("neighborhood"))
         where = f", {html.escape(top_area)}" if top_area != area else ""
         out += (
-            f" Η 1η της λίστας ({buyer.eur(top['price'])}{where}) είναι "
-            f"{buyer.eur(top['price'] - budget)} πάνω από τα {buyer.eur(budget)} που είπες: "
-            f"δείχνω έως {round(picks.BUDGET_BAND * 100)} % πάνω από το ποσό σου."
+            f"  \nΗ 1η της λίστας ({buyer.eur(top['price'])}{where}) είναι "
+            f"{buyer.eur(top['price'] - budget)} πάνω από τα {buyer.eur(budget)} που είπες.  \n"
+            f"Δείχνω έως {round(picks.BUDGET_BAND * 100)} % πάνω από το ποσό σου."
         )
     return out
 
@@ -499,7 +500,18 @@ def _more() -> None:
 # ---- screens -------------------------------------------------------------------------------
 
 
+def result_head(back) -> None:
+    """The result's header row (C6): «Πίσω» small and secondary next to the title; no step
+    line or bar — the answer chips below reopen any question."""
+    with st.container(key="guide-result-head"):
+        c = st.columns([1, 3], vertical_alignment="center")
+        c[0].button("Πίσω", key="guide-back", on_click=back, args=(STEPS - 1,))
+        c[1].markdown("### Η πρότασή μου")
+
+
 def _progress(step: int) -> None:
+    if step >= STEPS:
+        return result_head(go)
     with st.container(key="guide-progress"):
         c = st.columns([1, 2], vertical_alignment="center")
         c[0].button("Πίσω", key="guide-back", on_click=go, args=(step - 1,))
@@ -782,7 +794,6 @@ def _assistant_panel(facts: dict) -> None:
 
 
 def _results(g: dict, listings: list[dict]) -> None:
-    st.markdown("### Η πρότασή μου")
     st.session_state["guide_chips"] = None
     st.pills(
         "Οι απαντήσεις σου",

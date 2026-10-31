@@ -18,4 +18,9 @@ from scout.ui import queries  # noqa: E402
 from tests.test_rent_guide import RENTALS  # noqa: E402
 
 queries.load_rent_listings = lambda: RENTALS
+# app.py forgets every scout module when a source file is newer than the process (its hot-reload
+# guard), which would drop this patch: mark the loaded package as current. Restart this QA
+# instance after editing the code.
+scout = sys.modules["scout"]
+scout._source_stamp = max(f.stat().st_mtime for f in Path(scout.__file__).parent.rglob("*.py"))
 runpy.run_path(str(ROOT / "src" / "scout" / "ui" / "app.py"), run_name="__main__")

@@ -21,9 +21,8 @@
 //    icons are counted separately (they are glyphs, not words);
 //  - the sets of distinct font sizes (text), border radii, box-shadows, margins and paddings in
 //    use on visible elements of the main area and the sidebar;
-//  - :focus-visible: after one real Tab key press (keyboard modality), each focusable control is
-//    focused in turn and its outline / box-shadow / border (and those of up to three wrapping
-//    ancestors, where Streamlit draws input rings) compared with its resting state.
+//  - keyboard focus: a real Tab walk (up to 60 stops); each focused control must show a ring
+//    (outline or box-shadow) on itself or one of its three nearest ancestors.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
@@ -103,6 +102,9 @@ function measureInPage() {
   const visible = (el) => {
     const r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return false;
+    // content of a closed <details> (Streamlit expanders, the card's «Από πού βγαίνουν») keeps
+    // a layout box in Chromium; checkVisibility() knows it is not rendered
+    if (el.checkVisibility && !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
     const cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) return false;
     let p = el;
@@ -112,6 +114,11 @@ function measureInPage() {
       p = p.parentElement;
     }
     if (r.right < -5 || r.left > W + 5) return false; // off-canvas drawer
+    // visually hidden (screen-reader-only) wrappers: 1 px boxes that clip their content
+    for (let a = el.parentElement, i = 0; a && i < 3; a = a.parentElement, i++) {
+      const ar = a.getBoundingClientRect(), as = getComputedStyle(a);
+      if (ar.width <= 1 && ar.height <= 1 && as.overflow === 'hidden') return false;
+    }
     return true;
   };
   const desc = (el) => {
@@ -205,38 +212,37 @@ function measureInPage() {
   };
 }
 
-// focus ring check: requires one real keyboard event first (keyboard modality)
-function focusInPage() {
-  const SEL = 'button, a[href], [role=radio], [role=button], summary, input:not([type=hidden]), select, textarea';
-  const roots = [...document.querySelectorAll('[data-testid="stMain"], [data-testid="stSidebar"]')];
-  const out = [];
-  const els = [...document.querySelectorAll(SEL)].filter((el) => roots.some((r) => r.contains(el)))
-    .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 2 && r.height > 2 && getComputedStyle(el).visibility !== 'hidden'; })
-    .slice(0, 60);
-  const ringOf = (el) => {
-    const cs = getComputedStyle(el);
-    return { outline: cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0 ? `${cs.outlineWidth} ${cs.outlineStyle} ${cs.outlineColor}` : '', shadow: cs.boxShadow, border: cs.borderColor };
+// focus ring check: a real Tab walk, the way a keyboard user moves. Each focused control (in
+// the main area or the sidebar) is checked for a visible ring on itself or on one of its three
+// nearest ancestors (Streamlit draws input rings on a wrapper): a non-none outline with a
+// visible colour, or a box-shadow.
+function focusNow() {
+  const el = document.activeElement;
+  if (!el || el === document.body) return null;
+  const inside = el.closest('[data-testid="stMain"], [data-testid="stSidebar"]');
+  if (!inside) return { outside: true };
+  if (!el.dataset.mid) el.dataset.mid = String(Math.random()).slice(2);
+  const shows = (e) => {
+    const cs = getComputedStyle(e);
+    const outline = cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0 && !/rgba\(.*, 0\)$/.test(cs.outlineColor);
+    return outline || cs.boxShadow !== 'none';
   };
-  const radioInput = (el) => el.querySelector('input') || el;
-  for (const el of els) {
-    const target = el.getAttribute('role') === 'radio' ? radioInput(el) : el;
-    target.blur();
-    const rest = ringOf(el);
-    target.focus({ preventScroll: true });
-    const focused = document.activeElement === target;
-    const on = ringOf(el);
-    // the ring may be drawn by a wrapper (Streamlit / BaseWeb inputs and selects draw it on a
-    // container 1-3 levels up): compare those too
-    const ups = [];
-    for (let a = el.parentElement, i = 0; a && i < 3; a = a.parentElement, i++) ups.push(a);
-    const upOn = ups.map(ringOf);
-    target.blur();
-    const upRest = ups.map(ringOf);
-    const changed = (x, y) => x.shadow !== y.shadow || x.border !== y.border || (!!x.outline && !y.outline);
-    const ring = !!on.outline || on.shadow !== rest.shadow || on.border !== rest.border ||
-      upOn.some((u, i) => changed(u, upRest[i]));
-    const txt = (el.innerText || el.getAttribute('aria-label') || el.value || '').trim().replace(/\s+/g, ' ').slice(0, 40);
-    out.push({ what: `${el.tagName.toLowerCase()}${el.getAttribute('role') ? '[role=' + el.getAttribute('role') + ']' : ''} «${txt}»`, focused, ring: !!ring, focusStyle: on.outline || (on.shadow !== rest.shadow ? on.shadow : '') });
+  let ring = false;
+  for (let e = el, i = 0; e && i < 4; e = e.parentElement, i++) if (shows(e)) { ring = true; break; }
+  const txt = (el.innerText || el.getAttribute('aria-label') || el.value || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  return { id: el.dataset.mid, what: `${el.tagName.toLowerCase()}${el.getAttribute('role') ? '[role=' + el.getAttribute('role') + ']' : ''} «${txt}»`, ring };
+}
+async function focusWalk(page, n = 60) {
+  await page.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
+  const out = [], seen = new Set();
+  let outside = 0;
+  for (let i = 0; i < n + 20 && out.length < n; i++) {
+    await page.keyboard.press('Tab');
+    const r = await page.evaluate(focusNow);
+    if (!r) continue;
+    if (r.outside) { if (++outside > 20) break; continue; }
+    if (seen.has(r.id)) break;
+    seen.add(r.id); out.push(r);
   }
   return out;
 }
@@ -308,8 +314,7 @@ async function run(browser, phone, base = BASE, screens = SCREENS) {
     if (ONLY && !ONLY.includes(id)) continue;
     await settle(page, 300);
     const m = await page.evaluate(measureInPage);
-    await page.keyboard.press('Tab'); // keyboard modality for :focus-visible
-    m.focus = await page.evaluate(focusInPage);
+    m.focus = await focusWalk(page);
     await page.evaluate(() => document.activeElement && document.activeElement.blur());
     await screenshot(page, path.join(SHOTS, `${id}-${w}.png`), phone);
     res[key] = m;

@@ -170,8 +170,22 @@ def toggle_watch(key: str) -> None:
 
 
 def open_detail(listing_id: int) -> None:
+    if st.session_state.get("page") != NAV_DETAIL:  # where «Πίσω» returns to
+        st.session_state["detail_from"] = st.session_state.get("page")
     st.session_state["page"] = NAV_DETAIL
     st.session_state["detail_id"] = listing_id
+
+
+def _back_from_detail() -> None:
+    from scout.ui import guide  # lazy: guide imports this module
+
+    st.session_state["page"] = st.session_state.pop("detail_from", None) or guide.TITLE
+
+
+def _go_home() -> None:
+    from scout.ui import guide
+
+    st.session_state["page"] = guide.TITLE
 
 
 def _reason(e: Exception) -> str:
@@ -359,7 +373,7 @@ def _m2(v: float) -> str:
 
 
 def _join(parts: list[str]) -> str:
-    return '<span class="hg-sep"> · </span>'.join(parts)
+    return '<span class="hg-sep" aria-hidden="true"> · </span>'.join(parts)
 
 
 def _is_rent(d: dict) -> bool:
@@ -471,13 +485,20 @@ def card_html(
         l3 = " ".join(f'<span class="hg-st hg-st-neu">{e(x)}</span>' for x in rent_chips(d))
     else:
         tone, text = short_status(d) if compact else status(d)
+        text, _, photos = text.partition(" · Φωτογραφίες:")  # the photo clause: its own tone
         l3 = f'<span class="hg-st hg-st-{tone}">{text}</span>'
+        if photos:
+            l3 += (
+                '<span class="hg-sep" aria-hidden="true"> · </span>'
+                f'<span class="hg-st hg-st-neu">Φωτογραφίες:{photos}</span>'
+            )
     if d.get("few_photos"):
         l3 = (l3 + f' <span class="hg-st hg-st-photo">{picks.FEW_PHOTOS}</span>').strip()
     extras = _extras(d, adv)
     mark = ' data-compact="1"' if compact else ""
+    rank = f' data-rank="{e(lead.rstrip("."))}"' if lead else ""  # theme: the first pick leads
     out = (
-        f'<div class="hg-card"{mark} data-lid="{d.get("id")}">'
+        f'<div class="hg-card"{mark}{rank} data-lid="{d.get("id")}">'
         f'<div class="hg-l1">{_join(l1)}</div>'
         f'<div class="hg-l2">{_join(l2)}</div>'
         + (f'<div class="hg-l3">{l3}</div>' if l3 else "")
@@ -1212,6 +1233,7 @@ def page_watchlist(listings: list[dict]) -> None:
         st.caption(SESSION_ONLY)
     if not n:
         st.info("Δεν έχεις αγαπημένα ακόμα. Πάτα «Αγαπημένο» σε μια αγγελία.")
+        st.button("Οδηγός", key="watch_to_guide", on_click=_go_home)
         return
     if starred:
         if rented:
@@ -1448,8 +1470,9 @@ def page_listing(listings: list[dict]) -> None:
     options = [d for d in listings if shortlist.lkey(d) in starred and d["id"] != wanted]
     if wanted in by_id:
         options.insert(0, by_id[wanted])
+    st.markdown(f"## {NAV_DETAIL}")
+    st.button("Πίσω", key="listing-back", on_click=_back_from_detail)
     if not options:
-        st.markdown("## Αγγελία")
         st.info("Άνοιξε μια αγγελία με «Λεπτομέρειες» από την Αναζήτηση ή τα Αγαπημένα.")
         return
     labels = {
@@ -1457,7 +1480,9 @@ def page_listing(listings: list[dict]) -> None:
         f"{d.get('neighborhood') or ''}": d["id"]
         for d in options
     }
-    choice = st.selectbox("Αγγελία", list(labels), key=f"listing_pick_{wanted}")
+    choice = st.selectbox(  # the page title above already says «Αγγελία»
+        "Αγγελία", list(labels), key=f"listing_pick_{wanted}", label_visibility="collapsed"
+    )
     d = by_id[labels[choice]]
     intel = market_intel.build(listings)
     adv = buyer_view(d, intel)
