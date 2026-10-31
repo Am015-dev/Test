@@ -156,7 +156,7 @@ def test_areas_box_is_four_verdicts_with_the_sentences_behind(env):
     at = fresh(AREAS)
     exp = next(e for e in at.expander if e.label == "Από πού βγαίνουν")
     full = [m.value for m in exp.markdown]
-    assert full and full[0].startswith("Για απόδοση:")
+    assert full and full[0].startswith("Αν θες απόδοση:")
     verdict = re.compile(r"^\*\*[^*\n]+\*\* · [^\n]+$")  # one line: «**Περιοχή** · …»
     box = [m.value for m in at.markdown if verdict.match(m.value)]
     assert 1 <= len(box) <= 4, box
@@ -164,6 +164,6 @@ def test_areas_box_is_four_verdicts_with_the_sentences_behind(env):
         assert len(re.findall(r"\d+(?:[.,]\d+)?", line)) == 1, line  # one number each
     # the verdicts name the same areas, in the same order, as the sentences they summarise
     named = [re.match(r"\*\*([^*]+)\*\*", b).group(1) for b in box]
-    in_full = [m.group(1) for s in full if (m := re.match(r"Για [^:]+: ([^,(]+?)(?: \(|,)", s))]
+    in_full = [m.group(1) for s in full if (m := re.match(r"Αν θες [^:]+: ([^.(]+?)(?:\.| \()", s))]
     assert named == [a for a in in_full if a in named], (named, in_full)
     assert callable(areas.verdicts) and ai.decision  # the two read the same AreaInsight fields

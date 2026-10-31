@@ -219,7 +219,10 @@ def test_rent_long_strict_list_has_no_near_matches():
 def test_rent_value_score_and_basis():
     cheap, dear = rental(1, 600), rental(2, 900)
     s_cheap, basis = picks_rent.value_score(-0.20, {"days_on_market": 5})
-    assert s_cheap == 100 and basis == "τιμή έναντι παρόμοιων 70/70 + φρεσκάδα 30/30"
+    assert s_cheap == 100 and basis == (
+        "70 από 70 για την τιμή σε σχέση με τα παρόμοια και 30 από 30 για το πόσο καινούργια "
+        "είναι η αγγελία"
+    )
     assert picks_rent.value_score(0.20, {"days_on_market": 60})[0] == 0
     assert picks_rent.value_score(None, {})[0] == 50
     assert picks_rent.value_score(-0.5, {"days_on_market": 5})[0] == 30  # too cheap: no bonus

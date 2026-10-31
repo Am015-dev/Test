@@ -15,9 +15,11 @@ Pure functions over the listing dicts the UI already loads; no DB, no network.
 from __future__ import annotations
 
 import statistics
+import threading
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
+from functools import lru_cache
 
 AGE_BANDS = ((0, 5, "έως 5 ετών"), (6, 15, "6–15 ετών"), (16, 30, "16–30 ετών"),
              (31, 45, "31–45 ετών"), (46, 999, "46+ ετών"))  # fmt: skip
@@ -31,7 +33,12 @@ HOUSE_WORDS = ("μονοκατοικ", "μεζονετ", "βιλα", "κτιρι
 
 def kind(d: dict) -> str:
     """'house' for detached houses / maisonettes (priced differently per m²), else 'flat'."""
-    title = unicodedata.normalize("NFD", (d.get("title") or "").casefold())
+    return _kind_of_title(d.get("title") or "")
+
+
+@lru_cache(maxsize=65_536)  # titles repeat across reruns and pages: normalise each one once
+def _kind_of_title(title: str) -> str:
+    title = unicodedata.normalize("NFD", title.casefold())
     title = "".join(c for c in title if not unicodedata.combining(c))
     return "house" if title.startswith(HOUSE_WORDS) else "flat"
 
@@ -78,6 +85,7 @@ def _floor_band(floor: float | None) -> int | None:
 
 
 FLOOR_LABEL = ("ισόγειο/υπόγειο", "1ος–2ος", "3ος+")
+SPOKEN_FLOOR = ("στο ισόγειο ή υπόγειο", "στον 1ο ή 2ο όροφο", "από τον 3ο όροφο και πάνω")
 
 
 def _usable(d: dict) -> bool:
@@ -143,15 +151,19 @@ class Intel:
 
     @staticmethod
     def _label(m: tuple, a: int, s: int | None, f: int | None) -> str:
-        parts = [m[0] + (" · μονοκατοικίες/μεζονέτες" if m[1] == "house" else ""), AGE_BANDS[a][2]]
+        parts = ["μονοκατοικίες ή μεζονέτες" if m[1] == "house" else "διαμερίσματα"]
         if s is not None:
             lo, hi = SIZE_BANDS[s]
-            parts.append(
-                f"έως {hi} τ.μ." if lo == 0 else f"{lo}+ τ.μ." if hi > 999 else f"{lo}–{hi} τ.μ."
+            parts[0] += (
+                f" έως {hi} τ.μ."
+                if lo == 0
+                else f" πάνω από {lo} τ.μ." if hi > 999 else f" {lo}–{hi} τ.μ."
             )
         if f is not None:
-            parts.append(FLOOR_LABEL[f])
-        return " · ".join(parts)
+            parts.append(SPOKEN_FLOOR[f])
+        age = AGE_BANDS[a][2].replace("46+ ετών", "πάνω από 45 ετών")
+        parts += [f"σε κτίρια {age}", f"στην περιοχή {m[0]}"]
+        return ", ".join(parts)
 
     # ---- same flat, several listings -----------------------------------------------------
 
@@ -189,8 +201,41 @@ def _twin_key(d: dict) -> tuple | None:
     return (municipality(d), round(d["area_m2"]), d["floor"], d["year_built"])
 
 
+# One shared Intel per listings list the app caches (``share``), so every page and rerun reads
+# the same index instead of rebuilding it. Keyed by the list's identity; the entry holds the
+# list itself, so the id cannot be reused while it is here. Read-only for callers.
+_SHARED: dict[int, tuple[list[dict], Intel]] = {}
+_SHARED_MAX = 1  # the current data version only: an old list must not stay alive
+_LOCK = threading.Lock()
+
+
+def share(listings: list[dict]) -> Intel:
+    """Build the Intel of ``listings`` once and hand the same object to every later
+    ``build(listings)`` with that very list (until the year turns). For the app's cached lists
+    only: the list must not change afterwards."""
+    with _LOCK:
+        hit = _SHARED.get(id(listings))
+        if hit and hit[0] is listings and hit[1].year == date.today().year:
+            return hit[1]
+        intel = _build(listings, None)
+        _SHARED.pop(id(listings), None)
+        _SHARED[id(listings)] = (listings, intel)
+        while len(_SHARED) > _SHARED_MAX:
+            _SHARED.pop(next(iter(_SHARED)))
+        return intel
+
+
 def build(listings: list[dict], year: int | None = None) -> Intel:
-    """Index every usable listing (fresh or not — older asking prices are still evidence)."""
+    """Index every usable listing (fresh or not — older asking prices are still evidence).
+    A list registered with ``share`` gets its shared Intel back (same result, built once)."""
+    if year is None:
+        hit = _SHARED.get(id(listings))
+        if hit and hit[0] is listings and hit[1].year == date.today().year:
+            return hit[1]
+    return _build(listings, year)
+
+
+def _build(listings: list[dict], year: int | None) -> Intel:
     intel = Intel(year=year or date.today().year)
     for d in listings:
         if not _usable(d):

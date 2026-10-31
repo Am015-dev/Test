@@ -224,7 +224,7 @@ def _both_ways(at_factory, listings, report_prefix: str, reports: dict) -> None:
     ver = at.session_state["f_ver"]
     assert at.number_input(key=f"fe_year_{ver}").value == YEAR
     assert at.number_input(key=f"fe_floor_{ver}").value == FLOOR
-    assert f"κτίριο από {YEAR}" in at.expander[0].label  # the filter panel says what applies
+    assert f"χτισμένο από το {YEAR}" in at.expander[0].label  # the filter panel says what applies
     reports[f"{report_prefix}/search"] = rep = {"areas": areas, "price_max": price_max}
     _prove(at, listings, areas, price_max, YEAR, rep)
 
