@@ -41,12 +41,14 @@ from ..config import Strategy, get_settings
 from .base import RAW_HTML_DIR, USER_AGENT, Collector
 from .parse_helpers import (
     _strip_accents,
+    card_image_url,
     clean_description,
     parse_float,
     parse_floor,
     parse_int,
     parse_private_seller,
     parse_rent,
+    portal_photo_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -464,6 +466,10 @@ class XeCollector(Collector):
     SEL_BEDROOMS = "[data-testid='property_ad_icon_bedroom']"
     SEL_YEAR = "[data-testid='property_ad_icon_house_construction']"
     SEL_DESCRIPTION = "#property-ad-description"
+    # The listing's first photo. It sits in the ad's image container, a sibling of the card
+    # body, so the loops hand ``parse_card`` the whole ad (``_card_html``). Not the agency
+    # logo, which is ``[data-testid='property-ad-realtor-logo']`` inside the body.
+    SEL_IMAGE = "[data-testid='property-ad-image'] img, .common-property-ad-image img"
 
     AUTOCOMPLETE_URL = "https://www.xe.gr/services/places/autocomplete"
 
@@ -585,6 +591,14 @@ class XeCollector(Collector):
         except OSError as exc:
             logger.warning("xe: could not cache page: %s", exc)
 
+    @staticmethod
+    def _card_html(card) -> str:
+        """The whole ad (photo container + body) around a ``CARD_SELECTOR`` body node."""
+        ad = card.parent
+        if ad is not None and "common-ad" in (ad.attributes.get("class") or "").split():
+            return ad.html
+        return card.html
+
     def _has_cards(self, html: str) -> bool:
         return bool(HTMLParser(html).css_first(self.CARD_SELECTOR))
 
@@ -680,7 +694,7 @@ class XeCollector(Collector):
         if not raw.get("image_url"):
             m_img = _OG_IMAGE_RE.search(html)
             if m_img:
-                raw["image_url"] = unescape(m_img.group(1))
+                raw["image_url"] = portal_photo_url(unescape(m_img.group(1)), self.BASE, "xe.gr")
         if not raw.get("listed_date"):
             listed = parse_listed_date(html)
             if listed is not None:
@@ -724,7 +738,7 @@ class XeCollector(Collector):
             logger.info("xe: %d rental cards on %s", len(cards), url)
             for card in cards:
                 try:
-                    raw = self.parse_card(card.html, base_url=url)
+                    raw = self.parse_card(self._card_html(card), base_url=url)
                 except Exception:
                     continue
                 if raw and raw.get("price") and raw.get("area_m2"):
@@ -756,7 +770,7 @@ class XeCollector(Collector):
                 new_on_page = 0
                 for card in HTMLParser(html).css(self.CARD_SELECTOR):
                     try:
-                        raw = self.parse_rental_card(card.html, base_url=url)
+                        raw = self.parse_rental_card(self._card_html(card), base_url=url)
                     except Exception as exc:  # fail soft per card
                         logger.warning("xe: rental card parse error: %s", exc)
                         continue
@@ -803,7 +817,7 @@ class XeCollector(Collector):
                 new_on_page = 0
                 for card in cards:
                     try:
-                        raw = self.parse_card(card.html, base_url=url)
+                        raw = self.parse_card(self._card_html(card), base_url=url)
                     except Exception as exc:  # fail soft per card
                         logger.warning("xe: card parse error: %s", exc)
                         continue
@@ -904,4 +918,5 @@ class XeCollector(Collector):
             "listed_rent": listed_rent,
             "is_private_seller": private,
             "is_unfinished": is_unfinished_text(title, description),
+            "image_url": card_image_url(tree.css(self.SEL_IMAGE), self.BASE, "xe.gr"),
         }

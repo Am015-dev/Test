@@ -32,7 +32,7 @@ from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
 from ..config import Strategy, get_settings
 from .base import USER_AGENT, Collector
-from .parse_helpers import parse_float, parse_floor, parse_int
+from .parse_helpers import card_image_url, parse_float, parse_floor, parse_int
 
 logger = logging.getLogger(__name__)
 
@@ -244,8 +244,6 @@ class GoldenHomeCollector(Collector):
             area_m2 = parse_float(m.group(2))
 
         year = parse_int(text(self.SEL_YEAR))
-        img = tree.css_first(self.SEL_IMAGE)
-        img_src = img.attributes.get("src") if img else None
         hood = self._neighborhood(text(self.SEL_AREA_NAME))
 
         return {
@@ -263,5 +261,5 @@ class GoldenHomeCollector(Collector):
             "neighborhood": hood,
             "address": hood,
             "photo_count": parse_int(text(self.SEL_PHOTOS)),
-            "image_url": urljoin(self.BASE, img_src) if img_src else None,
+            "image_url": card_image_url(tree.css(self.SEL_IMAGE), self.BASE, "goldenhome.gr"),
         }
