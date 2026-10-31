@@ -233,6 +233,8 @@ def _row_to_dict(
     d["page_checked_at"] = row.detail_checked_at
     d["description"] = row.description
     d["photo_count"] = row.photo_count
+    d["photo_kind"] = row.photo_kind  # photo|render|plan|site|stock; None = not classified
+    d["photo_checked_at"] = row.photo_checked_at
     # ≤2 photos: typically a render, a floor plan or an agency logo, not the flat itself.
     d["few_photos"] = row.photo_count is not None and row.photo_count <= 2
     d["is_fresh"] = True  # load_listings re-derives it against the whole loaded set

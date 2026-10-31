@@ -58,7 +58,7 @@ def _raw(source_id, price, floor=2.0, area=80.0, source="spitogatos"):
         "floor": floor,
         "neighborhood": "Ano Cholargos",
         # On the Holargos metro station, so the listing passes the ≤600m hard filter
-        # (keep in sync with enrich.METRO_STATIONS["Holargos"]).
+        # (keep in sync with enrich.METRO_STATIONS["Μετρό Χολαργός"]).
         "lat": 38.0049,
         "lng": 23.7947,
         "listed_rent": 850,

@@ -2272,7 +2272,7 @@ def _compare_rows(d: dict, adv: dict) -> dict[str, str]:
             else "—"
         ).replace("-", "−"),
         "Κατάσταση": status,
-        "Σταθμός": picks.station(d) or "—",
+        "Σταθμός": picks.station_text(d) or "—",
         "Στην αγορά": (
             f"{d['days_on_market']} μέρες" if d.get("days_on_market") is not None else "—"
         ),

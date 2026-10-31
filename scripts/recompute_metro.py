@@ -1,65 +1,79 @@
-"""One-off maintenance: re-place approx listings and recompute metro distance.
+"""One-off maintenance: recompute the nearest station for every listing with exact coordinates.
 
-Two data bugs left ~a third of listings reading "0 m to metro" (provably false):
+``nearest_metro`` / ``metro_distance_m`` were measured against the old Latin-named station list
+(Line 2/3 only). The station table (``scout/stations.py``) now holds Lines 1–3 and the suburban
+railway with Greek names. This script:
 
-  1. Several MUNICIPALITY_CENTROIDS were set to the area's metro-station coordinate, so
-     every card-only (approx-located) listing landed on the station → 0 m and every map
-     dot piled onto the station. The centroids are now real town centres.
-  2. A degenerate OSRM distance (0) was taken at face value (now guarded in nearest_metro).
+  * recomputes both fields for rows with ``location_precision = 'exact'`` (their own point);
+  * only renames ``nearest_metro`` to the Greek label on ``approx`` rows (area-centroid points
+    carry no real distance; the UI hides it) and leaves their stored distance alone.
 
-This re-places every ``approx`` listing at its corrected centroid, then recomputes the
-metro distance for all located listings using the offline haversine×detour estimate
-(deterministic, no network) — the same honest area-level fallback the app surfaces.
+Offline (haversine × detour, no OSRM), idempotent, cheap — run it after the collect step.
 
 Usage:
-    python scripts/recompute_metro.py
+    python scripts/recompute_metro.py [--dry-run]
 """
 
 from __future__ import annotations
 
 import logging
+import sys
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("recompute_metro")
 
 
-def recompute() -> dict:
+def recompute(dry_run: bool = False) -> dict:
     from sqlalchemy import select
 
+    from scout import stations
     from scout.db import init_db, session_scope
-    from scout.enrich import municipality_centroid, nearest_metro, neighborhood_centroid
+    from scout.enrich import nearest_metro
     from scout.models import ListingRow
 
     init_db()
-    relocated = 0
-    metro_fixed = 0
-    scanned = 0
+    out = {
+        "scanned": 0,
+        "exact": 0,
+        "station_changed": 0,  # a different station, not just its Greek name
+        "distance_moved_25m": 0,
+        "exact_changed": 0,  # any change at all, renames included
+        "approx_renamed": 0,
+    }
     with session_scope() as session:
-        rows = session.scalars(select(ListingRow)).all()
-        for r in rows:
-            scanned += 1
-            # 1. Re-anchor approx-located listings to the corrected centroid (neighborhood
-            #    first, then municipality). Exact per-listing coordinates are left alone.
-            if r.location_precision == "approx":
-                lat, lng = neighborhood_centroid(r.neighborhood)
-                if lat is None or lng is None:
-                    lat, lng = municipality_centroid(r.search_area)
-                if lat is not None and lng is not None and (lat, lng) != (r.lat, r.lng):
-                    r.lat, r.lng = lat, lng
-                    relocated += 1
-            # 2. Recompute metro distance from the (possibly updated) point.
-            if r.lat is not None and r.lng is not None:
+        for r in session.scalars(select(ListingRow)).all():
+            out["scanned"] += 1
+            if r.location_precision == "exact" and r.lat is not None and r.lng is not None:
+                out["exact"] += 1
                 res = nearest_metro(r.lat, r.lng, use_osrm=False)
-                if res.metro_distance_m is not None and res.metro_distance_m != r.metro_distance_m:
-                    r.metro_distance_m = res.metro_distance_m
-                    r.nearest_metro = res.nearest_metro
-                    metro_fixed += 1
-        session.commit()
-    log.info(
-        "recompute_metro: scanned=%d relocated=%d metro_fixed=%d", scanned, relocated, metro_fixed
-    )
-    return {"scanned": scanned, "relocated": relocated, "metro_fixed": metro_fixed}
+                if (res.nearest_metro, res.metro_distance_m) != (
+                    r.nearest_metro,
+                    r.metro_distance_m,
+                ):
+                    out["exact_changed"] += 1
+                    out["station_changed"] += res.nearest_metro != stations.label(r.nearest_metro)
+                    old = r.metro_distance_m
+                    out["distance_moved_25m"] += (
+                        old is None
+                        or res.metro_distance_m is None
+                        or abs(res.metro_distance_m - old) > 25
+                    )
+                    if not dry_run:
+                        r.nearest_metro, r.metro_distance_m = (
+                            res.nearest_metro,
+                            res.metro_distance_m,
+                        )
+            elif r.nearest_metro:
+                greek = stations.label(r.nearest_metro)
+                if greek and greek != r.nearest_metro:
+                    out["approx_renamed"] += 1
+                    if not dry_run:
+                        r.nearest_metro = greek
+        if dry_run:
+            session.rollback()
+    log.info("recompute_metro%s: %s", " (dry run)" if dry_run else "", out)
+    return out
 
 
 if __name__ == "__main__":
-    print(recompute())
+    print(recompute(dry_run="--dry-run" in sys.argv))

@@ -39,10 +39,15 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 200     # above the sum of the step caps so publish is never cancelled
+    # Above the step caps (collect 160 + pages 40 + photos 15 + stations 5 + rescore 15 =
+    # 235 min) plus install/restore/publish, so publish is never cancelled.
+    timeout-minutes: 250
+    env:
+      # secrets cannot be tested in a step `if`; expose only whether the key exists
+      HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with:
           python-version: "3.11"
           cache: "pip"
@@ -66,8 +71,8 @@ jobs:
         # listing-page visit per in-band card for the build year); 15 areas ≈ 135 min.
         # XE rentals ride in the same per-area run (XeCollector.collect_rentals, ≤ 5 rental
         # pages, no listing pages): ~1 min per area (runner run 41229898436: 145 rentals for
-        # Χολαργός in under a minute), so ≈ 150 min in all.
-        timeout-minutes: 140
+        # Χολαργός in under a minute), so ≈ 135 + 15 = 150 min; capped at 160.
+        timeout-minutes: 160
         continue-on-error: true
         env:
           SCRAPE_DETAIL_PAGES: "false"
@@ -93,6 +98,27 @@ jobs:
         run: >-
           timeout 36m python scripts/enrich_details.py --new-builds --limit 600
           --max-fetches 400 --no-rescore || true
+
+      - name: Check photos of new-build listings (real flat or render?) — best-effort
+        # Vision call on up to 3 photos per listing (scripts/check_photos.py). Runs only when
+        # the repository secret ANTHROPIC_API_KEY exists; without it the step is skipped.
+        if: ${{ env.HAS_ANTHROPIC_KEY == 'true' }}
+        timeout-minutes: 15
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SCRAPE_REQUEST_MIN_S: "4"
+          SCRAPE_REQUEST_MAX_S: "6"
+        # `timeout` ends the script before the step cap (see the page check above)
+        run: >-
+          timeout 14m python scripts/check_photos.py --limit 150 --max-minutes 12
+          --areas "$WEEKLY_AREAS" || true
+
+      - name: Recompute nearest station for exact-coordinate rows (offline, seconds)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: python scripts/recompute_metro.py
 
       - name: Rescore whole panel from the DB (no network)
         if: always()
