@@ -125,11 +125,11 @@ def test_loan_maths_on_a_synthetic_listing():
     p = picks.find(rows, market_intel.build(rows, YEAR), RENTS, 300_000, year=YEAR, loan=True)[0]
     assert (p.rent, p.instalment, p.cashflow) == (1210, 1110, 100)
     assert p.loan and p.loan_line == (
-        "Δόση ~1.110 €/μήνα (δάνειο 70 %, 4 %, 25 έτη) → μένουν 100 €"
+        "Δόση ~1.110 €/μήνα (δάνειο 70 %, επιτόκιο 4 %, 25 χρόνια). Το ενοίκιο την καλύπτει και περισσεύουν 100 € τον μήνα."
     )
     rows = [flat(2, 320_000, m2=80)]
     p = picks.find(rows, market_intel.build(rows, YEAR), RENTS, 300_000, year=YEAR, loan=True)[0]
-    assert p.cashflow < 0 and p.loan_line.endswith(f"λείπουν {-p.cashflow} €")
+    assert p.cashflow < 0 and p.loan_line.endswith(f"λείπουν {-p.cashflow} € τον μήνα.")
 
 
 def test_answer_chips_and_relax_mapping():

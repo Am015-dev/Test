@@ -117,7 +117,7 @@ def test_checked_date_is_on_the_status_line():
 
     p = run([flat(1, 300_000, page_checked=True, page_checked_at=datetime(2026, 10, 30))])[0]
     assert p.status == (
-        "Ελέγχθηκε η περιγραφή (30/10/2026) — δεν αναφέρει κατασκευή σε εξέλιξη"
+        "Ελέγχθηκε η περιγραφή (30/10/2026): δεν γράφει ότι χτίζεται ακόμα"
         " · Φωτογραφίες: δεν ελέγχθηκαν"
     )
 
@@ -130,7 +130,7 @@ def test_few_photos_rank_below_real_photos_and_carry_the_risk_line():
     ]
     got = run(rows, top=10)
     assert [p.listing["id"] for p in got][-1] == 1
-    assert got[-1].risks[0] == "Το πολύ 2 φωτογραφίες — συχνά μόνο ψηφιακή απεικόνιση ή λογότυπο"
+    assert got[-1].risks[0] == "Έως 2 φωτογραφίες, συχνά μόνο σχέδιο ή λογότυπο"
     assert not any("φωτογραφ" in r for p in got[:2] for r in p.risks)
     # ...but a checked page still beats an unchecked one with real photos
     rows[0]["page_checked"] = True

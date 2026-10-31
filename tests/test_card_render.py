@@ -80,7 +80,7 @@ def test_buyer_card_has_the_five_fixed_lines_in_greek():
         == "3ος όροφος · κτίριο 2018 · Περισσός · Σταθμός ΗΣΑΠ Περισσός (από το όνομα της γειτονιάς)"
     )
     assert l3 == (
-        "Ελέγχθηκε η περιγραφή — δεν αναφέρει κατασκευή σε εξέλιξη" " · Φωτογραφίες: δεν ελέγχθηκαν"
+        "Ελέγχθηκε η περιγραφή: δεν γράφει ότι χτίζεται ακόμα" " · Φωτογραφίες: δεν ελέγχθηκαν"
     )
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
     assert l5 == "Παρόμοια (12): 13 % κάτω"
@@ -100,7 +100,7 @@ def test_buyer_card_status_unknowns_and_photos():
     shell = card_html(
         {**BUYER, "is_unfinished": True, "page_checked": True, "few_photos": True}, {}
     )
-    assert 'hg-st-bad">Υπό κατασκευή<' in shell and "Το πολύ 2 φωτογραφίες" in shell
+    assert 'hg-st-bad">Υπό κατασκευή<' in shell and "Έως 2 φωτογραφίες" in shell
     assert "Ελέγχθηκε" not in shell.split("<details>")[0]  # under construction wins
     norent = card_html({**BUYER, "area_m2": None, "est_monthly_rent": None}, {})
     assert "Ενοίκιο: χωρίς εκτίμηση" in norent
