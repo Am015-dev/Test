@@ -143,7 +143,8 @@ def test_rent_flow_end_to_end(rent_env):
     total = int(re.search(r"\*\*(\d+)\*\* αγγελίες ενοικίασης έως 1\.100 €/μήνα", text).group(1))
     assert total == len(picks_rent.find(RENTALS, 1000, top=10**6))
     assert total > 10 and "Πρόταση: **" in text
-    assert "Παρόμοια ενοίκια (" in text and "Ιδιώτης ή μεσιτικό" in text
+    assert "Παρόμοια (" in text and "Ιδιώτης ή μεσιτικό" in text
+    assert "/μήνα" in text and "Από πού βγαίνουν" in text
     assert "Ενεργειακή κλάση" in text and "Φρεσκάδα" in text and "Τιμή έναντι παρόμοιων" in text
     assert "απόδοση" not in text.lower()  # no yield talk for renters
     first = _cards(at)
@@ -165,6 +166,15 @@ def test_rent_flow_end_to_end(rent_env):
     det.click().run()
     ok(at, "details")
     assert "Ρώτα τον ιδιοκτήτη" in " ".join(c.value for c in at.caption)
+    # a starred rental is on «Αγαπημένα», under «Ενοίκια»
+    star = next(b for b in at.button if (b.key or "").startswith("rent-star-"))
+    star.click().run()
+    ok(at, "star")
+    at.radio(key="page").set_value("Αγαπημένα").run()
+    ok(at, "favourites")
+    assert "## Αγαπημένα (1)" in _text(at) and "### Ενοίκια" in _text(at)
+    assert any((b.key or "").startswith("wrent-star-") for b in at.button)
+    at.radio(key="page").set_value("Οδηγός").run()
     # a chip reopens its question; the mode chip reopens step 0
     at.button_group(key="rent_chips").set_value("υπν. αδιάφορο").run()
     assert "Βήμα 2 από 5" in _text(at)
@@ -297,3 +307,42 @@ def test_relaxations_count_exactly():
     assert texts["Και χωρίς έπιπλα"].added == 2 and texts["Και χωρίς έπιπλα"].text.endswith("(+2)")
     got = picks_rent.relaxations(rows, 900, year=YEAR)
     assert [(r.label, r.added) for r in got] == [("Ποσό +10 %", 2)]  # band 990 → 1.089
+
+
+def test_rent_flow_on_the_real_loader(env):  # noqa: F811
+    """No patch: rentals stored in the seeded DB come through ``queries.load_rent_listings``."""
+    from scout.db import session_scope, upsert_listing_with_history
+
+    from .conftest import make_listing
+
+    with session_scope() as session:
+        for i in range(12):
+            m2 = 60 + i * 3
+            upsert_listing_with_history(
+                session,
+                make_listing(
+                    source="xe",
+                    source_id=f"rent-{i}",
+                    url=f"https://www.xe.gr/property/d/r/rent-{i}",
+                    title=f"Διαμέρισμα {m2} τ.μ.",
+                    listing_type="rent",
+                    price=10 * m2 + (i % 4) * 30,
+                    area_m2=float(m2),
+                    floor=2.0,
+                    year_built=2000 + i,
+                    bedrooms=2,
+                    neighborhood="Χαλάνδρι (Κέντρο)",
+                    address="Χαλάνδρι (Κέντρο)",
+                    search_area="Chalandri",
+                    furnished=bool(i % 2),
+                ),
+            )
+    from scout.ui import queries
+
+    real = queries.load_rent_listings()
+    assert len(real) == 12 and all(d["listing_type"] == "rent" for d in real)
+    at = walk_rent(fresh(FIND), budget="guide-rb1000", beds="2", furnished=True)
+    text = _text(at)
+    want = len(picks_rent.find(real, 1000, bedrooms=2, furnished=True, top=10**6))
+    assert want and f"**{want}** αγγελίες ενοικίασης" in text
+    assert "Παρόμοια (" in text and "Επιπλωμένο" in text

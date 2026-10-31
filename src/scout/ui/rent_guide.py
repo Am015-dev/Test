@@ -253,6 +253,17 @@ def rentals() -> list[dict] | None:
         return None
 
 
+def starred(keys: set[str]) -> list[picks_rent.RentPick]:
+    """The starred rentals (``buyer.page_watchlist``), as picks for the rent card."""
+    rows = rentals() or []
+    index = picks_rent.comps_index(rows)
+    return [
+        picks_rent.pick(d, index)
+        for d in rows
+        if picks_rent.usable(d) and shortlist.lkey(d) in keys
+    ]
+
+
 # ---- assistant -----------------------------------------------------------------------------
 
 SUGGESTIONS = (
@@ -563,95 +574,79 @@ METHOD = f"""
   (τουλάχιστον {picks_rent.MIN_COMPS}), αλλιώς στην ευρύτερη περιοχή.
 - **Ποσό**: ενοίκια έως {round(picks_rent.BUDGET_BAND * 100)} % πάνω από το ποσό σου.
 - **Μέρες στην αγορά**: από την ημερομηνία της αγγελίας, αλλιώς από τότε που τη βλέπουμε.
-- **Σταθμός**: από το όνομα της γειτονιάς στην αγγελία.
+- **Σταθμός**: απόσταση με τα πόδια όταν η αγγελία έχει ακριβή θέση, αλλιώς από το όνομα της
+  γειτονιάς.
 - Ζητούμενα ενοίκια αγγελιών, όχι συμβόλαια. Δεν ξέρουμε εγγύηση, κοινόχρηστα και διάρκεια
   συμβολαίου: ρώτα τον ιδιοκτήτη.
 """
 
 
-def _line(parts: list[str]) -> str:
-    return buyer._join([html.escape(x) for x in parts if x])
-
-
-def _card(i: int, p: picks_rent.RentPick, approved: bool, verdicts: bool) -> None:
+def card_more(p: picks_rent.RentPick) -> list[str]:
+    """What sits behind «Από πού βγαίνουν» on the rent card: the four checks, the risks,
+    furnished / available from, the listing's own words and the basis of the comparison."""
     d = p.listing
-    e = html.escape
+    more = [d["title"]] if d.get("title") else []
+    more += [f"{k}: {v}" for k, v in p.checks]
+    more += [f"Έλεγξε: {r}" for r in p.risks]
+    if d.get("furnished"):
+        more.append("Επιπλωμένο")
+    if avail := _day(d.get("available_from")):
+        more.append(f"Διαθέσιμο από {avail}")
+    if text := picks.excerpt(d.get("description")):
+        more.append(f"Τι λέει η αγγελία: «{text}»")
+    if p.comps_ppm:
+        more.append(
+            f"Παρόμοια ενοίκια: διάμεσο €/τ.μ. των {p.comps_n} άλλων ενεργών αγγελιών "
+            f"ενοικίασης ({p.comps_where})."
+        )
+    more.append("Ενοίκιο: αυτό που ζητά η αγγελία, όχι συμβόλαιο.")
+    return more
+
+
+def card_adv(p: picks_rent.RentPick) -> dict:
+    """Line 5 of the compact card (``buyer.comps_text``) from the rental comparables."""
+    if p.vs_area_pct is None:
+        return {}
+    return {"cmp": {"pct": p.vs_area_pct, "n": p.comps_n, "ppm": p.comps_ppm}}
+
+
+def card(i: int | None, p: picks_rent.RentPick, k: str, verdicts: bool = False,
+         approved: bool = False) -> None:  # fmt: skip
+    """The compact rent card (C3's five lines) and its buttons: «Λεπτομέρειες» (inline: the
+    listing page is for sales) and «Αγαπημένο», then «Εγκρίνω» / «Δεν μου κάνει» when
+    ``verdicts``."""
+    d = p.listing
     lid = d["id"]
-    with st.container(border=True, key=f"pick-r{lid}"):
-        st.markdown(f"**{i}. {e(d.get('title') or '')}**" + (" · το ενέκρινες" if approved else ""))
-        floor = buyer._floor(d["floor"]) if d.get("floor") is not None else ""
-        extra = []
-        if d.get("furnished"):
-            extra.append("Επιπλωμένο")
-        if avail := _day(d.get("available_from")):
-            extra.append(f"Διαθέσιμο από {avail}")
-        lines = [
-            _line(
-                [
-                    f"{eur(d['price'])}/μήνα",
-                    f"{buyer._m2(d['area_m2'])} τ.μ.",
-                    f"{picks_rent.gr_num(p.rent_per_m2)} €/τ.μ.",
-                ]
-            ),
-            _line(
-                [
-                    floor,
-                    f"κτίριο {d['year_built']}" if d.get("year_built") else "έτος: δεν δηλώνεται",
-                    d.get("neighborhood") or "",
-                    p.station,
-                ]
-            ),
-            e(p.comps_line),
-            e(picks_rent.freshness(d)),
-        ]
-        if extra:
-            lines.append(_line(extra))
+    with st.container(border=True, key=f"pick-{k}{lid}"):
         st.markdown(
-            '<div class="hg-card">' + "".join(f"<div>{x}</div>" for x in lines) + "</div>",
+            buyer.card_html(
+                d, card_adv(p), False, compact=True, lead=f"{i}." if i else "", more=card_more(p)
+            ),
             unsafe_allow_html=True,
         )
-        st.markdown(
-            '<div class="hg-card"><b>Έλεγχοι</b><ul style="margin:2px 0 0;padding-left:1.1rem">'
-            + "".join(f"<li>{e(k)}: {e(v)}</li>" for k, v in p.checks)
-            + "</ul></div>",
-            unsafe_allow_html=True,
-        )
-        if p.risks:
-            st.markdown(
-                '<div class="hg-card"><b>Έλεγξε</b><ul style="margin:2px 0 0;padding-left:1.1rem">'
-                + "".join(f"<li>{e(x)}</li>" for x in p.risks)
-                + "</ul></div>",
-                unsafe_allow_html=True,
-            )
         if lid in st.session_state.get("rent_details", set()):
             _details(d)
+        star, toggle, args, kind = buyer._star_action(d)
         cols = st.columns(2)
-        src = guide.SOURCES.get(d.get("source") or "xe", (d.get("source") or "").upper())
-        cols[0].link_button(f"Άνοιγμα στο {src}", d["url"], width="stretch")
-        cols[1].button(
-            "Λεπτομέρειες", key=f"rent-det-{lid}", on_click=_toggle_details, args=(lid,),
+        cols[0].button(
+            "Λεπτομέρειες", key=f"{k}-det-{lid}", on_click=_toggle_details, args=(lid,),
             width="stretch",
         )  # fmt: skip
-        key = shortlist.lkey(d)
-        on = key in buyer.watch_keys()
-        st.button(
-            "Αφαίρεση από αγαπημένα" if on else "Αγαπημένο",
-            key=f"rent-star-{lid}",
-            on_click=buyer.toggle_watch,
-            args=(key,),
-            type="primary" if on else "secondary",
-            width="stretch",
+        cols[1].button(
+            star, key=f"{k}-star-{lid}", on_click=toggle, args=args, type=kind, width="stretch"
         )
-        if verdicts:
-            cols = st.columns(2)
-            if approved:
-                cols[0].button("Αναίρεση", key=f"rent-undo-{lid}", on_click=guide.set_verdict,
-                               args=(key, None), width="stretch")  # fmt: skip
-            else:
-                cols[0].button("Εγκρίνω", key=f"rent-ok-{lid}", on_click=guide.set_verdict,
-                               args=(key, "ok"), type="primary", width="stretch")  # fmt: skip
-            cols[1].button("Δεν μου κάνει", key=f"rent-no-{lid}", on_click=guide.set_verdict,
-                           args=(key, "no"), width="stretch")  # fmt: skip
+        if not verdicts and not approved:
+            return
+        key = shortlist.lkey(d)
+        cols = st.columns(2)
+        if approved:
+            cols[0].button("Αναίρεση", key=f"{k}-undo-{lid}", on_click=guide.set_verdict,
+                           args=(key, None), width="stretch")  # fmt: skip
+        else:
+            cols[0].button("Εγκρίνω", key=f"{k}-ok-{lid}", on_click=guide.set_verdict,
+                           args=(key, "ok"), type="primary", width="stretch")  # fmt: skip
+        cols[1].button("Δεν μου κάνει", key=f"{k}-no-{lid}", on_click=guide.set_verdict,
+                       args=(key, "no"), width="stretch")  # fmt: skip
 
 
 def _details(d: dict) -> None:
@@ -661,7 +656,6 @@ def _details(d: dict) -> None:
         ("Επιπλωμένο", {True: "ναι", False: "όχι"}.get(d.get("furnished"), "άγνωστο")),
         ("Διαθέσιμο από", _day(d.get("available_from")) or "άγνωστο"),
         ("Φωτογραφίες", str(d["photo_count"]) if d.get("photo_count") else "άγνωστο"),
-        ("Πηγή", guide.SOURCES.get(d.get("source") or "xe", d.get("source") or "")),
     ]
     st.markdown(
         '<div class="hg-card">'
@@ -669,8 +663,8 @@ def _details(d: dict) -> None:
         + "</div>",
         unsafe_allow_html=True,
     )
-    if text := picks.excerpt(d.get("description")):
-        st.markdown(f"**Τι λέει η αγγελία**: {html.escape(text)}")
+    src = guide.SOURCES.get(d.get("source") or "xe", (d.get("source") or "").upper())
+    st.link_button(f"Άνοιγμα στο {src}", d["url"], width="stretch")
     st.caption(
         "Ρώτα τον ιδιοκτήτη: εγγύηση, κοινόχρηστα και θέρμανση, διάρκεια συμβολαίου, "
         "πιστοποιητικό ενεργειακής απόδοσης."
@@ -746,7 +740,7 @@ def _results(r: dict, rows: list[dict]) -> None:
         visible = every[:n]
         for i, p in enumerate(visible, start=1):
             ok = review.get(shortlist.lkey(p.listing)) == "ok"
-            _card(i, p, ok, verdicts=i <= picks.PAGE)
+            card(i, p, "rent", verdicts=i <= picks.PAGE, approved=ok)
         if len(every) > n:
             with st.container(key="guide-rmore"):
                 st.button(

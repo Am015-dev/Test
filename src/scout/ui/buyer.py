@@ -1188,20 +1188,31 @@ def page_shortlist(listings: list[dict]) -> None:
 def page_watchlist(listings: list[dict]) -> None:
     _css()
     _show_flash()
+    from scout.ui import rent_guide  # lazy: it imports this module
+
     keys = watch_keys()
     starred = [d for d in listings if shortlist.lkey(d) in keys]
-    st.markdown(f"## Αγαπημένα ({len(starred)})" if starred else "## Αγαπημένα")
+    rented = rent_guide.starred(keys)
+    n = len(starred) + len(rented)
+    st.markdown(f"## Αγαπημένα ({n})" if n else "## Αγαπημένα")
     if not st.session_state.get("watch_persisted"):
         st.caption(SESSION_ONLY)
-    if not starred:
+    if not n:
         st.info("Δεν έχεις αγαπημένα ακόμα. Πάτα «Αγαπημένο» σε μια αγγελία.")
         return
-    intel = market_intel.build(listings)
-    views = [(d, buyer_view(d, intel)) for d in starred]
-    views.sort(key=lambda v: SORTS[DEFAULT_SORT](100, v[1], v[0]))
-    st.caption("Σειρά: " + SORT_HELP[DEFAULT_SORT])
-    for d, adv in views:
-        result_card(d, adv, "w", [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)])
+    if starred:
+        if rented:
+            st.markdown("### Για αγορά")
+        intel = market_intel.build(listings)
+        views = [(d, buyer_view(d, intel)) for d in starred]
+        views.sort(key=lambda v: SORTS[DEFAULT_SORT](100, v[1], v[0]))
+        st.caption("Σειρά: " + SORT_HELP[DEFAULT_SORT])
+        for d, adv in views:
+            result_card(d, adv, "w", [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)])
+    if rented:
+        st.markdown("### Ενοίκια")
+        for p in rented:
+            rent_guide.card(None, p, "wrent")
 
 
 # ---- one listing ---------------------------------------------------------------------------

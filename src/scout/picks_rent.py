@@ -227,6 +227,11 @@ def _build(d: dict, index: tuple[dict, dict], budget: int) -> RentPick:
     return p
 
 
+def pick(d: dict, index: tuple[dict, dict]) -> RentPick:
+    """One rental on its own (favourites): the same card facts, no budget."""
+    return _build(d, index, int(d["price"]))
+
+
 def _age_ok(d: dict, max_age: int | None, year: int) -> bool:
     if max_age is None:
         return True
