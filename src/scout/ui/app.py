@@ -126,6 +126,10 @@ try:
     from scout.ui import maplist  # noqa: E402
 except ImportError:
     maplist = None
+try:
+    from scout.collectors import SOURCE_LABELS  # noqa: E402
+except ImportError:
+    SOURCE_LABELS = {"xe": "XE.gr"}
 from scout.ui import format as fmt  # noqa: E402
 
 sys.modules["scout"]._source_stamp = _SOURCE_STAMP
@@ -2355,7 +2359,7 @@ def page_compare(listings: list[dict]) -> None:
 
 # The home page: the guided flow (W8) when present, else «Βρες μου σπίτι».
 if guide is not None:
-    HOME, _home_page = guide.TITLE, guide.page_guide
+    HOME, _home_page = guide.TITLE, getattr(guide, "page_guide", None) or guide.page
 elif find is not None:
     HOME, _home_page = find.TITLE, find.page_find
 else:  # neither module: start on the search page
@@ -2405,14 +2409,17 @@ def _pick_page() -> None:
 
 
 def _data_status(listings: list[dict]) -> str:
-    """One line that fits 390 px: «XE.gr · ΗΗ/ΜΜ · N ενεργές · M ελεγμένες», from the data."""
+    """One line: «XE.gr, Golden Home · ΗΗ/ΜΜ · N ενεργές · M ελεγμένες» — the sources actually
+    present in the loaded listings, then the data's date and counts."""
     last_up = _last_updated(listings)
     if last_up is None:
         return "Δεν υπάρχουν δεδομένα ακόμα."
     active = sum(1 for d in listings if d.get("is_fresh", True))
     checked = sum(1 for d in listings if d.get("page_checked"))
+    present = sorted({d.get("source") or "xe" for d in listings}, key=lambda k: (k != "xe", k))
+    sources = ", ".join(SOURCE_LABELS.get(k, k) for k in present)
     return (
-        f"XE.gr · {last_up:%d/%m} · {fmt._gr_int(active)} ενεργές · "
+        f"{sources} · {last_up:%d/%m} · {fmt._gr_int(active)} ενεργές · "
         f"{fmt._gr_int(checked)} ελεγμένες"
     )
 
@@ -2430,9 +2437,6 @@ def _refresh_data() -> None:
 def main() -> None:
     admin = bool(st.query_params.get("admin"))
     pages = {**NAV, **(ADMIN_NAV if admin else {})}
-    restore = st.session_state.pop("account_restore_page", None)
-    if restore in pages:  # just signed in: back to where this person left off
-        st.session_state["page"] = restore
     with st.sidebar:  # desktop / keyboard navigation; on a phone the pills below do the job
         st.markdown("### Σκάουτ ακινήτων")
         account.login_ui()
@@ -2451,8 +2455,6 @@ def main() -> None:
     )
     listings = get_listings()
     st.caption(_data_status(listings))
-    if page != buyer.NAV_DETAIL:
-        account.remember_page(page)
 
     if pages[page] in (page_opportunities, page_today):
         st.markdown(f"## {page}")

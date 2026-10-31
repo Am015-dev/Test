@@ -2,8 +2,8 @@
 
 Code: `src/scout/ui/account.py` (UI + API), `src/scout/shortlist.py` (the stored document).
 
-A signed-in person finds their **favourites (Αγαπημένα), approve/drop verdicts, saved searches,
-guide answers and last page** where they left them, on any device.
+A signed-in person finds their **favourites (Αγαπημένα), approve/drop verdicts, saved searches and
+guide answers** where they left them, on any device.
 
 ## Two ways to sign in (one API)
 

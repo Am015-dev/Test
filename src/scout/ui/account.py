@@ -35,7 +35,14 @@ SESSION_KEY = "profile"  # the signed-in profile key (PIN profiles)
 _CACHE = "_store_cache"
 _MISSING = object()
 # Per-session copies of stored data, dropped when the user changes.
-_SESSION_CACHES = ("watch", "watch_persisted", "pick_review", "review_persisted", _CACHE)
+_SESSION_CACHES = (
+    "watch",
+    "watch_persisted",
+    "pick_review",
+    "review_persisted",
+    "guide",
+    _CACHE,
+)
 
 
 class ProfileError(Exception):
@@ -204,24 +211,11 @@ def _forget_session_copies() -> None:
         st.session_state.pop(k, None)
 
 
-def _restore_last_page() -> None:
-    page = storage().get("last_page")
-    if page:
-        st.session_state["account_restore_page"] = page
-
-
-def remember_page(page: str) -> None:
-    """Keep the signed-in user's last page (written only when it changes)."""
-    if current_user() and storage().get("last_page") != page:
-        storage().set("last_page", page)
-
-
 def _sign_in(key: str, name: str) -> None:
     _forget_session_copies()
     st.session_state[SESSION_KEY] = key
     st.session_state["profile_name"] = name
     st.session_state.pop("login_pin", None)
-    _restore_last_page()
 
 
 def _do_login(create: bool) -> None:

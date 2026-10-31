@@ -52,9 +52,10 @@ def test_every_short_label_routes_to_its_nav_key(env, short):  # noqa: F811
 
 def test_data_status_line_has_greek_numbers_and_no_english(env):  # noqa: F811
     at = _app()
-    line = next(c.value for c in at.caption if c.value.startswith("XE.gr ·"))
+    line = next(c.value for c in at.caption if c.value.startswith("XE.gr"))
+    # the sources present in the data (only XE.gr in the fixture), then date and counts
     assert re.fullmatch(
-        r"XE\.gr · \d\d/\d\d · [\d.]+ ενεργές · [\d.]+ ελεγμένες",
+        r"XE\.gr(, [^·]+)? · \d\d/\d\d · [\d.]+ ενεργές · [\d.]+ ελεγμένες",
         line,
     ), line
     assert not re.search(r"[A-Za-z]{3,}", line.replace("XE.gr", ""))
@@ -202,8 +203,6 @@ def test_favourites_follow_the_profile(env):  # noqa: F811
     at.sidebar.button(key="logout").click().run()
     assert buyer_watch(at) == set()  # the anonymous profile has its own (empty) list
     at = _sign_up(at, "Ελένη", "1111", new=False)
-    # signing back in lands on the page this person left
-    assert at.session_state["page"] == "Αναζήτηση"
     assert buyer_watch(at) == starred
 
 
