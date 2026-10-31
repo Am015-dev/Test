@@ -249,7 +249,7 @@ def advise(d: dict, comp_pct: float | None = None) -> dict:
     building age (see ``age_factor``). Buy-value comes from ``comp_pct`` — this flat's €/m²
     against like-for-like listings (same area, age band, size; see ``market_intel``): 20%
     under = full marks — plus seller motivation and a price cut. Without comparables it falls
-    back to a confident model value, else it is skipped. Unfinished buildings score 0.
+    back to a confident model value, else it is skipped. Unfinished buildings keep a quarter.
     """
     base = d.get("score") or 0
     gap = -comp_pct if comp_pct is not None else None
@@ -263,10 +263,10 @@ def advise(d: dict, comp_pct: float | None = None) -> dict:
         score = 0.6 * base + 0.4 * value
     age = building_age(d)
     score *= age_factor(age)
-    if (d.get("year_built") or 0) >= date.today().year:
-        score *= 0.6  # built "this year": often still a shell sold off-plan — unconfirmed
     if d.get("is_unfinished"):
-        score = 0
+        score *= 0.25  # needs money and months before it can be lived in or rented
+    elif (d.get("year_built") or 0) >= date.today().year:
+        score *= 0.6  # built "this year": often still a shell sold off-plan — unconfirmed
     return {"score": round(score), "gap": gap, "age": age}
 
 

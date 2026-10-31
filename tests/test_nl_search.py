@@ -165,7 +165,7 @@ def test_area_uses_the_listing_location_not_the_scraped_search_area():
     assert match(no_location, SearchFilters(areas=["Cholargos"])) is not None
 
 
-def test_old_buildings_are_discounted_and_unfinished_score_zero():
+def test_old_buildings_are_discounted_and_unfinished_cut_hard():
     from scout.nl_search import advise
 
     new = {**BASE, "score": 80, "year_built": 2018}
@@ -174,7 +174,7 @@ def test_old_buildings_are_discounted_and_unfinished_score_zero():
     assert advise(new)["score"] == 80
     assert advise(old)["score"] == 36 and advise(old)["age"] >= 60
     assert advise(renovated)["score"] == 80
-    assert advise({**new, "is_unfinished": True})["score"] == 0
+    assert advise({**new, "is_unfinished": True})["score"] == 20  # a quarter of 80
     this_year = {**new, "year_built": date.today().year}  # maybe still a shell, sold off-plan
     assert advise(this_year)["score"] == 48
 
