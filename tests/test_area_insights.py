@@ -354,7 +354,7 @@ def test_decision_still_answers_on_small_samples_and_says_so():
     ranked = ai.rank_areas(many(25), rents, year=YEAR)
     s = ai.decision(ranked, 300_000)
     assert s[0].startswith("Για απόδοση: Χολαργός") and s[0].endswith(
-        "Λίγες αγγελίες ακόμα, κρατάμε επιφύλαξη."
+        "Οι αγγελίες είναι ακόμα λίγες."
     )
 
 

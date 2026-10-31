@@ -772,7 +772,7 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
     within budget in a neighbourhood with a rail station."""
     out = []
     solid = [x for x in ranked if x.n_fresh >= SMALL_SAMPLE]
-    small = " Λίγες αγγελίες ακόμα, κρατάμε επιφύλαξη." if ranked and not solid else ""
+    small = " Οι αγγελίες είναι ακόμα λίγες." if ranked and not solid else ""
     solid = solid or ranked  # nothing reaches SMALL_SAMPLE: still answer, and say so
     ys = [x for x in solid if x.gross_yield is not None]
     if ys:
