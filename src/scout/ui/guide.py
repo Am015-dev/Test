@@ -829,20 +829,6 @@ def mark_near(facts: dict, picks_: list) -> dict:
     return facts
 
 
-def _assistant_brief(facts: dict) -> None:
-    a = _assistant()
-    if a is None or not callable(getattr(a, "brief", None)):
-        return
-    try:
-        text = a.brief(facts)
-    except Exception:
-        return
-    if text:
-        with st.container(border=True, key="guide-brief"):
-            st.markdown("**Σημείωμα επενδυτή**")
-            st.markdown(html.escape(text))
-
-
 def _assistant_panel(facts: dict) -> None:
     a = _assistant()
     if a is None or not callable(getattr(a, "panel", None)):
@@ -926,8 +912,9 @@ def _results(g: dict, listings: list[dict]) -> None:
                 f"Μόνο {len(exact)} ακριβώς όπως ζήτησες. Κάνε μόνιμο έναν όρο λιγότερο "
                 "(σε παρένθεση πόσες προστίθενται):",
             )
+        # C18: no model-written text on the first screen — the brief is gone; «Ρώτα με»
+        # keeps its place after the list.
         facts = assistant_facts(every, g, area_facts, intel, rents, budget, rules["goal"])
-        _assistant_brief(facts)
         n = st.session_state.setdefault("guide_shown", picks.PAGE)
         visible = every[:n]
         maplist = _maplist()

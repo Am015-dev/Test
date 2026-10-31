@@ -1428,17 +1428,11 @@ def page_map(listings: list[dict]) -> None:
     no_loc = len(matched) - len(shown)
     approx = sum(1 for d in shown if d.get("location_precision") != "exact")
     noun = "αγγελία" if len(shown) == 1 else "αγγελίες"
-    st.markdown(f"**{fmt._gr_int(len(shown))} {noun} στον χάρτη**")
     exact = len(shown) - approx
-    st.caption(
-        (
-            "Μόνο 1 αγγελία έχει ακριβή θέση· "
-            if exact == 1
-            else f"Μόνο {fmt._gr_int(exact)} αγγελίες έχουν ακριβή θέση· "
-        )
-        + "οι υπόλοιπες στο κέντρο της περιοχής τους."
-        if exact
-        else "Καμία αγγελία δεν έχει ακριβή θέση· όλες είναι στο κέντρο της περιοχής τους."
+    # One line on the first screen: the count and the honest «μόνο N με ακριβή θέση» fact.
+    st.markdown(
+        f"**{fmt._gr_int(len(shown))} {noun} στον χάρτη** · "
+        + (f"μόνο {fmt._gr_int(exact)} με ακριβή θέση." if exact else "καμία με ακριβή θέση.")
     )
     hidden_unfinished = sum(1 for d in listings if d.get("is_unfinished"))
     unchecked = sum(1 for d in shown if not d.get("page_checked"))
@@ -1451,8 +1445,19 @@ def page_map(listings: list[dict]) -> None:
         )
     if no_loc:
         notes.append(f"{fmt._gr_int(no_loc)} ταιριάζουν αλλά δεν έχουν θέση")
-    if notes:
-        st.caption(" · ".join(notes) + ".")
+    with st.expander("Τι δεν φαίνεται στον χάρτη"):  # the counts and their reasons, one tap
+        st.caption(
+            (
+                "Μόνο 1 αγγελία έχει ακριβή θέση· "
+                if exact == 1
+                else f"Μόνο {fmt._gr_int(exact)} αγγελίες έχουν ακριβή θέση· "
+            )
+            + "οι υπόλοιπες στο κέντρο της περιοχής τους."
+            if exact
+            else "Καμία αγγελία δεν έχει ακριβή θέση· όλες είναι στο κέντρο της περιοχής τους."
+        )
+        if notes:
+            st.caption(" · ".join(notes) + ".")
     if not shown:
         st.info("Καμία αγγελία δεν ταιριάζει — χαλάρωσε την τιμή, το έτος ή την περιοχή.")
         return
@@ -2440,9 +2445,8 @@ def main() -> None:
         st.button(buyer.NAV_SAVED, key="nav_saved", type="tertiary", on_click=buyer.open_saved)
     # One header line, the data line under it, then the pills (every page).
     listings = get_listings()
-    with st.container(key="app-head"):  # theme.py: the wordmark and the quiet data line
+    with st.container(key="app-head"):  # theme.py: the wordmark alone; the data line is the footer
         st.markdown('<div class="hg-app-head">Σκάουτ ακινήτων</div>', unsafe_allow_html=True)
-        st.caption(_data_status(listings))
     # Pills mirror the current page (pages also navigate by setting session_state["page"]).
     # With ?admin=1 the owner's tools follow the buyer pages, under their own names.
     st.session_state["nav_pill"] = _PILL_OF.get(page, page if page in ADMIN_NAV else None)
@@ -2462,6 +2466,8 @@ def main() -> None:
         pages[page]()
     else:
         pages[page](listings)
+    with st.container(key="app-foot"):  # the sources, date and counts: last, quiet, one line
+        st.caption(_data_status(listings))
 
 
 main()
