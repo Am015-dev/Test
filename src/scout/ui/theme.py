@@ -872,8 +872,11 @@ footer {{ visibility: hidden; height: 0; }}
     transform: scale(.98);
 }}
 :is([data-testid="stMain"], [data-testid="stSidebar"]) button:disabled {{
-    opacity: .5; cursor: not-allowed; transform: none;
+    /* not available yet, said plainly: readable muted ink (4.5:1), a dashed hairline */
+    opacity: 1; cursor: not-allowed; transform: none;
+    background: var(--hg-canvas); border: 1px dashed #CBD5E1; color: var(--hg-muted);
 }}
+:is([data-testid="stMain"], [data-testid="stSidebar"]) button:disabled p {{ color: var(--hg-muted); }}
 @media (prefers-reduced-motion: reduce) {{
     :is([data-testid="stMain"], [data-testid="stSidebar"]) :is(button, .stLinkButton a):active,
     [data-testid="stMain"] .hg-card summary::after {{ transform: none; transition: none; }}

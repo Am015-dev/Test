@@ -289,7 +289,10 @@ const RENT_SCREENS = [
 ];
 // rent, real DB (fresh session): no rental rows are published yet, so the flow shows its
 // «coming» state
-const R0_SCREENS = [['r0-rent-empty-realdb', async (p) => tap(p, 'Να νοικιάσω')]];
+const R0_SCREENS = [['r0-rent-empty-realdb', async (p) => {
+  const b = btn(p, 'Να νοικιάσω');  // disabled while no rental is stored (#90): step 0 is the state
+  if (await b.isEnabled()) await tap(p, 'Να νοικιάσω');
+}]];
 const BASE2 = process.argv[5] || 'http://127.0.0.1:8502';
 
 async function screenshot(page, file, phone) {

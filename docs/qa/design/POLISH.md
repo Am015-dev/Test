@@ -53,14 +53,14 @@ comparable row by row because round 4 changed the screens.
 | screens measured | 22 | 22 |
 | max scrollWidth | 390 | 390 |
 | elements wider than the viewport | 0 | 0 |
-| targets < 44 px / all | 484 / 534 | 0 / 535 |
+| targets < 44 px / all | 484 / 534 | 0 / 536 |
 | text under AA, words | 10 | 0 |
 | text under AA, decorative «·» (aria-hidden) | 242 | 254 |
 | text < 11 px | 0 | 0 |
 | distinct font sizes | 11 (11.4, 12.8, 13.12, 14, 14.4, 15, 15.2, 16, 16.8, 20.8, 21.6) | 6 (13, 15, 16, 17, 20.8, 28) |
 | distinct radii / shadows | 13 / 3 | 9 / 2 |
 | margin/padding values, off the 4-pt scale | 37, 25 off | 21, 6 off |
-| Tab stops without a visible ring / stops | 36 / 494 | 0 / 455 |
+| Tab stops without a visible ring / stops | 36 / 494 | 0 / 454 |
 
 ### 1280 px
 
@@ -69,7 +69,7 @@ comparable row by row because round 4 changed the screens.
 | screens measured | 22 | 22 |
 | max scrollWidth | 1280 | 1280 |
 | elements wider than the viewport | 0 | 0 |
-| targets < 44 px / all | 510 / 559 | 4 / 560 |
+| targets < 44 px / all | 510 / 559 | 4 / 562 |
 | text under AA, words | 10 | 0 |
 | text under AA, decorative «·» (aria-hidden) | 242 | 254 |
 | text < 11 px | 0 | 0 |
@@ -82,12 +82,13 @@ comparable row by row because round 4 changed the screens.
 
 | screen | scrollWidth | < 44 px | contrast fails, words | font sizes | no ring |
 |---|---|---|---|---|---|
+| a0-guide-mode | 390 → 390 | 6 → 0 | 0 → 0 | 4 → 5 | 1 → 0 |
+| r0-rent-empty-realdb | 390 → 390 | 6 → 0 | 0 → 0 | 4 → 5 | 1 → 0 |
 | a4-guide-kind | 390 → 390 | 13 → 0 | 0 → 0 | 4 → 6 | 1 → 0 |
 | a5-guide-result | 390 → 390 | 62 → 0 | 0 → 0 | 9 → 6 | 1 → 0 |
 | c1-areas | 390 → 390 | 15 → 0 | 1 → 0 | 6 → 6 | 3 → 0 |
 | r4-rent-kind-fixture | 390 → 390 | 9 → 0 | 1 → 0 | 4 → 6 | 1 → 0 |
 | r5-rent-result-fixture | 390 → 390 | 42 → 0 | 0 → 0 | 9 → 6 | 1 → 0 |
-| a0-guide-mode | 390 → 390 | 6 → 0 | 0 → 0 | 4 → 5 | 1 → 0 |
 | a1-guide-budget | 390 → 390 | 7 → 0 | 0 → 0 | 4 → 6 | 1 → 0 |
 | a2-guide-goal | 390 → 390 | 6 → 0 | 0 → 0 | 4 → 6 | 1 → 0 |
 | a3-guide-where | 390 → 390 | 6 → 0 | 0 → 0 | 4 → 6 | 1 → 0 |
@@ -99,7 +100,6 @@ comparable row by row because round 4 changed the screens.
 | h2-compare | 390 → 390 | 16 → 0 | 1 → 0 | 9 → 5 | 3 → 0 |
 | s1-saved-searches | 390 → 390 | 6 → 0 | 0 → 0 | 4 → 4 | 1 → 0 |
 | e0-sidebar | 390 → 390 | 8 → 0 | 0 → 0 | 4 → 4 | 1 → 0 |
-| r0-rent-empty-realdb | 390 → 390 | 6 → 0 | 0 → 0 | 4 → 5 | 1 → 0 |
 | r1-rent-budget-fixture | 390 → 390 | 8 → 0 | 0 → 0 | 4 → 6 | 1 → 0 |
 | r2-rent-beds-fixture | 390 → 390 | 6 → 0 | 0 → 0 | 4 → 6 | 1 → 0 |
 | r3-rent-where-fixture | 390 → 390 | 6 → 0 | 0 → 0 | 4 → 6 | 1 → 0 |
@@ -210,9 +210,10 @@ independent reviewer names what holds the last points; none is a theme change:
 - **P1 (coordinator, ranking): Αναζήτηση and the Χάρτης list open on unchecked flats 33–35 %
   under comparables**, just inside the 35 % too-cheap line. C6 forbids ranking changes; a default
   of «checked first» or the guide's order is the fix.
-- **P2: the rent «coming» note (r0, real DB) still shows «Βήμα 1 από 5» and a bar, and offers
-  only «Πίσω»** (`rent_guide.page` draws the progress before the empty check). A one-line order
-  change plus a «Να αγοράσω» button; logic, so left for your call.
+- **Resolved by #90 (merged in):** the rent dead end the reviewer saw on r0 is gone; with no
+  rental stored, step 0 shows «Να νοικιάσω» disabled with its caption. The disabled state is
+  styled as intentional (full opacity, muted ink 4,51:1, dashed hairline, `not-allowed`), not
+  Streamlit's 40 %-alpha text; r0 is now that step-0 screen.
 - **P2: the listing page is ~3.200 px**, with the six-field calculator before the six checks;
   the actions are now sticky at the bottom, the section order is a content decision.
 

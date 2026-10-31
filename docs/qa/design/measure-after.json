@@ -1,4 +1,1336 @@
 {
+ "a0-guide-mode@390": {
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "wide": [],
+  "targets": [
+   {
+    "what": "button[role=radio] in stButtonGroup «Οδηγός»",
+    "h": 44,
+    "w": 81,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Περιοχές»",
+    "h": 44,
+    "w": 92,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Αναζήτηση»",
+    "h": 44,
+    "w": 105,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Χάρτης»",
+    "h": 44,
+    "w": 80,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Αγαπημένα»",
+    "h": 44,
+    "w": 107,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Σύγκριση»",
+    "h": 44,
+    "w": 93,
+    "small": false
+   },
+   {
+    "what": "button in stBaseButton-secondary «Να αγοράσω»",
+    "h": 44,
+    "w": 358,
+    "small": false
+   },
+   {
+    "what": "button in stBaseButton-secondary «Να νοικιάσω»",
+    "h": 44,
+    "w": 358,
+    "small": false
+   }
+  ],
+  "texts": [
+   {
+    "t": "Σκάουτ ακινήτων",
+    "decorative": false,
+    "size": 17,
+    "weight": "750",
+    "color": "rgb(15, 118, 110)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 5.19,
+    "fail": false,
+    "tiny": false,
+    "where": "div.hg-app-head in stMarkdownContainer"
+   },
+   {
+    "t": "XE.gr, Green-Acres · 30/10 · 11.150 ενερ",
+    "decorative": false,
+    "size": 13,
+    "weight": "400",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stCaptionContainer"
+   },
+   {
+    "t": "Οδηγός",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(255, 255, 255)",
+    "bg": "rgb(15,118,110)",
+    "contrast": 5.47,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Περιοχές",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αναζήτηση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Χάρτης",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αγαπημένα",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Σύγκριση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Οδηγός",
+    "decorative": false,
+    "size": 28,
+    "weight": "700",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "span in stHeadingWithActionElements"
+   },
+   {
+    "t": "Τι ψάχνεις;",
+    "decorative": false,
+    "size": 20.8,
+    "weight": "700",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "span in stHeadingWithActionElements"
+   },
+   {
+    "t": "Να αγοράσω",
+    "decorative": false,
+    "size": 17,
+    "weight": "600",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(255,255,255)",
+    "contrast": 14.63,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Να νοικιάσω",
+    "decorative": false,
+    "size": 17,
+    "weight": "600",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Δεν έχουμε ακόμα αγγελίες ενοικίασης: η ",
+    "decorative": false,
+    "size": 13,
+    "weight": "400",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stCaptionContainer"
+   }
+  ],
+  "icons": 0,
+  "fontSizes": {
+   "13": 2,
+   "15": 6,
+   "17": 3,
+   "28": 1,
+   "20.8": 1
+  },
+  "radii": {
+   "999px": 6,
+   "10px": 2
+  },
+  "shadows": {},
+  "margins": {
+   "-16px": 4,
+   "8px": 2,
+   "4px": 1,
+   "24px": 1,
+   "16px": 1
+  },
+  "paddings": {
+   "56px": 1,
+   "16px": 2,
+   "32px": 1,
+   "4px": 17,
+   "12px": 16
+  },
+  "focus": [
+   {
+    "id": "7170295248808548",
+    "what": "input «0»",
+    "ring": true
+   },
+   {
+    "id": "7837674068424859",
+    "what": "button «Ανανέωση δεδομένων»",
+    "ring": true
+   },
+   {
+    "id": "455672756023655",
+    "what": "main «Σκάουτ ακινήτων XE.gr, Green-Acres · 30/»",
+    "ring": true
+   },
+   {
+    "id": "2569948454163896",
+    "what": "button[role=radio] «Οδηγός»",
+    "ring": true
+   },
+   {
+    "id": "1739478595483419",
+    "what": "button «Να αγοράσω»",
+    "ring": true
+   }
+  ]
+ },
+ "a0-guide-mode@1280": {
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "wide": [],
+  "targets": [
+   {
+    "what": "button in stBaseButton-headerNoPadding «keyboard_double_arrow_left»",
+    "h": 44,
+    "w": 44,
+    "small": false
+   },
+   {
+    "what": "button in stBaseButton-secondary «Ανανέωση δεδομένων»",
+    "h": 44,
+    "w": 239,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Οδηγός»",
+    "h": 44,
+    "w": 81,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Περιοχές»",
+    "h": 44,
+    "w": 92,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Αναζήτηση»",
+    "h": 44,
+    "w": 105,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Χάρτης»",
+    "h": 44,
+    "w": 80,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Αγαπημένα»",
+    "h": 44,
+    "w": 107,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Σύγκριση»",
+    "h": 44,
+    "w": 93,
+    "small": false
+   },
+   {
+    "what": "button in stBaseButton-secondary «Να αγοράσω»",
+    "h": 44,
+    "w": 820,
+    "small": false
+   },
+   {
+    "what": "button in stBaseButton-secondary «Να νοικιάσω»",
+    "h": 44,
+    "w": 820,
+    "small": false
+   }
+  ],
+  "texts": [
+   {
+    "t": "Χωρίς σύνδεση: οι επιλογές σου μένουν μό",
+    "decorative": false,
+    "size": 13,
+    "weight": "400",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stCaptionContainer"
+   },
+   {
+    "t": "Οδηγός",
+    "decorative": false,
+    "size": 15,
+    "weight": "650",
+    "color": "rgb(255, 255, 255)",
+    "bg": "rgb(15,118,110)",
+    "contrast": 5.47,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Πού να αγοράσω",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αναζήτηση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Χάρτης",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αγαπημένα",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αποθηκευμένες αναζητήσεις",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Σύγκριση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Ανανέωση δεδομένων",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(15, 23, 42)",
+    "bg": "rgb(248,250,252)",
+    "contrast": 17.06,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Σκάουτ ακινήτων",
+    "decorative": false,
+    "size": 17,
+    "weight": "750",
+    "color": "rgb(15, 118, 110)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 5.19,
+    "fail": false,
+    "tiny": false,
+    "where": "div.hg-app-head in stMarkdownContainer"
+   },
+   {
+    "t": "XE.gr, Green-Acres · 30/10 · 11.150 ενερ",
+    "decorative": false,
+    "size": 13,
+    "weight": "400",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stCaptionContainer"
+   },
+   {
+    "t": "Οδηγός",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(255, 255, 255)",
+    "bg": "rgb(15,118,110)",
+    "contrast": 5.47,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Περιοχές",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αναζήτηση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Χάρτης",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αγαπημένα",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Σύγκριση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Οδηγός",
+    "decorative": false,
+    "size": 28,
+    "weight": "700",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "span in stHeadingWithActionElements"
+   },
+   {
+    "t": "Τι ψάχνεις;",
+    "decorative": false,
+    "size": 20.8,
+    "weight": "700",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "span in stHeadingWithActionElements"
+   },
+   {
+    "t": "Να αγοράσω",
+    "decorative": false,
+    "size": 17,
+    "weight": "600",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(255,255,255)",
+    "contrast": 14.63,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Να νοικιάσω",
+    "decorative": false,
+    "size": 17,
+    "weight": "600",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Δεν έχουμε ακόμα αγγελίες ενοικίασης: η ",
+    "decorative": false,
+    "size": 13,
+    "weight": "400",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stCaptionContainer"
+   }
+  ],
+  "icons": 1,
+  "fontSizes": {
+   "13": 3,
+   "15": 14,
+   "17": 3,
+   "28": 1,
+   "20.8": 1
+  },
+  "radii": {
+   "8px": 1,
+   "10px": 10,
+   "999px": 6
+  },
+  "shadows": {},
+  "margins": {
+   "16px": 3,
+   "8px": 3,
+   "2px": 2,
+   "-16px": 5,
+   "-1px": 28,
+   "4px": 1,
+   "24px": 1
+  },
+  "paddings": {
+   "20px": 2,
+   "24px": 1,
+   "96px": 1,
+   "8px": 14,
+   "12px": 32,
+   "4px": 19,
+   "40px": 1,
+   "80px": 2,
+   "48px": 1
+  },
+  "focus": [
+   {
+    "id": "2436336393641827",
+    "what": "button «keyboard_double_arrow_left»",
+    "ring": true
+   },
+   {
+    "id": "08204019051908074",
+    "what": "input «0»",
+    "ring": true
+   },
+   {
+    "id": "6250819193502983",
+    "what": "button «Ανανέωση δεδομένων»",
+    "ring": true
+   },
+   {
+    "id": "544455814973476",
+    "what": "main «Σκάουτ ακινήτων XE.gr, Green-Acres · 30/»",
+    "ring": true
+   },
+   {
+    "id": "112812414425153",
+    "what": "button[role=radio] «Οδηγός»",
+    "ring": true
+   },
+   {
+    "id": "9112085519179403",
+    "what": "button «Να αγοράσω»",
+    "ring": true
+   }
+  ]
+ },
+ "r0-rent-empty-realdb@390": {
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "wide": [],
+  "targets": [
+   {
+    "what": "button[role=radio] in stButtonGroup «Οδηγός»",
+    "h": 44,
+    "w": 81,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Περιοχές»",
+    "h": 44,
+    "w": 92,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Αναζήτηση»",
+    "h": 44,
+    "w": 105,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Χάρτης»",
+    "h": 44,
+    "w": 80,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Αγαπημένα»",
+    "h": 44,
+    "w": 107,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Σύγκριση»",
+    "h": 44,
+    "w": 93,
+    "small": false
+   },
+   {
+    "what": "button in stBaseButton-secondary «Να αγοράσω»",
+    "h": 44,
+    "w": 358,
+    "small": false
+   },
+   {
+    "what": "button in stBaseButton-secondary «Να νοικιάσω»",
+    "h": 44,
+    "w": 358,
+    "small": false
+   }
+  ],
+  "texts": [
+   {
+    "t": "Σκάουτ ακινήτων",
+    "decorative": false,
+    "size": 17,
+    "weight": "750",
+    "color": "rgb(15, 118, 110)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 5.19,
+    "fail": false,
+    "tiny": false,
+    "where": "div.hg-app-head in stMarkdownContainer"
+   },
+   {
+    "t": "XE.gr, Green-Acres · 30/10 · 11.150 ενερ",
+    "decorative": false,
+    "size": 13,
+    "weight": "400",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stCaptionContainer"
+   },
+   {
+    "t": "Οδηγός",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(255, 255, 255)",
+    "bg": "rgb(15,118,110)",
+    "contrast": 5.47,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Περιοχές",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αναζήτηση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Χάρτης",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αγαπημένα",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Σύγκριση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Οδηγός",
+    "decorative": false,
+    "size": 28,
+    "weight": "700",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "span in stHeadingWithActionElements"
+   },
+   {
+    "t": "Τι ψάχνεις;",
+    "decorative": false,
+    "size": 20.8,
+    "weight": "700",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "span in stHeadingWithActionElements"
+   },
+   {
+    "t": "Να αγοράσω",
+    "decorative": false,
+    "size": 17,
+    "weight": "600",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(255,255,255)",
+    "contrast": 14.63,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Να νοικιάσω",
+    "decorative": false,
+    "size": 17,
+    "weight": "600",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Δεν έχουμε ακόμα αγγελίες ενοικίασης: η ",
+    "decorative": false,
+    "size": 13,
+    "weight": "400",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stCaptionContainer"
+   }
+  ],
+  "icons": 0,
+  "fontSizes": {
+   "13": 2,
+   "15": 6,
+   "17": 3,
+   "28": 1,
+   "20.8": 1
+  },
+  "radii": {
+   "999px": 6,
+   "10px": 2
+  },
+  "shadows": {},
+  "margins": {
+   "-16px": 4,
+   "8px": 2,
+   "4px": 1,
+   "24px": 1,
+   "16px": 1
+  },
+  "paddings": {
+   "56px": 1,
+   "16px": 2,
+   "32px": 1,
+   "4px": 17,
+   "12px": 16
+  },
+  "focus": [
+   {
+    "id": "892793369401003",
+    "what": "input «0»",
+    "ring": true
+   },
+   {
+    "id": "6609650294477974",
+    "what": "button «Ανανέωση δεδομένων»",
+    "ring": true
+   },
+   {
+    "id": "6498347644987559",
+    "what": "main «Σκάουτ ακινήτων XE.gr, Green-Acres · 30/»",
+    "ring": true
+   },
+   {
+    "id": "772370621868043",
+    "what": "button[role=radio] «Οδηγός»",
+    "ring": true
+   },
+   {
+    "id": "21937776245290375",
+    "what": "button «Να αγοράσω»",
+    "ring": true
+   }
+  ]
+ },
+ "r0-rent-empty-realdb@1280": {
+  "scrollWidth": 1280,
+  "innerWidth": 1280,
+  "wide": [],
+  "targets": [
+   {
+    "what": "button in stBaseButton-headerNoPadding «keyboard_double_arrow_left»",
+    "h": 44,
+    "w": 44,
+    "small": false
+   },
+   {
+    "what": "button in stBaseButton-secondary «Ανανέωση δεδομένων»",
+    "h": 44,
+    "w": 239,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Οδηγός»",
+    "h": 44,
+    "w": 81,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Περιοχές»",
+    "h": 44,
+    "w": 92,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Αναζήτηση»",
+    "h": 44,
+    "w": 105,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Χάρτης»",
+    "h": 44,
+    "w": 80,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Αγαπημένα»",
+    "h": 44,
+    "w": 107,
+    "small": false
+   },
+   {
+    "what": "button[role=radio] in stButtonGroup «Σύγκριση»",
+    "h": 44,
+    "w": 93,
+    "small": false
+   },
+   {
+    "what": "button in stBaseButton-secondary «Να αγοράσω»",
+    "h": 44,
+    "w": 820,
+    "small": false
+   },
+   {
+    "what": "button in stBaseButton-secondary «Να νοικιάσω»",
+    "h": 44,
+    "w": 820,
+    "small": false
+   }
+  ],
+  "texts": [
+   {
+    "t": "Χωρίς σύνδεση: οι επιλογές σου μένουν μό",
+    "decorative": false,
+    "size": 13,
+    "weight": "400",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stCaptionContainer"
+   },
+   {
+    "t": "Οδηγός",
+    "decorative": false,
+    "size": 15,
+    "weight": "650",
+    "color": "rgb(255, 255, 255)",
+    "bg": "rgb(15,118,110)",
+    "contrast": 5.47,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Πού να αγοράσω",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αναζήτηση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Χάρτης",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αγαπημένα",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αποθηκευμένες αναζητήσεις",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Σύγκριση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Ανανέωση δεδομένων",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(15, 23, 42)",
+    "bg": "rgb(248,250,252)",
+    "contrast": 17.06,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Σκάουτ ακινήτων",
+    "decorative": false,
+    "size": 17,
+    "weight": "750",
+    "color": "rgb(15, 118, 110)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 5.19,
+    "fail": false,
+    "tiny": false,
+    "where": "div.hg-app-head in stMarkdownContainer"
+   },
+   {
+    "t": "XE.gr, Green-Acres · 30/10 · 11.150 ενερ",
+    "decorative": false,
+    "size": 13,
+    "weight": "400",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stCaptionContainer"
+   },
+   {
+    "t": "Οδηγός",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(255, 255, 255)",
+    "bg": "rgb(15,118,110)",
+    "contrast": 5.47,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Περιοχές",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αναζήτηση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Χάρτης",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Αγαπημένα",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Σύγκριση",
+    "decorative": false,
+    "size": 15,
+    "weight": "400",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Οδηγός",
+    "decorative": false,
+    "size": 28,
+    "weight": "700",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "span in stHeadingWithActionElements"
+   },
+   {
+    "t": "Τι ψάχνεις;",
+    "decorative": false,
+    "size": 20.8,
+    "weight": "700",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 13.87,
+    "fail": false,
+    "tiny": false,
+    "where": "span in stHeadingWithActionElements"
+   },
+   {
+    "t": "Να αγοράσω",
+    "decorative": false,
+    "size": 17,
+    "weight": "600",
+    "color": "rgb(30, 41, 59)",
+    "bg": "rgb(255,255,255)",
+    "contrast": 14.63,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Να νοικιάσω",
+    "decorative": false,
+    "size": 17,
+    "weight": "600",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stMarkdownContainer"
+   },
+   {
+    "t": "Δεν έχουμε ακόμα αγγελίες ενοικίασης: η ",
+    "decorative": false,
+    "size": 13,
+    "weight": "400",
+    "color": "rgb(100, 116, 139)",
+    "bg": "rgb(247,249,252)",
+    "contrast": 4.51,
+    "fail": false,
+    "tiny": false,
+    "where": "p in stCaptionContainer"
+   }
+  ],
+  "icons": 1,
+  "fontSizes": {
+   "13": 3,
+   "15": 14,
+   "17": 3,
+   "28": 1,
+   "20.8": 1
+  },
+  "radii": {
+   "8px": 1,
+   "10px": 10,
+   "999px": 6
+  },
+  "shadows": {},
+  "margins": {
+   "16px": 3,
+   "8px": 3,
+   "2px": 2,
+   "-16px": 5,
+   "-1px": 28,
+   "4px": 1,
+   "24px": 1
+  },
+  "paddings": {
+   "20px": 2,
+   "24px": 1,
+   "96px": 1,
+   "8px": 14,
+   "12px": 32,
+   "4px": 19,
+   "40px": 1,
+   "80px": 2,
+   "48px": 1
+  },
+  "focus": [
+   {
+    "id": "8900400833379979",
+    "what": "button «keyboard_double_arrow_left»",
+    "ring": true
+   },
+   {
+    "id": "8848258028331121",
+    "what": "input «0»",
+    "ring": true
+   },
+   {
+    "id": "6001102867239104",
+    "what": "button «Ανανέωση δεδομένων»",
+    "ring": true
+   },
+   {
+    "id": "3982981063268237",
+    "what": "main «Σκάουτ ακινήτων XE.gr, Green-Acres · 30/»",
+    "ring": true
+   },
+   {
+    "id": "596094677377167",
+    "what": "button[role=radio] «Οδηγός»",
+    "ring": true
+   },
+   {
+    "id": "8321100731205895",
+    "what": "button «Να αγοράσω»",
+    "ring": true
+   }
+  ]
+ },
  "a4-guide-kind@390": {
   "scrollWidth": 390,
   "innerWidth": 390,
@@ -17397,265 +18729,6 @@
    }
   ]
  },
- "a0-guide-mode@390": {
-  "scrollWidth": 390,
-  "innerWidth": 390,
-  "wide": [],
-  "targets": [
-   {
-    "what": "button[role=radio] in stButtonGroup «Οδηγός»",
-    "h": 44,
-    "w": 81,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Περιοχές»",
-    "h": 44,
-    "w": 92,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Αναζήτηση»",
-    "h": 44,
-    "w": 105,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Χάρτης»",
-    "h": 44,
-    "w": 80,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Αγαπημένα»",
-    "h": 44,
-    "w": 107,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Σύγκριση»",
-    "h": 44,
-    "w": 93,
-    "small": false
-   },
-   {
-    "what": "button in stBaseButton-secondary «Να αγοράσω»",
-    "h": 44,
-    "w": 358,
-    "small": false
-   },
-   {
-    "what": "button in stBaseButton-secondary «Να νοικιάσω»",
-    "h": 44,
-    "w": 358,
-    "small": false
-   }
-  ],
-  "texts": [
-   {
-    "t": "Σκάουτ ακινήτων",
-    "decorative": false,
-    "size": 17,
-    "weight": "750",
-    "color": "rgb(15, 118, 110)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 5.19,
-    "fail": false,
-    "tiny": false,
-    "where": "div.hg-app-head in stMarkdownContainer"
-   },
-   {
-    "t": "XE.gr, Green-Acres · 30/10 · 11.150 ενερ",
-    "decorative": false,
-    "size": 13,
-    "weight": "400",
-    "color": "rgb(100, 116, 139)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 4.51,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stCaptionContainer"
-   },
-   {
-    "t": "Οδηγός",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(255, 255, 255)",
-    "bg": "rgb(15,118,110)",
-    "contrast": 5.47,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Περιοχές",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αναζήτηση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Χάρτης",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αγαπημένα",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Σύγκριση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Οδηγός",
-    "decorative": false,
-    "size": 28,
-    "weight": "700",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "span in stHeadingWithActionElements"
-   },
-   {
-    "t": "Τι ψάχνεις;",
-    "decorative": false,
-    "size": 20.8,
-    "weight": "700",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "span in stHeadingWithActionElements"
-   },
-   {
-    "t": "Να αγοράσω",
-    "decorative": false,
-    "size": 17,
-    "weight": "600",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(255,255,255)",
-    "contrast": 14.63,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Να νοικιάσω",
-    "decorative": false,
-    "size": 17,
-    "weight": "600",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(255,255,255)",
-    "contrast": 14.63,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   }
-  ],
-  "icons": 0,
-  "fontSizes": {
-   "13": 1,
-   "15": 6,
-   "17": 3,
-   "28": 1,
-   "20.8": 1
-  },
-  "radii": {
-   "999px": 6,
-   "10px": 2
-  },
-  "shadows": {},
-  "margins": {
-   "-16px": 3,
-   "8px": 2,
-   "4px": 1,
-   "24px": 1
-  },
-  "paddings": {
-   "56px": 1,
-   "16px": 2,
-   "32px": 1,
-   "4px": 17,
-   "12px": 16
-  },
-  "focus": [
-   {
-    "id": "9683222066454255",
-    "what": "input «0»",
-    "ring": true
-   },
-   {
-    "id": "9415540682678348",
-    "what": "button «Ανανέωση δεδομένων»",
-    "ring": true
-   },
-   {
-    "id": "4314236594437637",
-    "what": "main «Σκάουτ ακινήτων XE.gr, Green-Acres · 30/»",
-    "ring": true
-   },
-   {
-    "id": "5115997186275424",
-    "what": "button[role=radio] «Οδηγός»",
-    "ring": true
-   },
-   {
-    "id": "08792864950872292",
-    "what": "button «Να αγοράσω»",
-    "ring": true
-   },
-   {
-    "id": "08400575393297216",
-    "what": "button «Να νοικιάσω»",
-    "ring": true
-   }
-  ]
- },
  "a1-guide-budget@390": {
   "scrollWidth": 390,
   "innerWidth": 390,
@@ -33692,398 +34765,6 @@
    {
     "id": "9415540682678348",
     "what": "button «Ανανέωση δεδομένων»",
-    "ring": true
-   }
-  ]
- },
- "a0-guide-mode@1280": {
-  "scrollWidth": 1280,
-  "innerWidth": 1280,
-  "wide": [],
-  "targets": [
-   {
-    "what": "button in stBaseButton-headerNoPadding «keyboard_double_arrow_left»",
-    "h": 44,
-    "w": 44,
-    "small": false
-   },
-   {
-    "what": "button in stBaseButton-secondary «Ανανέωση δεδομένων»",
-    "h": 44,
-    "w": 239,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Οδηγός»",
-    "h": 44,
-    "w": 81,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Περιοχές»",
-    "h": 44,
-    "w": 92,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Αναζήτηση»",
-    "h": 44,
-    "w": 105,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Χάρτης»",
-    "h": 44,
-    "w": 80,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Αγαπημένα»",
-    "h": 44,
-    "w": 107,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Σύγκριση»",
-    "h": 44,
-    "w": 93,
-    "small": false
-   },
-   {
-    "what": "button in stBaseButton-secondary «Να αγοράσω»",
-    "h": 44,
-    "w": 820,
-    "small": false
-   },
-   {
-    "what": "button in stBaseButton-secondary «Να νοικιάσω»",
-    "h": 44,
-    "w": 820,
-    "small": false
-   }
-  ],
-  "texts": [
-   {
-    "t": "Χωρίς σύνδεση: οι επιλογές σου μένουν μό",
-    "decorative": false,
-    "size": 13,
-    "weight": "400",
-    "color": "rgb(100, 116, 139)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 4.51,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stCaptionContainer"
-   },
-   {
-    "t": "Οδηγός",
-    "decorative": false,
-    "size": 15,
-    "weight": "650",
-    "color": "rgb(255, 255, 255)",
-    "bg": "rgb(15,118,110)",
-    "contrast": 5.47,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Πού να αγοράσω",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αναζήτηση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Χάρτης",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αγαπημένα",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αποθηκευμένες αναζητήσεις",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Σύγκριση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Ανανέωση δεδομένων",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(15, 23, 42)",
-    "bg": "rgb(248,250,252)",
-    "contrast": 17.06,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Σκάουτ ακινήτων",
-    "decorative": false,
-    "size": 17,
-    "weight": "750",
-    "color": "rgb(15, 118, 110)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 5.19,
-    "fail": false,
-    "tiny": false,
-    "where": "div.hg-app-head in stMarkdownContainer"
-   },
-   {
-    "t": "XE.gr, Green-Acres · 30/10 · 11.150 ενερ",
-    "decorative": false,
-    "size": 13,
-    "weight": "400",
-    "color": "rgb(100, 116, 139)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 4.51,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stCaptionContainer"
-   },
-   {
-    "t": "Οδηγός",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(255, 255, 255)",
-    "bg": "rgb(15,118,110)",
-    "contrast": 5.47,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Περιοχές",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αναζήτηση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Χάρτης",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αγαπημένα",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Σύγκριση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Οδηγός",
-    "decorative": false,
-    "size": 28,
-    "weight": "700",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "span in stHeadingWithActionElements"
-   },
-   {
-    "t": "Τι ψάχνεις;",
-    "decorative": false,
-    "size": 20.8,
-    "weight": "700",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "span in stHeadingWithActionElements"
-   },
-   {
-    "t": "Να αγοράσω",
-    "decorative": false,
-    "size": 17,
-    "weight": "600",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(255,255,255)",
-    "contrast": 14.63,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Να νοικιάσω",
-    "decorative": false,
-    "size": 17,
-    "weight": "600",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(255,255,255)",
-    "contrast": 14.63,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   }
-  ],
-  "icons": 1,
-  "fontSizes": {
-   "13": 2,
-   "15": 14,
-   "17": 3,
-   "28": 1,
-   "20.8": 1
-  },
-  "radii": {
-   "8px": 1,
-   "10px": 10,
-   "999px": 6
-  },
-  "shadows": {},
-  "margins": {
-   "16px": 2,
-   "8px": 3,
-   "2px": 2,
-   "-16px": 4,
-   "-1px": 28,
-   "4px": 1,
-   "24px": 1
-  },
-  "paddings": {
-   "20px": 2,
-   "24px": 1,
-   "96px": 1,
-   "8px": 14,
-   "12px": 32,
-   "4px": 19,
-   "40px": 1,
-   "80px": 2,
-   "48px": 1
-  },
-  "focus": [
-   {
-    "id": "5178134248911569",
-    "what": "button «keyboard_double_arrow_left»",
-    "ring": true
-   },
-   {
-    "id": "5538085216092724",
-    "what": "input «0»",
-    "ring": true
-   },
-   {
-    "id": "11865704802289367",
-    "what": "button «Ανανέωση δεδομένων»",
-    "ring": true
-   },
-   {
-    "id": "2200089789312818",
-    "what": "main «Σκάουτ ακινήτων XE.gr, Green-Acres · 30/»",
-    "ring": true
-   },
-   {
-    "id": "687434924274427",
-    "what": "button[role=radio] «Οδηγός»",
-    "ring": true
-   },
-   {
-    "id": "011933600103941622",
-    "what": "button «Να αγοράσω»",
-    "ring": true
-   },
-   {
-    "id": "21099499919226283",
-    "what": "button «Να νοικιάσω»",
     "ring": true
    }
   ]
@@ -51388,623 +52069,6 @@
    {
     "id": "11865704802289367",
     "what": "button «Ανανέωση δεδομένων»",
-    "ring": true
-   }
-  ]
- },
- "r0-rent-empty-realdb@390": {
-  "scrollWidth": 390,
-  "innerWidth": 390,
-  "wide": [],
-  "targets": [
-   {
-    "what": "button[role=radio] in stButtonGroup «Οδηγός»",
-    "h": 44,
-    "w": 81,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Περιοχές»",
-    "h": 44,
-    "w": 92,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Αναζήτηση»",
-    "h": 44,
-    "w": 105,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Χάρτης»",
-    "h": 44,
-    "w": 80,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Αγαπημένα»",
-    "h": 44,
-    "w": 107,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Σύγκριση»",
-    "h": 44,
-    "w": 93,
-    "small": false
-   },
-   {
-    "what": "button in stBaseButton-secondary «Πίσω»",
-    "h": 44,
-    "w": 69,
-    "small": false
-   }
-  ],
-  "texts": [
-   {
-    "t": "Σκάουτ ακινήτων",
-    "decorative": false,
-    "size": 17,
-    "weight": "750",
-    "color": "rgb(15, 118, 110)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 5.19,
-    "fail": false,
-    "tiny": false,
-    "where": "div.hg-app-head in stMarkdownContainer"
-   },
-   {
-    "t": "XE.gr, Green-Acres · 30/10 · 11.150 ενερ",
-    "decorative": false,
-    "size": 13,
-    "weight": "400",
-    "color": "rgb(100, 116, 139)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 4.51,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stCaptionContainer"
-   },
-   {
-    "t": "Οδηγός",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(255, 255, 255)",
-    "bg": "rgb(15,118,110)",
-    "contrast": 5.47,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Περιοχές",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αναζήτηση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Χάρτης",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αγαπημένα",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Σύγκριση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Οδηγός",
-    "decorative": false,
-    "size": 28,
-    "weight": "700",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "span in stHeadingWithActionElements"
-   },
-   {
-    "t": "Πίσω",
-    "decorative": false,
-    "size": 17,
-    "weight": "600",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(255,255,255)",
-    "contrast": 14.63,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Βήμα 1 από 5",
-    "decorative": false,
-    "size": 16,
-    "weight": "600",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "strong in stMarkdownContainer"
-   },
-   {
-    "t": "Δεν έχουμε ακόμα αγγελίες ενοικίασης: η ",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(255,255,255)",
-    "contrast": 14.63,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   }
-  ],
-  "icons": 0,
-  "fontSizes": {
-   "13": 1,
-   "15": 7,
-   "16": 1,
-   "17": 2,
-   "28": 1
-  },
-  "radii": {
-   "999px": 8,
-   "10px": 2
-  },
-  "shadows": {},
-  "margins": {
-   "-16px": 4,
-   "8px": 1,
-   "4px": 1,
-   "16px": 2
-  },
-  "paddings": {
-   "56px": 1,
-   "16px": 4,
-   "32px": 1,
-   "4px": 15,
-   "12px": 16,
-   "8px": 1
-  },
-  "focus": [
-   {
-    "id": "7852772979443196",
-    "what": "button «Πίσω»",
-    "ring": true
-   },
-   {
-    "id": "6257150498188363",
-    "what": "input «0»",
-    "ring": true
-   },
-   {
-    "id": "17014075312539922",
-    "what": "button «Ανανέωση δεδομένων»",
-    "ring": true
-   },
-   {
-    "id": "8148331820857346",
-    "what": "main «Σκάουτ ακινήτων XE.gr, Green-Acres · 30/»",
-    "ring": true
-   },
-   {
-    "id": "6878735516985175",
-    "what": "button[role=radio] «Οδηγός»",
-    "ring": true
-   }
-  ]
- },
- "r0-rent-empty-realdb@1280": {
-  "scrollWidth": 1280,
-  "innerWidth": 1280,
-  "wide": [],
-  "targets": [
-   {
-    "what": "button in stBaseButton-secondary «Ανανέωση δεδομένων»",
-    "h": 44,
-    "w": 239,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Οδηγός»",
-    "h": 44,
-    "w": 81,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Περιοχές»",
-    "h": 44,
-    "w": 92,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Αναζήτηση»",
-    "h": 44,
-    "w": 105,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Χάρτης»",
-    "h": 44,
-    "w": 80,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Αγαπημένα»",
-    "h": 44,
-    "w": 107,
-    "small": false
-   },
-   {
-    "what": "button[role=radio] in stButtonGroup «Σύγκριση»",
-    "h": 44,
-    "w": 93,
-    "small": false
-   },
-   {
-    "what": "button in stBaseButton-secondary «Πίσω»",
-    "h": 44,
-    "w": 69,
-    "small": false
-   }
-  ],
-  "texts": [
-   {
-    "t": "Χωρίς σύνδεση: οι επιλογές σου μένουν μό",
-    "decorative": false,
-    "size": 13,
-    "weight": "400",
-    "color": "rgb(100, 116, 139)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 4.51,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stCaptionContainer"
-   },
-   {
-    "t": "Οδηγός",
-    "decorative": false,
-    "size": 15,
-    "weight": "650",
-    "color": "rgb(255, 255, 255)",
-    "bg": "rgb(15,118,110)",
-    "contrast": 5.47,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Πού να αγοράσω",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αναζήτηση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Χάρτης",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αγαπημένα",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αποθηκευμένες αναζητήσεις",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Σύγκριση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Ανανέωση δεδομένων",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(15, 23, 42)",
-    "bg": "rgb(248,250,252)",
-    "contrast": 17.06,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Σκάουτ ακινήτων",
-    "decorative": false,
-    "size": 17,
-    "weight": "750",
-    "color": "rgb(15, 118, 110)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 5.19,
-    "fail": false,
-    "tiny": false,
-    "where": "div.hg-app-head in stMarkdownContainer"
-   },
-   {
-    "t": "XE.gr, Green-Acres · 30/10 · 11.150 ενερ",
-    "decorative": false,
-    "size": 13,
-    "weight": "400",
-    "color": "rgb(100, 116, 139)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 4.51,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stCaptionContainer"
-   },
-   {
-    "t": "Οδηγός",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(255, 255, 255)",
-    "bg": "rgb(15,118,110)",
-    "contrast": 5.47,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Περιοχές",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αναζήτηση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Χάρτης",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Αγαπημένα",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Σύγκριση",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Οδηγός",
-    "decorative": false,
-    "size": 28,
-    "weight": "700",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "span in stHeadingWithActionElements"
-   },
-   {
-    "t": "Πίσω",
-    "decorative": false,
-    "size": 17,
-    "weight": "600",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(255,255,255)",
-    "contrast": 14.63,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   },
-   {
-    "t": "Βήμα 1 από 5",
-    "decorative": false,
-    "size": 16,
-    "weight": "600",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(247,249,252)",
-    "contrast": 13.87,
-    "fail": false,
-    "tiny": false,
-    "where": "strong in stMarkdownContainer"
-   },
-   {
-    "t": "Δεν έχουμε ακόμα αγγελίες ενοικίασης: η ",
-    "decorative": false,
-    "size": 15,
-    "weight": "400",
-    "color": "rgb(30, 41, 59)",
-    "bg": "rgb(255,255,255)",
-    "contrast": 14.63,
-    "fail": false,
-    "tiny": false,
-    "where": "p in stMarkdownContainer"
-   }
-  ],
-  "icons": 0,
-  "fontSizes": {
-   "13": 2,
-   "15": 15,
-   "16": 1,
-   "17": 2,
-   "28": 1
-  },
-  "radii": {
-   "10px": 10,
-   "999px": 8
-  },
-  "shadows": {},
-  "margins": {
-   "16px": 4,
-   "-16px": 5,
-   "-1px": 28,
-   "8px": 1,
-   "4px": 1
-  },
-  "paddings": {
-   "20px": 2,
-   "24px": 1,
-   "96px": 1,
-   "8px": 15,
-   "12px": 32,
-   "4px": 17,
-   "40px": 1,
-   "80px": 2,
-   "48px": 1,
-   "16px": 2
-  },
-  "focus": [
-   {
-    "id": "04337743531362137",
-    "what": "button «Πίσω»",
-    "ring": true
-   },
-   {
-    "id": "13178012841077869",
-    "what": "input «0»",
-    "ring": true
-   },
-   {
-    "id": "7735991880436731",
-    "what": "button «Ανανέωση δεδομένων»",
-    "ring": true
-   },
-   {
-    "id": "4890954716295347",
-    "what": "main «Σκάουτ ακινήτων XE.gr, Green-Acres · 30/»",
-    "ring": true
-   },
-   {
-    "id": "3661218039031273",
-    "what": "button[role=radio] «Οδηγός»",
     "ring": true
    }
   ]
