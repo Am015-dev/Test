@@ -39,8 +39,8 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    # Above the step caps (collect 160 + pages 40 + photos 15 + stations 5 + rescore 15 =
-    # 235 min) plus install/restore/publish, so publish is never cancelled.
+    # Above the step caps (collect 160 + pages 40 + photos 15 + stations 5 + names 5 +
+    # rescore 15 = 240 min) plus install/restore/publish, so publish is never cancelled.
     timeout-minutes: 250
     env:
       # secrets cannot be tested in a step `if`; expose only whether the key exists
@@ -119,6 +119,12 @@ jobs:
         timeout-minutes: 5
         continue-on-error: true
         run: python scripts/recompute_metro.py
+
+      - name: Greek place names on stored rows (offline, seconds)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: python scripts/repair_place_names.py
 
       - name: Rescore whole panel from the DB (no network)
         if: always()
