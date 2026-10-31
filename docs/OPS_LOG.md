@@ -35,8 +35,15 @@ LIMIT 5;
   65 of those were re-posted after our first sighting; liquidity and supply-per-rent are
   «άγνωστο» everywhere until weekly scrapes accumulate (first regular scrape 30/10) and
   `rent_comp.samples` is recorded.
-- Open: W13 RE/MAX probe (`ws/sources-remax`); final phone QA (W14, `ws/final-qa`,
-  `docs/qa/final/REPORT.md`). Carry-overs for the next pass: guide result sentence should
+- Later the same evening: #80 RE/MAX collector merged and enabled (`SOURCES=xe,greenacres,goldenhome,remax`,
+  collect cap 110→140 min, job 175→200); #81 final QA report (`docs/qa/final/REPORT.md`); #82 six
+  investor checks on the listing page + budget-band sentence + word buttons; #83 areas page without
+  «n=» and with one unknown row; #84 guide now feeds `assistant.facts_for` so the brief and «Ρώτα με»
+  render (they never did before). Four-source weekly refresh dispatched 17:22 UTC.
+- Owner-facing review (phone walk-through, `docs/qa/review/`): rents are asking rents and partly from
+  July; station proximity is by neighbourhood name (9 of 1,424 candidates have a measured distance);
+  photo counts exist for 130 of 1,019 new builds under 300k; result cards too long for elders.
+  Next: short cards by default, real station distance, weekly rents, photo check, tenant mode. Carry-overs for the next pass: guide result sentence should
   state the +12 % budget band when the top pick is above the budget; «Σύγκριση» info text
   still says «Βρες μου σπίτι»; ~1 % of listings carry Latin XE place names (collector/enrich
   fix); a UI test writes `strategy.yaml` when run outside the `env` fixture.
