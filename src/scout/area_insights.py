@@ -493,17 +493,22 @@ LIQUIDITY_THRESHOLDS = (
 )
 
 
+def n_words(a: int, b: int | None = None) -> str:
+    """Sample sizes in words for a phone: «178 αγγελίες» / «62 και 243 αγγελίες»."""
+    return f"{a} αγγελίες" if b is None else f"{a} και {b} αγγελίες"
+
+
 def liquidity_text(x: AreaInsight) -> str:
-    """«γρήγορη — 41 % έφυγαν σε 60 μέρες (n=210), 22 % σε 30 (n=260)» or the reason it is
+    """«γρήγορη — 41 % έφυγαν σε 60 μέρες (210 αγγελίες), 22 % σε 30 (260 αγγελίες)» or the reason it is
     unknown. The thresholds are printed by the caller next to it (``LIQUIDITY_THRESHOLDS``)."""
     if x.liquidity is None:
         since = f", πρώτη τακτική {x.regular_since:%d/%m}" if x.regular_since else ""
         return f"άγνωστη — χρειάζεται ιστορικό σαρώσεων{since}"
     parts = []
     if x.gone_60 is not None:
-        parts.append(f"{_pct(x.gone_60)} έφυγαν σε 60 μέρες (n={x.gone_n_60})")
+        parts.append(f"{_pct(x.gone_60)} έφυγαν σε 60 μέρες ({n_words(x.gone_n_60)})")
     if x.gone_30 is not None:
-        parts.append(f"{_pct(x.gone_30)} σε 30 (n={x.gone_n_30})")
+        parts.append(f"{_pct(x.gone_30)} σε 30 ({n_words(x.gone_n_30)})")
     return f"{x.liquidity} — " + ", ".join(parts)
 
 
@@ -567,7 +572,7 @@ def _reasons(x: AreaInsight, ref_ppm: float) -> list[str]:
                 WEIGHTS["momentum"] * c["momentum"],
                 f"Ζητούμενη τιμή {_pct(x.trend_pct, 1)} πάνω από τον Ιούλιο "
                 f"(από {_num(x.trend_early_ppm)} σε {_num(x.trend_late_ppm)} €/τ.μ., "
-                f"n={x.trend_early_n}/{x.trend_late_n}).",
+                f"{n_words(x.trend_early_n, x.trend_late_n)}).",
             )
         )
     if x.value_band and x.value_band_discount and x.value_band_discount > 0:
@@ -595,7 +600,7 @@ def _risks(x: AreaInsight) -> list[str]:
     if x.trend_pct is not None and x.trend_pct <= FALLING_TREND:
         risks.append(
             f"Πτωτικές ζητούμενες τιμές: {_pct(x.trend_pct, 1)} από τον Ιούλιο "
-            f"(n={x.trend_early_n}/{x.trend_late_n})."
+            f"({n_words(x.trend_early_n, x.trend_late_n)})."
         )
     if x.gross_yield is None:
         risks.append("Δεν υπάρχουν στοιχεία ενοικίων· η απόδοση δεν υπολογίστηκε.")
@@ -608,7 +613,7 @@ def _risks(x: AreaInsight) -> list[str]:
         )
     if x.trend_pct is None:
         risks.append(
-            f"Τάση τιμών μη διαθέσιμη (n={x.trend_early_n}/{x.trend_late_n}, "
+            f"Τάση τιμών μη διαθέσιμη ({n_words(x.trend_early_n, x.trend_late_n)}, "
             f"απαιτούνται {MIN_TREND})."
         )
     if x.gross_yield is not None and x.rent_samples and x.rent_samples < FEW_RENT_SAMPLES:
@@ -741,7 +746,8 @@ def why(x: AreaInsight) -> str:
     parts = []
     if x.gross_yield is not None:
         n = f" από {x.rent_samples} αγγελίες ενοικίασης" if x.rent_samples else ""
-        rank = f" ({x.yield_rank}η από {x.yield_of})" if x.yield_rank else ""
+        of = "περιοχή" if x.yield_of == 1 else "περιοχές"
+        rank = f" ({x.yield_rank}η από {x.yield_of} {of} με ενοίκιο)" if x.yield_rank else ""
         parts.append(
             f"Μικτή απόδοση {_pct(x.gross_yield, 1)}{rank} με ενοίκιο (εκτίμηση) "
             f"{_rent(x.rent_ppm)} €/τ.μ.{n}"
@@ -749,7 +755,7 @@ def why(x: AreaInsight) -> str:
     if x.new_premium is not None:
         word = "ακριβότερα" if x.new_premium >= 0 else "φθηνότερα"
         parts.append(
-            f"νεόδμητα {_pct(abs(x.new_premium))} {word} από τα παλιά (n={x.n_new}/{x.n_old})"
+            f"νεόδμητα {_pct(abs(x.new_premium))} {word} από τα παλιά ({n_words(x.n_new, x.n_old)})"
         )
     if x.stations:
         parts.append(", ".join(x.stations[:2]))
@@ -800,7 +806,7 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
             if x.line4
             else ""
         )
-        out.append(f"Για ανατίμηση: {x.area}{l4}, {_signed(t[0])} €/τ.μ. {t[1]} (n={t[2]}).{small}")
+        out.append(f"Για ανατίμηση: {x.area}{l4}, {_signed(t[0])} €/τ.μ. {t[1]} ({t[2]}).{small}")
     else:
         out.append(
             "Για ανατίμηση: δεν υπάρχει αρκετό ιστορικό τιμών "
@@ -830,12 +836,12 @@ EXIT_UP, EXIT_DOWN = 0.02, -0.02
 
 
 def exit_trend(x: AreaInsight) -> tuple[float, str, str] | None:
-    """(change, "σε 6 μήνες" | "από τον Ιούλιο", "n=a/b") — the 6-month change when both
+    """(change, "σε 6 μήνες" | "από τον Ιούλιο", "62 και 243 αγγελίες") — the 6-month change when both
     months have enough listings, else the July→late-October change; None when neither."""
     if x.trend_pct_6m is not None:
-        return x.trend_pct_6m, "σε 6 μήνες", f"{x.trend_6m_n[0]}/{x.trend_6m_n[1]}"
+        return x.trend_pct_6m, "σε 6 μήνες", n_words(*x.trend_6m_n)
     if x.trend_pct is not None:
-        return x.trend_pct, "από τον Ιούλιο", f"{x.trend_early_n}/{x.trend_late_n}"
+        return x.trend_pct, "από τον Ιούλιο", n_words(x.trend_early_n, x.trend_late_n)
     return None
 
 
@@ -954,7 +960,9 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
     )
     if t is None:
         series = "δεν υπάρχει αρκετό ιστορικό" + (
-            f" (n={insight.trend_early_n}/{insight.trend_late_n})" if insight is not None else ""
+            f" ({n_words(insight.trend_early_n, insight.trend_late_n)})"
+            if insight is not None
+            else ""
         )
         out.append(("Έξοδος (τάση €/τ.μ.)", series + l4, UNKNOWN))
     else:
@@ -962,7 +970,7 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
         out.append(
             (
                 "Έξοδος (τάση €/τ.μ.)",
-                f"{_signed(t[0])} {t[1]} στη διάμεση ζητούμενη €/τ.μ. της περιοχής (n={t[2]})"
+                f"{_signed(t[0])} {t[1]} στη διάμεση ζητούμενη €/τ.μ. της περιοχής ({t[2]})"
                 f"{l4}",
                 v,
             )

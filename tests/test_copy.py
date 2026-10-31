@@ -76,6 +76,8 @@ def _problems(page: str, strings: list[tuple[str, str]]) -> list[str]:
             word = m.group().strip(".'-")
             if len(word) >= 4 and word.lower() not in LATIN_ALLOWED:
                 bad.append(f"{page}: English/Latin {word!r} in {text[:80]!r}")
+        if re.search(r"\bn=", shown):
+            bad.append(f"{page}: «n=» notation in {text[:80]!r}")
         if re.search(r"\b(N/A|None|nan)\b", shown):
             bad.append(f"{page}: placeholder in {text[:80]!r}")
         if _BAD_PERCENT.search(shown):
@@ -163,6 +165,7 @@ def test_guard_catches_known_slop():
         ("markdown", "Δεύτερη γνώμη (AI)"),
         ("markdown", "Βρέθηκε 1 αγγελίες"),
         ("button", "↺ Αναίρεση"),
+        ("markdown", "Ιουλ 2.589 (n=178)"),
     ]
     for kind, text in slips:
         assert _problems("x", [(kind, text)]), text

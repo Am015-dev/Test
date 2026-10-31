@@ -77,8 +77,8 @@ def test_greek_number_formats():
 
 
 def test_trend_and_samples_text_show_n_and_dash():
-    assert areas.trend_text(_insight()) == "+1,0 % (n=40/120)"
-    assert areas.trend_text(_insight(trend_pct=None, trend_early_n=4)) == "— (n=4/120)"
+    assert areas.trend_text(_insight()) == "+1,0 % (40 και 120 αγγελίες)"
+    assert areas.trend_text(_insight(trend_pct=None, trend_early_n=4)) == "— (4 και 120 αγγελίες)"
     assert areas.samples_text(_insight(rent_samples=None)) == "—"
 
 
@@ -119,14 +119,17 @@ def test_ranking_feeds_the_page_helpers():
 def test_card_texts_show_n_over_m_and_unchecked():
     assert areas.uc_text(_insight(uc_unfinished=33, uc_checked=51)) == "33/51 με ελεγμένη περιγραφή"
     assert "δεν έχει ελεγχθεί" in areas.uc_text(_insight())
-    assert areas.confidence_text(_insight(n_fresh=150, rent_samples=40)) == ("Υψηλή (n=150)")
-    assert "n=—" not in areas.confidence_text(_insight(rent_samples=None))
+    assert areas.confidence_text(_insight(n_fresh=150, rent_samples=40)) == ("Υψηλή (150 αγγελίες)")
+    assert areas.confidence_text(_insight(rent_samples=None)) == "Μέτρια (δείγμα ενοικίου άγνωστο)"
 
 
 def test_new_vs_old_text():
     x = _insight(n_new=51, ppm_new=4000.0, n_old=275, ppm_old=2500.0, new_premium=0.6)
-    assert areas.new_old_text(x) == "4.000 €/τ.μ. (n=51) έναντι 2.500 €/τ.μ. (n=275), +60 %"
-    assert "n=3/275" in areas.new_old_text(_insight(n_new=3, n_old=275))
+    assert (
+        areas.new_old_text(x)
+        == "4.000 €/τ.μ. (51 αγγελίες) έναντι 2.500 €/τ.μ. (275 αγγελίες), +60 %"
+    )
+    assert "3 και 275 αγγελίες" in areas.new_old_text(_insight(n_new=3, n_old=275))
 
 
 def test_phone_table_has_at_most_four_columns():
@@ -150,10 +153,10 @@ def test_yield_text_shows_old_and_new():
 def test_trend_line_prefers_six_months_then_july_and_says_when_missing():
     six = _insight(trend_pct_6m=0.041, trend_6m_n=(15, 22))
     assert areas.trend_line(six).startswith("+4,1 % σε 6 μήνες")
-    assert "n=15/22" in areas.trend_line(six)
+    assert "15 και 22 αγγελίες" in areas.trend_line(six)
     assert areas.trend_line(_insight()).startswith("+1,0 % από τον Ιούλιο")
     none = areas.trend_line(_insight(trend_pct=None, trend_early_n=4))
-    assert none.startswith("δεν υπάρχει αρκετό ιστορικό") and "n=4/120" in none
+    assert none.startswith("δεν υπάρχει αρκετό ιστορικό") and "4 και 120 αγγελίες" in none
 
 
 def test_supply_line_shows_both_counts_or_says_unknown():
@@ -183,4 +186,4 @@ def test_sparkline_and_series_text():
     assert areas.sparkline([1.0, 2.0, 3.0]) == "▁▅█"
     assert areas.sparkline([5.0, 5.0]) == "▄▄"
     x = _insight(trend_series=[("2026-07", 2589.0, 178), ("2026-10", 2778.0, 123)])
-    assert areas.series_text(x) == "Ιουλ 2.589 (n=178) · Οκτ 2.778 (n=123)"
+    assert areas.series_text(x) == "Ιουλ 2.589 (178 αγγελίες) · Οκτ 2.778 (123 αγγελίες)"
