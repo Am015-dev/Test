@@ -217,6 +217,17 @@ def test_page_says_rents_are_coming_without_the_loader(env, monkeypatch):  # noq
     assert any(rent_guide.SOON in i.value for i in at.info)
 
 
+def test_page_says_no_rentals_yet_on_the_real_loader(env):  # noqa: F811
+    from scout.ui import queries
+
+    assert queries.load_rent_listings() == []  # the seeded DB has sales only
+    at = fresh(FIND)
+    at.button(key="guide-mode-rent").click().run()
+    ok(at, "empty")
+    assert any(rent_guide.SOON in i.value for i in at.info)
+    assert "Βήμα 1 από 5" in _text(at)
+
+
 def test_mode_is_saved_in_the_profile_store(monkeypatch):
     import sys
     import types

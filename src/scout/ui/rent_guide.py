@@ -9,7 +9,8 @@ time, relaxations with exact counts, «Εγκρίνω» / «Δεν μου κάν
 The mode lives in ``st.session_state["guide"]["mode"]`` and, with the rest of the guide's
 answers, in the profile store under ``guide`` (``guide.mode``, ``guide.rent``).
 
-Data: ``queries.load_rent_listings()`` (contract C1). Until that exists the page says so.
+Data: ``queries.load_rent_listings()`` (contract C1). With no rentals stored yet (or no
+loader) the page says so (``SOON``).
 
 Assistant: ``rent_facts`` builds ``facts["listings"]`` from the ``RentPick``s; the note and
 «Ρώτα με» reuse ``ui.assistant``'s client, cache and grounding check with renter rules (no
@@ -36,7 +37,10 @@ BUDGET_MIN, BUDGET_MAX = 200, 10_000
 BEDS = {"1": "1", "2": "2", "3": "3+", "any": "Αδιάφορο"}
 AGES = guide.AGES
 MIN_AREA = 5  # an area is offered as a chip with at least this many active rentals
-SOON = "Τα ενοίκια έρχονται σε λίγο."
+SOON = (
+    "Δεν έχουμε ακόμα αγγελίες ενοικίασης: η πρώτη εβδομαδιαία ενημέρωση με ενοίκια δεν έχει "
+    "γίνει ακόμα. Ξαναδές μετά την επόμενη ενημέρωση."
+)
 DEFAULTS = {
     "step": 1,
     "budget": None,
@@ -772,7 +776,7 @@ def page(g: dict) -> None:
     if step > 3 and (not r.get("where") or (r["where"] == "areas" and not r.get("areas"))):
         step = 3
     _progress(step)
-    if rows is None:
+    if not rows:  # no loader, or no rental stored yet
         st.info(SOON)
         return
     if step == 1:
