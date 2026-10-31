@@ -30,7 +30,7 @@ import random
 import re
 import time
 from collections.abc import Iterator
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from html import unescape
 from urllib.parse import urlencode
 
@@ -138,6 +138,39 @@ _UNFINISHED_RE = re.compile(
 )
 # A negation shortly before the match ("δεν είναι ημιτελές") cancels it.
 _NEGATION_RE = re.compile(r"\b(?:δεν|μη|μην|ουτε|not|no)\b")
+
+
+# Delivery still ahead, as agents phrase it: "παράδοση τέλη 27", "ολοκλήρωση τέλη του 2027",
+# "παράδοση έργου 2028", "αποπεράτωση σε 1,5 χρόνο", "η κατασκευή ξεκίνησε το 2025",
+# "κατασκευάζεται". Accent-stripped, lower-cased text.
+_DELIVERY_RE = re.compile(
+    r"(?:παραδοση|ολοκληρωση|αποπερατωση|διαθεσιμο\s+απο)[^.]{0,60}?(?:20)?(\d{2})\b"
+)
+_BUILDING_NOW_RE = re.compile(r"κατασκευη\s+(?:του\s+)?ξεκινησε|κατασκευαζεται|αποπερατωση\s+σε")
+_AVAILABLE_RE = re.compile(r"Διαθέσιμο από:\s*(\d{1,2})/(\d{1,2})/(\d{4})")
+
+
+def unfinished_on_detail(html: str, detail: dict, today: date | None = None) -> bool:
+    """True when a listing's own page says it is not finished yet: XE's "Υπό κατασκευή"
+    characteristic or under-construction condition, an availability date ahead, or a
+    description promising delivery in a future year. The results-page card says none of
+    this, so a "νεόδμητο 2025" card is often still a shell sold off-plan."""
+    today = today or date.today()
+    node = HTMLParser(html).css_first("[data-testid='characteristics']")
+    facts = node.text(separator=" ") if node else ""
+    if detail.get("condition") == "under_construction" or "Υπό κατασκευή" in facts:
+        return True
+    m = _AVAILABLE_RE.search(facts)
+    if m and date(int(m.group(3)), int(m.group(2)), int(m.group(1))) > today:
+        return True
+    desc = _strip_accents(detail.get("description") or "").lower()
+    if is_unfinished_text(desc) or _BUILDING_NOW_RE.search(desc):
+        return True
+    for m in _DELIVERY_RE.finditer(desc):
+        year = 2000 + int(m.group(1))
+        if year > today.year or (year == today.year and today.month <= 6):
+            return True
+    return False
 
 
 def is_unfinished_text(*texts: str | None) -> bool:
@@ -560,6 +593,8 @@ class XeCollector(Collector):
                 raw[key] = detail[key]
         if detail.get("area_m2") and not raw.get("area_m2"):
             raw["area_m2"] = detail["area_m2"]
+        if unfinished_on_detail(html, detail):
+            raw["is_unfinished"] = True
         desc = detail.get("description")
         if desc:
             rented, listed_rent = parse_rent(desc)
@@ -569,8 +604,6 @@ class XeCollector(Collector):
                 raw["listed_rent"] = listed_rent
             if parse_private_seller(desc):
                 raw["is_private_seller"] = True
-            if is_unfinished_text(desc):
-                raw["is_unfinished"] = True
 
     def collect_rent_rows(self) -> Iterator[dict]:
         """Scrape RENTAL cards (no detail fetch) for rent comps: yields

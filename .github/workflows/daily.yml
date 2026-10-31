@@ -19,6 +19,10 @@ on:
         description: "Areas to scrape now, comma-separated (empty = the weekly list)"
         required: false
         default: ""
+      pages_only:
+        description: "Skip the scrape; only check new-build listing pages (finished or not?)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -35,7 +39,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 150     # above the sum of the step caps so publish is never cancelled
+    timeout-minutes: 175     # above the sum of the step caps so publish is never cancelled
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -57,6 +61,7 @@ jobs:
           fi
 
       - name: Collect the weekly areas (best-effort, time-boxed)
+        if: ${{ !inputs.pages_only }}
         # ~6 min per area at polite pacing; 15 areas ≈ 80 min. Public repo: free minutes.
         timeout-minutes: 110
         continue-on-error: true
@@ -66,6 +71,16 @@ jobs:
           SCRAPE_REQUEST_MAX_S: "7"
           AREAS: ${{ inputs.areas || env.WEEKLY_AREAS }}
         run: python scripts/run_daily.py --shards 5 --areas "$AREAS"
+
+      - name: Check new-build listing pages (under construction?) — best-effort
+        # Cards say "νεόδμητο 2025" even for shells sold off-plan; only the listing page says
+        # "Υπό κατασκευή" / "παράδοση 2027". ~5 s a page; each listing is checked once.
+        timeout-minutes: 40
+        continue-on-error: true
+        env:
+          SCRAPE_REQUEST_MIN_S: "4"
+          SCRAPE_REQUEST_MAX_S: "6"
+        run: python scripts/enrich_details.py --new-builds --limit 600 --max-fetches 450 --no-rescore
 
       - name: Rescore whole panel from the DB (no network)
         if: always()

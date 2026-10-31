@@ -71,6 +71,7 @@ class Pick:
     net: float
     offer: int
     station: str | None
+    checked: bool = False
     why: list[str] = field(default_factory=list)
     risks: list[str] = field(default_factory=list)
 
@@ -141,8 +142,10 @@ def find(
         offer_cut = 0.03 + (0.03 if dom >= 90 else 0) + (0.02 if d.get("is_private_seller") else 0)
         offer = _r(d["price"] * (1 - offer_cut), 1000)
         too_cheap = gap > 0.35
+        checked = bool(d.get("page_checked"))
         rank = (
-            gross * 1000  # rent return leads
+            (100 if checked else 0)  # page read: not a shell sold off-plan
+            + gross * 1000  # rent return leads
             + max(min(gap, 0.25), -0.15) * 40
             + (3 if built and built <= year - 1 else 0)  # finished, not "delivery this year"
             + (2 if dom >= 90 else 0)
@@ -170,6 +173,8 @@ def find(
                 f"{'κάτω' if cmp['pct'] < 0 else 'πάνω'} από {cmp['n']} παρόμοια "
                 f"({cmp['label']}, διάμεσος {_eur(cmp['ppm'])}/τ.μ.) — {pos}."
             )
+        if checked:
+            why.append("Ελέγχθηκε η σελίδα της αγγελίας: δεν αναφέρει κατασκευή σε εξέλιξη.")
         if st_name:
             why.append(
                 f"Σταθμός: η γειτονιά «{d.get('neighborhood')}» είναι η περιοχή του σταθμού {st_name}."
@@ -187,6 +192,11 @@ def find(
             + "."
         )
         risks = []
+        if not checked:
+            risks.append(
+                "Η σελίδα της αγγελίας δεν έχει ελεγχθεί ακόμα — μπορεί να είναι υπό κατασκευή. "
+                "Διάβασε την περιγραφή πριν τηλεφωνήσεις."
+            )
         if built == year:
             risks.append("Έτος κατασκευής φέτος: βεβαιώσου ότι έχει παραδοθεί και έχει άδεια.")
         if too_cheap:
@@ -212,6 +222,7 @@ def find(
                 net=net,
                 offer=offer,
                 station=st_name,
+                checked=checked,
                 why=why,
                 risks=risks[:3],
             )

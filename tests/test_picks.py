@@ -58,3 +58,11 @@ def test_built_this_year_is_flagged_and_numbers_are_greek():
     p = run([flat(1, 300_000, year=YEAR)])[0]
     assert any("παραδοθεί" in r for r in p.risks)
     assert "," in picks.gr_pct(p.gross) and "." not in picks.gr_pct(p.gross)
+
+
+def test_checked_pages_rank_first_and_unchecked_are_flagged():
+    rows = [flat(1, 270_000, m2=78), flat(2, 300_000, page_checked=True)]
+    got = run(rows)
+    assert [p.listing["id"] for p in got] == [2, 1]
+    assert got[0].checked and not got[1].checked
+    assert any("δεν έχει ελεγχθεί" in r for r in got[1].risks)

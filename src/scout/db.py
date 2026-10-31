@@ -197,8 +197,13 @@ def upsert_listing_with_history(
     price_changed = row.price != listing.price
     status_was = row.status
 
+    # What the listing's own page established (checked once) outranks the results-page card,
+    # which says nothing about construction status — never let a card un-flag a shell.
+    was_unfinished = bool(row.is_unfinished) and row.detail_checked_at is not None
     for field in _SNAPSHOT_FIELDS:
         setattr(row, field, getattr(listing, field))
+    if was_unfinished:
+        row.is_unfinished = True
     row.last_seen = now
 
     if price_changed:

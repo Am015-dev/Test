@@ -90,6 +90,12 @@ def page_find(listings: list[dict]) -> None:
         + f", η διάμεση μικτή απόδοση είναι **{picks.gr_pct(statistics.median(gross))}**. "
         "Αυτές είναι οι 3 με την καλύτερη απόδοση και τιμή:"
     )
+    checked = sum(p.checked for p in every)
+    if checked < len(every):
+        st.caption(
+            f"Ελεγμένες σελίδες αγγελιών: {checked} από {len(every)}. Πρώτα δείχνω όσες "
+            "επιβεβαιώθηκε ότι είναι έτοιμες (όχι υπό κατασκευή)."
+        )
     for i, p in enumerate(every[: picks.TOP], start=1):
         _card(i, p)
     if near_rail or new_only:
