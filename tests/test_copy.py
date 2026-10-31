@@ -20,9 +20,13 @@ LATIN_ALLOWED = {
     "google",  # map links
     "mapbox",  # map tiles credit
     "cholargos",  # area names the source stores in Latin
+    "green-acres",  # portal names (collectors.SOURCE_LABELS)
+    "golden",
+    "home",
+    "re/max",
 }
 # Functional glyphs allowed inside button labels only (see _BUTTON_GLYPHS).
-_BUTTON_GLYPHS = "✓✗★☆↗←→"  # functional glyphs on buttons (tick, cross, star, link, back/next)
+_BUTTON_GLYPHS = ""  # round-3 QA: buttons use words, no glyphs
 # Pictographic or decorative: emoji, arrows, geometric shapes, "≈". Math signs (− × ÷ ≥ ≤)
 # are allowed in formulas.
 _DECOR = re.compile(
@@ -126,7 +130,7 @@ def _search_example_with_advice(env):
 
 def _favourite_and_details(env):
     at = fresh("Αναζήτηση")
-    next(b for b in at.button if b.label == "☆ Αγαπημένο").click().run()
+    next(b for b in at.button if b.label == "Αγαπημένο").click().run()
     at.radio(key="page").set_value("Αγαπημένα").run()
     return at
 
@@ -170,8 +174,8 @@ def test_guard_catches_known_slop():
     for kind, text in slips:
         assert _problems("x", [(kind, text)]), text
     clean = [
-        ("button", "☆ Αγαπημένο"),
-        ("button", "Άνοιγμα στο XE ↗"),
+        ("button", "Αγαπημένο"),
+        ("button", "Άνοιγμα στο XE.gr"),
         ("markdown", ":green[**Ελέγχθηκε η περιγραφή**]"),
         ("markdown", "Μικτή απόδοση 4,7 % · Ενοίκιο (εκτίμηση) ~1.070 €/μήνα · 12 − 1 μήνες"),
         ("markdown", '<div style="width:50%">Δεδομένα XE.gr, Cholargos</div>'),

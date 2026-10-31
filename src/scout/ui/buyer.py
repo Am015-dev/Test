@@ -433,7 +433,7 @@ def result_card(d: dict, adv: dict, k: str, actions: list, advice=None) -> None:
             st.markdown(_advice_html(advice), unsafe_allow_html=True)
         with st.container(key=f"act-{uid}"):
             cols = st.columns(len(actions) + 1, gap="small")
-            cols[0].link_button(f"Άνοιγμα στο {d['source'].upper()} ↗", d["url"], width="stretch")
+            cols[0].link_button(f"Άνοιγμα στο {source_label(d)}", d["url"], width="stretch")
             for i, (label, cb, args, *kind) in enumerate(actions, start=1):
                 cols[i].button(
                     label,
@@ -474,7 +474,7 @@ def _star_action(d: dict) -> tuple:
     key = shortlist.lkey(d)
     on = key in watch_keys()
     return (
-        "★ Αφαίρεση" if on else "☆ Αγαπημένο",
+        "Αφαίρεση από αγαπημένα" if on else "Αγαπημένο",
         toggle_watch,
         (key,),
         "primary" if on else "secondary",
@@ -680,6 +680,16 @@ def _num(n: int) -> str:
 def _days(n: int) -> str:
     """'1 μέρα' / '109 μέρες'."""
     return f"{n} {'μέρα' if n == 1 else 'μέρες'}"
+
+
+def source_label(d: dict) -> str:
+    """«XE.gr», «Golden Home», «RE/MAX» — the portal's display name for buttons."""
+    try:
+        from scout.collectors import SOURCE_LABELS
+    except ImportError:  # pragma: no cover
+        SOURCE_LABELS = {"xe": "XE.gr"}
+    src = d.get("source") or "xe"
+    return SOURCE_LABELS.get(src, src.upper())
 
 
 def _editor_defaults(f: SearchFilters, ver: int, options: list[str]) -> None:
@@ -1288,6 +1298,26 @@ def _go_area(area: str) -> None:
     st.session_state["page"] = NAV_SEARCH
 
 
+def _checks_section(d: dict, intel, listings: list[dict]) -> None:
+    """The six checks of a buy-to-let investor for this flat (area_insights.investor_checks):
+    each with its number, its basis and a verdict word; «άγνωστο» where the data is missing."""
+    from scout import area_insights as ai
+    from scout.ui import areas
+
+    st.markdown("#### Έξι έλεγχοι επενδυτή")
+    try:
+        ranked = areas._ranked(listings, areas._stamp(listings), ai.DEFAULT_BUDGET)
+    except Exception:  # the checks still render, with the area parts unknown
+        ranked = []
+    name = ai.area_name(d.get("neighborhood"))
+    insight = next((x for x in ranked if x.area == name), None)
+    areas.render_checks(ai.investor_checks(d, intel, insight))
+    st.caption(
+        "Καλό / μέτριο / προσοχή κατά τα όρια του «Πώς βαθμολογούμε» στη σελίδα «Πού να "
+        "αγοράσω»· «άγνωστο» όταν λείπει το στοιχείο."
+    )
+
+
 def _area_line(d: dict, listings: list[dict]) -> None:
     """One concise line about the area, with a link to its listings."""
     m = area_name(d)
@@ -1335,6 +1365,7 @@ def page_listing(listings: list[dict]) -> None:
     _description_section(d)
     _rent_section(d)
     _comparison_section(d, adv)
+    _checks_section(d, intel, listings)
 
     if twins := adv.get("twins"):
         st.markdown(
@@ -1353,15 +1384,13 @@ def page_listing(listings: list[dict]) -> None:
         st.markdown("  \n".join(f"{when:%d/%m/%Y}: **{eur(price)}**" for when, price in history))
     elif history:
         st.caption(f"Τιμή αμετάβλητη από {history[0][0]:%d/%m/%Y} που την πρωτοείδαμε στο XE.")
-    if d.get("days_on_market"):
-        st.caption(dom_text(d) + ".")
     _area_line(d, listings)
 
     review = st.session_state.get("listing_advice", {}).get(shortlist.lkey(d))
     actions = [(AI_LABEL, _ask_listing, (d, adv, intel))] if has_ai() else []
     with st.container(key=f"act-l-{d['id']}"):
         cols = st.columns(len(actions) + 2, gap="small")
-        cols[0].link_button(f"Άνοιγμα στο {d['source'].upper()} ↗", d["url"], width="stretch")
+        cols[0].link_button(f"Άνοιγμα στο {source_label(d)}", d["url"], width="stretch")
         for i, (label, cb, args, *kind) in enumerate([_star_action(d), *actions], start=1):
             cols[i].button(
                 label,

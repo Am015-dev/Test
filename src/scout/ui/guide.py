@@ -281,7 +281,9 @@ def covered_areas(listings: list[dict]) -> list[tuple[str, int]]:
     return [(a, c) for a, c in n.most_common() if c >= MIN_AREA]
 
 
-def recommend(found: list[picks.Pick], facts: dict, goal: str) -> str | None:
+def recommend(
+    found: list[picks.Pick], facts: dict, goal: str, budget: int | None = None
+) -> str | None:
     """One sentence: the area the list points to for ``goal`` and the numbers behind it.
 
     Candidates are the areas of the listed flats; yield → highest median gross yield of the
@@ -331,7 +333,17 @@ def recommend(found: list[picks.Pick], facts: dict, goal: str) -> str | None:
         if x is not None and x.new_premium is not None:
             extra.append(f"νεόδμητα {round(x.new_premium * 100):+d} % από τα παλιά")
     out += " · " + " · ".join(extra) if extra else ""
-    return out if out.endswith(".") else out + "."
+    out = out if out.endswith(".") else out + "."
+    top = found[0].listing
+    if budget and top.get("price") and top["price"] > budget:
+        top_area = area_insights.area_name(top.get("neighborhood"))
+        where = f", {html.escape(top_area)}" if top_area != area else ""
+        out += (
+            f" Η 1η της λίστας ({buyer.eur(top['price'])}{where}) είναι "
+            f"{buyer.eur(top['price'] - budget)} πάνω από τα {buyer.eur(budget)} που είπες: "
+            f"δείχνω έως {round(picks.BUDGET_BAND * 100)} % πάνω από το ποσό σου."
+        )
+    return out
 
 
 def loan_summary(found: list[picks.Pick]) -> str | None:
@@ -407,7 +419,8 @@ def facts_for(shown: list[picks.Pick], g: dict, area_facts: dict, intel) -> dict
 
 
 def coverage(listings: list[dict]) -> str:
-    srcs = sorted({SOURCES.get(d.get("source") or "", d.get("source") or "") for d in listings})
+    names = {SOURCES.get(d.get("source") or "", d.get("source") or "") for d in listings}
+    srcs = sorted(names, key=lambda s: (s != "XE.gr", s))  # XE first, as in the status line
     active = sum(1 for d in listings if d.get("is_fresh", True))
     checked = sum(1 for d in listings if d.get("page_checked"))
     return (
@@ -482,7 +495,7 @@ def _progress(step: int) -> None:
     with st.container(key="guide-progress"):
         c = st.columns([1, 2], vertical_alignment="center")
         if step > 1:
-            c[0].button("← Πίσω", key="guide-back", on_click=go, args=(step - 1,))
+            c[0].button("Πίσω", key="guide-back", on_click=go, args=(step - 1,))
         c[1].markdown(f"**Βήμα {step} από {STEPS}**")
     st.progress(step / STEPS)
 
@@ -570,7 +583,7 @@ def _step4(g: dict) -> None:
         )
     with st.container(key="guide-finish"):
         st.button(
-            "Η πρότασή μου →",
+            "Η πρότασή μου",
             key="guide-show",
             on_click=_finish_step4,
             type="primary",
@@ -645,7 +658,7 @@ def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> No
         key = shortlist.lkey(d)
         cols = st.columns(2)
         src = SOURCES.get(d.get("source") or "xe", (d.get("source") or "").upper())
-        cols[0].link_button(f"Στο {src} ↗", d["url"], width="stretch")
+        cols[0].link_button(f"Άνοιγμα στο {src}", d["url"], width="stretch")
         cols[1].button(
             "Λεπτομέρειες",
             key=f"pick-det-{d['id']}",
@@ -656,7 +669,7 @@ def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> No
         cols = st.columns(2)
         if approved:
             cols[0].button(
-                "↺ Αναίρεση",
+                "Αναίρεση",
                 key=f"pick-undo-{d['id']}",
                 on_click=set_verdict,
                 args=(key, None),
@@ -664,7 +677,7 @@ def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> No
             )
         else:
             cols[0].button(
-                "✓ Εγκρίνω",
+                "Εγκρίνω",
                 key=f"pick-ok-{d['id']}",
                 on_click=set_verdict,
                 args=(key, "ok"),
@@ -672,7 +685,7 @@ def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> No
                 width="stretch",
             )
         cols[1].button(
-            "✗ Δεν μου κάνει",
+            "Δεν μου κάνει",
             key=f"pick-no-{d['id']}",
             on_click=set_verdict,
             args=(key, "no"),
@@ -783,7 +796,7 @@ def _results(g: dict, listings: list[dict]) -> None:
         else:
             st.info("Ούτε με έναν όρο λιγότερο βρίσκω κάτι. Άλλαξε το ποσό.")
     else:
-        if sentence := recommend(every, area_facts, rules["goal"]):
+        if sentence := recommend(every, area_facts, rules["goal"], budget):
             st.markdown(sentence)
         checked = sum(p.checked for p in every)
         st.markdown(

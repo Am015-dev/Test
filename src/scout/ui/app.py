@@ -2253,7 +2253,11 @@ def _compare_rows(d: dict, adv: dict) -> dict[str, str]:
         "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")),
         "Εμβαδόν": f"{d['area_m2']:g} τ.μ." if d.get("area_m2") else "—",
         "Όροφος": buyer._floor(d["floor"]) if d.get("floor") is not None else "—",
-        "Έτος": f"{built} ({age} ετών)" if built and age is not None else "—",
+        "Έτος": (
+            f"{built} ({age} {'έτους' if age == 1 else 'ετών'})"
+            if built and age is not None
+            else "—"
+        ),
         "Ενοίκιο (εκτίμηση)": (
             f"~{fmt.euro(round(rent, -1))}/μήνα"
             + ("" if not d.get("listed_rent") else " (αγγελία)")
@@ -2298,7 +2302,9 @@ def page_compare(listings: list[dict]) -> None:
         return f"{where}{size} · {fmt.euro(d['price'])} · #{d['id']}"
 
     by_id = {d["id"]: d for d in elig}
-    opts = {("★ " if shortlist.lkey(d) in starred else "") + _name(d): d["id"] for d in elig}
+    opts = {
+        _name(d) + (" · αγαπημένο" if shortlist.lkey(d) in starred else ""): d["id"] for d in elig
+    }
     favs = [o for o, i in opts.items() if shortlist.lkey(by_id[i]) in starred]
     # Two selectboxes, not a multiselect: its built-in "select up to 2" notice is English.
     names = list(opts)
@@ -2327,7 +2333,7 @@ def page_compare(listings: list[dict]) -> None:
         placeholder="Γράψε περιοχή, τ.μ. ή τιμή",
     )
     if not pick_a or not pick_b:
-        st.info("Διάλεξε δύο αγγελίες — ή άνοιξε «Βρες μου σπίτι» για να δεις τις καλύτερες.")
+        st.info(f"Διάλεξε δύο αγγελίες — ή άνοιξε «{HOME}» για να δεις τις καλύτερες.")
         st.button(HOME, key="cmp_to_find", on_click=_go_find)
         return
     if pick_a == pick_b:
@@ -2354,7 +2360,7 @@ def page_compare(listings: list[dict]) -> None:
         "αρνητικό = φθηνότερο.",
     )
     for tag, d in zip("ΑΒ", chosen, strict=True):
-        st.link_button(f"Άνοιγμα {tag} στο {d['source'].upper()} ↗", d["url"], width="stretch")
+        st.link_button(f"Άνοιγμα {tag} στο {buyer.source_label(d)}", d["url"], width="stretch")
 
 
 # The home page: the guided flow (W8) when present, else «Βρες μου σπίτι».
