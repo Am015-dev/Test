@@ -23,6 +23,18 @@ for url in Path("diag/urls.txt").read_text().split():
     print("DESCRIPTION:", re.sub(r"\s+", " ", d.get("description") or "")[:3000])
     imgs = list(dict.fromkeys(re.findall(r"https://blob\.cdn\.xe\.gr/[^\"' ]+?-source\.jpg", html)))
     print("IMAGES:", " ".join(imgs[:12]))
+    import json as _json
+    print("IMAGE_COUNTS:", re.findall(r"image_count(?:&quot;|\"):(\d+)", html)[:12])
+    for m in re.finditer(r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>', html, re.S):
+        try:
+            j = _json.loads(m.group(1))
+        except Exception:
+            continue
+        items = j if isinstance(j, list) else [j]
+        for it in items:
+            ph = it.get("photo") or it.get("image") or []
+            if isinstance(ph, (list, str)):
+                print("JSONLD", it.get("@type"), "photos:", len(ph) if isinstance(ph, list) else 1)
     t = HTMLParser(html)
     for sel in ("[data-testid='characteristics']", ".characteristics", "[class*='characteristic']",
                 "[data-testid*='feature']", "[class*='features']"):
