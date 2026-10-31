@@ -2376,7 +2376,7 @@ def main() -> None:
     admin = bool(st.query_params.get("admin"))
     pages = {**NAV, **(ADMIN_NAV if admin else {})}
     with st.sidebar:  # desktop / keyboard navigation; on a phone the pills below do the job
-        st.markdown("### Property Scout")
+        st.markdown("### Σκάουτ ακινήτων")
         page = st.radio("Σελίδα", list(pages), key="page", label_visibility="collapsed")
     # Pills mirror the current page (pages also navigate by setting session_state["page"]).
     st.session_state["nav_pill"] = _PILL_OF.get(page)

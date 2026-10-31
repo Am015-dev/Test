@@ -653,6 +653,9 @@ footer {{ visibility: hidden; height: 0; }}
     border-bottom: 1px solid var(--hg-line-2);
 }}
 [data-testid="stMarkdownContainer"] td:first-child {{ width: 32%; color: var(--hg-muted); }}
+/* Nothing may push a page wider than the phone (the select's hidden input did on the map). */
+[data-testid="stMain"] {{ overflow-x: clip; }}
+[data-testid="stMain"] [data-baseweb="select"] input {{ max-width: 100%; }}
 </style>
 """
 
