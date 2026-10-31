@@ -503,7 +503,7 @@ footer {{ visibility: hidden; height: 0; }}
 .st-key-examples button p {{ font-size: .82rem !important; font-weight: 600; }}
 .st-key-examples button:hover {{ background: #ECFDF8; border-color: var(--hg-accent) !important; }}
 
-/* "Κατάλαβα:" — the parsed filters as chips. */
+/* The parsed search as chips. */
 .hg-understood {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
     font-size: .88rem; }}
 .hg-understood b {{ color: var(--hg-ink); margin-right: 2px; }}
@@ -536,8 +536,38 @@ footer {{ visibility: hidden; height: 0; }}
 .hg-facts span + span::before {{ content: "·"; color: var(--hg-faint); margin: 0 8px; }}
 .hg-facts b {{ font-weight: 700; color: var(--hg-ink); }}
 .hg-badges {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
+/* Badges wrap inside a narrow (phone) card instead of overflowing it. */
 .hg-b {{ font-size: .76rem; font-weight: 600; border-radius: 6px; padding: 3px 8px;
-    line-height: 1.3; white-space: nowrap; }}
+    line-height: 1.3; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }}
+.hg-rent {{ margin-top: 6px; font-size: .88rem; color: var(--hg-ink-soft); }}
+.hg-rent b {{ color: var(--hg-ink); font-weight: 700; }}
+.hg-rent span {{ color: var(--hg-muted); font-size: .8rem; }}
+.hg-note-bad {{ margin-top: 8px; padding: .4rem .6rem; border-radius: 8px; font-size: .84rem;
+    font-weight: 600; background: #FEE2E2; color: #991B1B; border-left: 4px solid #DC2626; }}
+/* Score breakdown under the price row: visible text (works on phones, unlike a tooltip). */
+.hg-parts {{ display: flex; flex-wrap: wrap; gap: 2px 0; font-size: .78rem; margin-top: -2px;
+    color: var(--hg-muted); }}
+.hg-parts span {{ white-space: nowrap; }}
+.hg-parts span + span::before {{ content: "·"; color: var(--hg-faint); margin: 0 6px; }}
+.hg-p-up {{ color: #047857; }}
+.hg-p-down {{ color: #B91C1C; }}
+.hg-p-flat {{ color: var(--hg-muted); }}
+/* Price position: this flat's €/m² vs the comparables' p25–median–p75. */
+.hg-pos {{ margin: .2rem 0 .4rem; }}
+.hg-pos-track {{ position: relative; height: 14px; border-radius: 7px; background: var(--hg-line-2); }}
+.hg-pos-band {{ position: absolute; top: 0; bottom: 0; background: #CCE7E2; border-radius: 7px; }}
+.hg-pos-med {{ position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px;
+    background: var(--hg-accent); }}
+.hg-pos-dot {{ position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px;
+    border-radius: 50%; background: var(--hg-ink); border: 2px solid #fff;
+    box-shadow: 0 0 0 1px var(--hg-ink); }}
+.hg-pos-legend {{ display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: .78rem;
+    color: var(--hg-muted); }}
+.hg-pos-legend i {{ display: inline-block; width: 10px; height: 10px; margin-right: 5px;
+    vertical-align: middle; border-radius: 2px; }}
+.hg-pos-k-band {{ background: #CCE7E2; }}
+.hg-pos-k-med {{ background: var(--hg-accent); width: 3px !important; }}
+.hg-pos-k-dot {{ background: var(--hg-ink); border-radius: 50% !important; }}
 .hg-b-good {{ background: #DCFCE7; color: #166534; }}
 .hg-b-drop {{ background: #FFEDD5; color: #9A3412; }}
 .hg-b-priv {{ background: #EDE9FE; color: #5B21B6; }}
@@ -580,6 +610,19 @@ footer {{ visibility: hidden; height: 0; }}
     [class*="st-key-card-"] {{ padding: .85rem .9rem .8rem !important; }}
     [class*="st-key-card-"] h3 {{ font-size: 1.35rem; }}
     .hg-photo {{ height: 150px; }}
+    /* filters: a compact 2-up grid (the first, wide column spans) so results show sooner. */
+    .st-key-filters {{ padding: .6rem .7rem !important; gap: .4rem !important; }}
+    .st-key-filters [data-testid="stHorizontalBlock"] {{
+        flex-direction: row !important; flex-wrap: wrap !important; gap: .4rem !important;
+    }}
+    .st-key-filters [data-testid="stColumn"] {{
+        flex: 1 1 calc(50% - .4rem) !important; min-width: calc(50% - .4rem) !important;
+        width: auto !important;
+    }}
+    .st-key-filters [data-testid="stColumn"]:first-child:nth-last-child(3) {{
+        flex-basis: 100% !important; min-width: 100% !important;
+    }}
+    .st-key-filters label p {{ font-size: .8rem !important; }}
     /* actions: a 2-up grid instead of a tall stack; a lone first button (3 total) spans. */
     [class*="st-key-act-"] [data-testid="stHorizontalBlock"] {{
         flex-direction: row !important; flex-wrap: wrap !important; gap: .45rem !important;

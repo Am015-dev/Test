@@ -23,7 +23,7 @@ from .. import area_insights as ai
 from ..nl_search import area_matches
 from . import components, queries
 
-SEARCH_PAGE = "🔎 Αναζήτηση"
+SEARCH_PAGE = "Αναζήτηση"
 AREA_KEY = "area_pick"
 
 # The buyer's 15 areas, by municipality name (matched with nl_search.area_matches, so case

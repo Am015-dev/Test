@@ -86,7 +86,7 @@ def describe(f: SearchFilters) -> str:
     if f.areas:
         parts.append("περιοχή: " + ", ".join(f.areas))
     if f.budget:
-        parts.append(f"budget {_gr(f.budget)} €")
+        parts.append(f"κεφάλαιο {_gr(f.budget)} €")
     if f.price_min or f.price_max:
         hi = _gr(f.price_max) if f.price_max else "∞"
         parts.append(f"τιμή {_gr(f.price_min or 0)}–{hi} €")
@@ -242,32 +242,49 @@ def age_factor(age: int | None) -> float:
     return 0.45
 
 
+YIELD_GOOD, YIELD_WEAK = 0.055, 0.04  # gross yield: ▲ at/above, ▼ below (scoring's 2–8% scale)
+OFF_PLAN_FACTOR = 0.6  # built "this year": often still a shell sold off-plan — unconfirmed
+UNFINISHED_FACTOR = 0.25  # an unfinished shell needs more capital before it can be let
+
+
 def advise(d: dict, comp_pct: float | None = None) -> dict:
     """Buyer view of one listing: a 0-100 score plus the facts behind it.
 
-    Score = 60% the thesis score already on the listing + 40% buy-value, then discounted by
-    building age (see ``age_factor``). Buy-value comes from ``comp_pct`` — this flat's €/m²
-    against like-for-like listings (same area, age band, size; see ``market_intel``): 20%
-    under = full marks — plus seller motivation and a price cut. Without comparables it falls
-    back to a confident model value, else it is skipped. Unfinished buildings keep a quarter.
+    Score = 60% the thesis score already on the listing (rental yield, energy class, metro…)
+    + 40% buy-value, then discounted by building age (see ``age_factor``). Buy-value comes
+    from ``comp_pct`` — this flat's €/m² against like-for-like listings (same area, age band,
+    size; see ``market_intel``): 20% under = full marks — plus seller motivation and a price
+    cut. Without comparables it falls back to a confident model value, else it is skipped.
+    Off-plan (built this year) × 0.6; unfinished × 0.25.
+
+    ``parts`` is the visible breakdown: (label, +1 helps / 0 neutral / -1 hurts / None unknown).
     """
     base = d.get("score") or 0
     gap = -comp_pct if comp_pct is not None else None
     if gap is None and d.get("value_confident"):
         gap = d.get("value_gap_pct")
+    parts: list[tuple[str, int | None]] = []
     if gap is None:
         score = base
     else:
         value = min(max(gap / 0.20, 0), 1) * 70 + min(d.get("negotiation_score") or 0, 100) * 0.2
         value += 10 if d.get("price_dropped") else 0
         score = 0.6 * base + 0.4 * value
+        parts.append(("τιμή vs παρόμοια", 1 if gap >= 0.10 else -1 if gap <= -0.10 else 0))
     age = building_age(d)
-    score *= age_factor(age)
+    factor = age_factor(age)
+    score *= factor
+    sign = None if age is None else 1 if factor >= 0.95 else 0 if factor >= 0.8 else -1
+    parts.append(("ηλικία", sign))
+    if gy := d.get("gross_yield"):
+        parts.append(("απόδοση", 1 if gy >= YIELD_GOOD else -1 if gy < YIELD_WEAK else 0))
+    if (d.get("year_built") or 0) >= date.today().year:
+        score *= OFF_PLAN_FACTOR
+        parts.append(("υπό παράδοση", -1))
     if d.get("is_unfinished"):
-        score *= 0.25  # needs money and months before it can be lived in or rented
-    elif (d.get("year_built") or 0) >= date.today().year:
-        score *= 0.6  # built "this year": often still a shell sold off-plan — unconfirmed
-    return {"score": round(score), "gap": gap, "age": age}
+        score *= UNFINISHED_FACTOR
+        parts.append(("ημιτελές", -1))
+    return {"score": round(score), "gap": gap, "age": age, "parts": parts}
 
 
 def candidates(listings: list[dict], include_stale: bool = False) -> list[dict]:

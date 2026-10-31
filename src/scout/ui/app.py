@@ -1372,6 +1372,10 @@ def page_map(listings: list[dict]) -> None:
     if not listings:
         st.info("Δεν υπάρχουν αγγελίες ακόμα — ανανέωσε τα δεδομένα από το πλάι.")
         return
+    # One score everywhere: the slider, colours, legend and table use the buyer score on the
+    # cards (comparables + age + yield), not the stored thesis score.
+    scores = buyer.buyer_scores(listings)
+    listings = [{**d, "score": scores[d["id"]]} for d in listings]
     # Area options stay stable across reruns (all listings); the counts shown follow the
     # "hide"/"fresh" toggles so they match what the map can actually show.
     groups = Counter(_map_area_group(d) for d in listings)
@@ -1424,7 +1428,9 @@ def page_map(listings: list[dict]) -> None:
     )
     price = (k_lo * 1000, k_hi * 1000)
     c5, c6, c7, c8 = st.columns([2, 2, 1.4, 1.4])
-    min_score = c5.slider("Ελάχιστο σκορ", 0, 100, 0, step=5, key="map_score")
+    min_score = c5.slider(
+        "Ελάχιστο σκορ", 0, 100, 0, step=5, key="map_score", help=buyer.SCORE_HELP
+    )
     max_age = c6.slider(
         "Μέγ. ηλικία κτιρίου (έτη)",
         0,
@@ -1478,6 +1484,7 @@ def page_map(listings: list[dict]) -> None:
             st.info("Καμία αγγελία δεν ταιριάζει — χαλάρωσε τα φίλτρα (σκορ, τιμή, περιοχή).")
         return
     components.results_map(shown, key="map_chart", height=480, size_by_price=size_by_price)
+    st.caption(buyer.SCORE_LEGEND, help=buyer.SCORE_HELP)
 
     top = sorted(shown, key=lambda d: d.get("score") or 0, reverse=True)[:20]
     st.markdown("#### Οι καλύτερες στον χάρτη" + (" (top 20)" if len(shown) > 20 else ""))
@@ -2250,11 +2257,11 @@ def page_saved_searches(listings: list[dict]) -> None:
 
 
 def page_compare(listings: list[dict]) -> None:
-    """Shortlist several flats and rank them side-by-side on the numbers that decide it —
-    the "which of these do I chase?" view (inspired by deal-analyzer compare tools)."""
+    """Shortlist several flats and line them up on the numbers that decide it — the "which of
+    these do I chase?" view. Opens with the buyer's favourites when there are 2–4."""
 
-    st.subheader("⚖️ Σύγκριση")
-    st.caption("Διάλεξε 2–4 αγγελίες για να δεις τους δείκτες τους δίπλα-δίπλα.")
+    st.subheader("Σύγκριση")
+    st.caption("Διάλεξε 2–4 αγγελίες (τα αγαπημένα πρώτα· γράψε για αναζήτηση).")
     from scout import nl_search, shortlist
 
     starred = buyer.watch_keys()
@@ -2266,13 +2273,23 @@ def page_compare(listings: list[dict]) -> None:
         return
 
     def _name(d: dict) -> str:
-        # Unique per listing: two flats in one neighbourhood at the same score/price must not
+        # Unique per listing: two flats in one neighbourhood at the same price must not
         # collapse into one option (or overwrite each other's column in the table below).
-        return f"{d.get('neighborhood') or d['source_id']} · {fmt.euro(d['price'])} · #{d['id']}"
+        size = f" · {d['area_m2']:g} τ.μ." if d.get("area_m2") else ""
+        where = d.get("neighborhood") or d["source_id"]
+        return f"{where}{size} · {fmt.euro(d['price'])} · #{d['id']}"
 
     by_id = {d["id"]: d for d in elig}
     opts = {("★ " if shortlist.lkey(d) in starred else "") + _name(d): d["id"] for d in elig}
-    picks = st.multiselect("Αγγελίες", list(opts.keys()), max_selections=4)
+    favs = [o for o, i in opts.items() if shortlist.lkey(by_id[i]) in starred]
+    picks = st.multiselect(
+        "Αγγελίες",
+        list(opts.keys()),
+        default=favs if 2 <= len(favs) <= 4 else None,
+        max_selections=4,
+        placeholder="Γράψε περιοχή, τ.μ. ή τιμή",
+        key="compare_picks",
+    )
     chosen = [by_id[opts[p]] for p in picks]
     if len(chosen) < 2:
         st.info("Διάλεξε τουλάχιστον δύο αγγελίες.")
@@ -2286,15 +2303,26 @@ def page_compare(listings: list[dict]) -> None:
         adv = buyer.buyer_view(d, intel)
         cmp, twins, age = adv["cmp"], adv["twins"], adv["age"]
         built = d.get("renovated_year") or d.get("year_built")
+        rent = d.get("listed_rent") or d.get("est_monthly_rent")
+        gy = buyer.gross_yield(d)
+        vs = "—"
+        if cmp:
+            vs = f"{cmp['pct']:+.0%} ({cmp['n']}, {buyer.confidence(cmp).lower()})"
         # Every cell is text: a mixed int/str column fails Arrow serialisation.
         return {
-            "Τιμή": fmt.euro(d["price"]),
+            "Τιμή (ζητούμενη)": fmt.euro(d["price"]),
             "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")),
             "Εμβαδόν": f"{d['area_m2']:.0f} τ.μ." if d.get("area_m2") else "—",
             "Υπνοδωμάτια": str(d["bedrooms"]) if d.get("bedrooms") is not None else "—",
             "Όροφος": f"{d['floor']:g}" if d.get("floor") is not None else "—",
             "Έτος (ηλικία)": f"{built} ({age} ετών)" if built and age is not None else "—",
-            "Vs παρόμοια": (f"{cmp['pct']:+.0%} ({cmp['n']})".replace("-", "−") if cmp else "—"),
+            "Ενοίκιο / μήνα": (
+                f"~{fmt.euro(round(rent, -1))}" + ("" if d.get("listed_rent") else " (εκτίμηση)")
+                if rent
+                else "—"
+            ),
+            "Μικτή απόδοση": buyer.pct1(gy) if gy else "—",
+            "Vs παρόμοια": vs.replace("-", "−"),
             "Ίδιο σπίτι αλλού": (
                 f"{len(twins)} · από {fmt.euro(twins[0]['price'])}" if twins else "—"
             ),
@@ -2303,6 +2331,7 @@ def page_compare(listings: list[dict]) -> None:
             ),
             "Ενεργ. κλάση": d.get("energy_class") or "—",
             "Πωλητής": "Ιδιώτης" if d.get("is_private_seller") else "Μεσίτης",
+            "Κατάσταση": "Ημιτελές" if d.get("is_unfinished") else "—",
             "Σκορ αγοράς": str(adv["score"]),
         }
 
@@ -2310,19 +2339,21 @@ def page_compare(listings: list[dict]) -> None:
     st.dataframe(pd.DataFrame(table), width="stretch")
     st.caption(
         "«Vs παρόμοια»: €/τ.μ. σε σχέση με τη διάμεσο ίδιας περιοχής, ηλικίας και μεγέθους "
-        "(πόσα παρόμοια). Αρνητικό = φθηνότερο."
+        "(πόσα παρόμοια, αξιοπιστία). Αρνητικό = φθηνότερο. Μικτή απόδοση = 12 × ενοίκιο ÷ "
+        "τιμή. " + buyer.SCORE_LEGEND,
+        help=buyer.SCORE_HELP,
     )
 
 
 # What a buyer uses. The older rental-investor tools (yields, cap rate, Airbnb, Golden Visa)
 # stay reachable for the owner with ?admin=1.
 NAV = {
-    "🔎 Αναζήτηση": buyer.page_search,
     "Πού να αγοράσω": areas.page_areas,
-    "🗺 Χάρτης": page_map,
-    "⭐ Αγαπημένα": buyer.page_watchlist,
-    "🤖 Αποθηκευμένες αναζητήσεις": buyer.page_shortlist,
-    "⚖️ Σύγκριση": page_compare,
+    "Αναζήτηση": buyer.page_search,
+    "Χάρτης": page_map,
+    "Αγαπημένα": buyer.page_watchlist,
+    "Αποθηκευμένες αναζητήσεις": buyer.page_shortlist,
+    "Σύγκριση": page_compare,
     buyer.NAV_DETAIL: buyer.page_listing,
 }
 ADMIN_NAV = {  # open with ?admin=1
@@ -2362,12 +2393,12 @@ def main() -> None:
     admin = bool(st.query_params.get("admin"))
     pages = {**NAV, **(ADMIN_NAV if admin else {})}
     with st.sidebar:
-        st.markdown("### 🏠 Property Scout")
+        st.markdown("### Property Scout")
         page = st.radio("Σελίδα", list(pages), key="page", label_visibility="collapsed")
         st.button("🔄 Φρέσκα δεδομένα", key="refresh", on_click=_refresh_data, width="stretch")
     listings = get_listings()
     with st.sidebar:
-        st.caption(_data_status(listings))
+        st.caption(buyer.data_line(listings))
         st.caption("Πηγή: XE.gr (+ Green-Acres). Μέρος της αγοράς, όχι κάθε αγγελία.")
 
     if pages[page] in (page_opportunities, page_today):

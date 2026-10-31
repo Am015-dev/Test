@@ -165,7 +165,7 @@ def test_area_uses_the_listing_location_not_the_scraped_search_area():
     assert match(no_location, SearchFilters(areas=["Cholargos"])) is not None
 
 
-def test_old_buildings_are_discounted_and_unfinished_cut_hard():
+def test_old_buildings_are_discounted_and_unfinished_score_low():
     from scout.nl_search import advise
 
     new = {**BASE, "score": 80, "year_built": 2018}
@@ -174,7 +174,7 @@ def test_old_buildings_are_discounted_and_unfinished_cut_hard():
     assert advise(new)["score"] == 80
     assert advise(old)["score"] == 36 and advise(old)["age"] >= 60
     assert advise(renovated)["score"] == 80
-    assert advise({**new, "is_unfinished": True})["score"] == 20  # a quarter of 80
+    assert advise({**new, "is_unfinished": True})["score"] == 20  # × 0.25
     this_year = {**new, "year_built": date.today().year}  # maybe still a shell, sold off-plan
     assert advise(this_year)["score"] == 48
 
@@ -199,3 +199,18 @@ def test_candidates_hide_stale_excluded_and_suspect():
     ]
     assert len(candidates(rows)) == 1
     assert len(candidates(rows, include_stale=True)) == 2
+
+
+def test_advise_breakdown_follows_the_score_components():
+    from scout.nl_search import advise
+
+    d = {**BASE, "score": 60, "year_built": 2018, "gross_yield": 0.06}
+    parts = dict(advise(d, comp_pct=-0.2)["parts"])
+    assert parts == {"τιμή vs παρόμοια": 1, "ηλικία": 1, "απόδοση": 1}
+    old = {**d, "year_built": 1960, "gross_yield": 0.03}
+    parts = dict(advise(old, comp_pct=0.2)["parts"])
+    assert parts == {"τιμή vs παρόμοια": -1, "ηλικία": -1, "απόδοση": -1}
+    unknown = dict(advise({**BASE, "score": 60, "year_built": None})["parts"])
+    assert unknown == {"ηλικία": None}  # no comps / no yield: not shown, not guessed
+    shell = advise({**d, "is_unfinished": True}, comp_pct=-0.2)
+    assert ("ημιτελές", -1) in shell["parts"] and shell["score"] < advise(d, -0.2)["score"] / 3
