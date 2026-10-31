@@ -133,7 +133,7 @@ def test_new_vs_old_text():
     x = _insight(n_new=51, ppm_new=4000.0, n_old=275, ppm_old=2500.0, new_premium=0.6)
     assert (
         areas.new_old_text(x)
-        == "4.000 €/τ.μ. τα νεόδμητα (51 αγγελίες), 2.500 €/τ.μ. τα παλιά (275 αγγελίες), διαφορά +60 %"
+        == "τα νεόδμητα ζητούν 60 % περισσότερα: 4.000 €/τ.μ. αντί για 2.500 €/τ.μ. στα παλιά (51 και 275 αγγελίες)"
     )
     assert "3 και 275 αγγελίες" in areas.new_old_text(_insight(n_new=3, n_old=275))
 
@@ -158,9 +158,9 @@ def test_yield_text_shows_old_and_new():
 
 def test_trend_line_prefers_six_months_then_july_and_says_when_missing():
     six = _insight(trend_pct_6m=0.041, trend_6m_n=(15, 22))
-    assert areas.trend_line(six).startswith("+4,1 % σε 6 μήνες")
-    assert "15 και 22 αγγελίες" in areas.trend_line(six)
-    assert areas.trend_line(_insight()).startswith("+1,0 % από τον Ιούλιο")
+    assert areas.trend_line(six).startswith("ανέβηκε 4,1 % σε 6 μήνες")
+    assert "15 αγγελίες τότε, 22 τώρα" in areas.trend_line(six)
+    assert areas.trend_line(_insight()).startswith("ανέβηκε 1,0 % από τον Ιούλιο")
     none = areas.trend_line(_insight(trend_pct=None, trend_early_n=4))
     assert none.startswith("δεν το ξέρουμε ακόμα") and "4 και 120 αγγελίες" in none
 
@@ -168,7 +168,7 @@ def test_trend_line_prefers_six_months_then_july_and_says_when_missing():
 def test_supply_line_shows_both_counts_or_says_unknown():
     x = _insight(n_fresh=120, rent_samples=30, supply_per_rent=4.0)
     assert areas.supply_line(x) == (
-        "4,0 σπίτια προς πώληση για κάθε ένα που νοικιάζεται (120 προς πώληση, 30 προς ενοικίαση)"
+        "εδώ πωλούνται 120 σπίτια και νοικιάζονται 30, δηλαδή 4,0 προς 1"
     )
     assert areas.supply_line(_insight()).startswith("δεν την ξέρουμε ακόμα")
 

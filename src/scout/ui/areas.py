@@ -151,8 +151,9 @@ def new_old_text(x: ai.AreaInsight) -> str:
             f"έχουμε {ai.n_words(x.n_new, x.n_old)}"
         )
     return (
-        f"{gr_ppm(x.ppm_new)} τα νεόδμητα ({ai.n_words(x.n_new)}), {gr_ppm(x.ppm_old)} τα "
-        f"παλιά ({ai.n_words(x.n_old)}), διαφορά {gr_pct(x.new_premium, 0, sign=True)}"
+        f"τα νεόδμητα ζητούν {gr_pct(abs(x.new_premium), 0)} "
+        f"{'περισσότερα' if x.new_premium >= 0 else 'λιγότερα'}: {gr_ppm(x.ppm_new)} αντί για "
+        f"{gr_ppm(x.ppm_old)} στα παλιά ({ai.n_words(x.n_new, x.n_old)})"
     )
 
 
@@ -161,15 +162,18 @@ def trend_line(x: ai.AreaInsight) -> str:
     t = ai.exit_trend(x)
     if t is None:
         return f"δεν το ξέρουμε ακόμα (έχουμε {ai.n_words(x.trend_early_n, x.trend_late_n)})"
-    return f"{gr_pct(t[0], sign=True)} {t[1]}, στις νέες αγγελίες κάθε μήνα ({t[2]})"
+    return (
+        f"{'ανέβηκε' if t[0] >= 0 else 'έπεσε'} {gr_pct(abs(t[0]))} {t[1]}, μετρώντας τις νέες "
+        f"αγγελίες κάθε μήνα ({t[2]})"
+    )
 
 
 def supply_line(x: ai.AreaInsight) -> str:
     if x.supply_per_rent is None:
         return "δεν την ξέρουμε ακόμα"
     return (
-        f"{gr_num(x.supply_per_rent, 1)} σπίτια προς πώληση για κάθε ένα που νοικιάζεται "
-        f"({x.n_fresh} προς πώληση, {x.rent_samples} προς ενοικίαση)"
+        f"εδώ πωλούνται {x.n_fresh} σπίτια και νοικιάζονται {x.rent_samples}, δηλαδή "
+        f"{gr_num(x.supply_per_rent, 1)} προς 1"
     )
 
 
@@ -215,9 +219,8 @@ def render_checks(checks: list[tuple[str, str, str]]) -> None:
 
 
 FILTERS_CAPTION = (
-    "Μετράμε μόνο διαμερίσματα που γράφουν όροφο, από τον 1ο και πάνω, και ήταν στην αγορά "
-    f"την τελευταία φορά που διαβάσαμε το XE.gr (έως {queries.FRESH_DAYS} μέρες πριν). "
-    "Νεόδμητα λέμε τα έως 5 ετών και παλιά τα 16 ετών και πάνω."
+    "Μετράμε διαμερίσματα από τον 1ο όροφο και πάνω, όσα είδαμε στην αγορά τις τελευταίες "
+    f"{queries.FRESH_DAYS} μέρες. Νεόδμητα είναι τα έως 5 ετών, παλιά τα 16 ετών και πάνω."
 )
 
 

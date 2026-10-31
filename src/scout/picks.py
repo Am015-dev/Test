@@ -253,7 +253,7 @@ def gr_num(x: float) -> str:
     return f"{x:.1f}".replace(".", ",")
 
 
-CHECKED = "Ελέγχθηκε η περιγραφή{when}: δεν γράφει ότι χτίζεται ακόμα"
+CHECKED = "Ελέγχθηκε η περιγραφή{when}: δεν λέει ότι χτίζεται ακόμα"
 UNCHECKED = "Δεν έχει ελεγχθεί ακόμα"
 FEW_PHOTOS = "Έως 2 φωτογραφίες, συχνά μόνο σχέδιο ή λογότυπο"
 EXCERPT_CHARS = 300
@@ -269,7 +269,7 @@ BAD_PHOTO_KINDS = frozenset({"render", "plan", "site", "stock"})
 
 def photo_line(d: dict) -> str:
     """'Φωτογραφίες: πραγματικές' etc. from the photo check; «δεν ελέγχθηκαν» when none."""
-    return f"Φωτογραφίες: {PHOTO_KINDS.get(d.get('photo_kind') or '', 'δεν ελέγχθηκαν')}"
+    return f"Φωτογραφίες: {PHOTO_KINDS.get(d.get('photo_kind') or '', 'δεν τις έχουμε δει ακόμα')}"
 
 
 def status_line(d: dict) -> str:
@@ -368,17 +368,17 @@ def _build(
         f"Ενοίκιο (εκτίμηση) ~{_eur(_r(rent, 10))}/μήνα: τα διπλανά ζητούν {gr_num(per_m2)} "
         f"€/τ.μ. × {d['area_m2']:g} τ.μ."
         + (", και 10 % παραπάνω γιατί είναι νεόδμητο" if new_premium > 1 else ""),
-        f"Μικτή απόδοση {gr_pct(gross)}. Καθαρή ~{gr_pct(net)}, μετά από έναν μήνα κενό, "
-        "φόρο, συντήρηση και ΕΝΦΙΑ",
+        f"Μικτή απόδοση {gr_pct(gross)}. Καθαρή απόδοση ~{gr_pct(net)}, αφού βγάλεις έναν "
+        "μήνα χωρίς ενοικιαστή, φόρο, συντήρηση και ΕΝΦΙΑ",
     ]
     ppm = d.get("price_per_m2") or d["price"] / d["area_m2"]
     if cmp:
         pct = round(abs(cmp["pct"]) * 100)
         rel = (
-            f"όσο ζητούν και τα {cmp['n']} παρόμοια της γειτονιάς"
+            f"όσο ζητούν και τα {cmp['n']} παρόμοια σπίτια της γειτονιάς"
             if pct < 2
             else f"{pct} % {'κάτω' if cmp['pct'] < 0 else 'πάνω'} από τα {cmp['n']} παρόμοια "
-            "της γειτονιάς"
+            "σπίτια της γειτονιάς"
         )
         lines.append(f"Τιμή {_eur(ppm)}/τ.μ., {rel}")
     else:

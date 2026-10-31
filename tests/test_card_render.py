@@ -80,7 +80,8 @@ def test_buyer_card_has_the_five_fixed_lines_in_greek():
         == "3ος όροφος · κτίριο 2018 · Περισσός · Σταθμός ΗΣΑΠ Περισσός (από το όνομα της γειτονιάς)"
     )
     assert l3 == (
-        "Ελέγχθηκε η περιγραφή: δεν γράφει ότι χτίζεται ακόμα" " · Φωτογραφίες: δεν ελέγχθηκαν"
+        "Ελέγχθηκε η περιγραφή: δεν λέει ότι χτίζεται ακόμα"
+        " · Φωτογραφίες: δεν τις έχουμε δει ακόμα"
     )
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
     assert l5 == "Παρόμοια (12): 13 % κάτω"
@@ -93,7 +94,7 @@ def test_buyer_card_status_unknowns_and_photos():
     # the photo clause is its own neutral chip (C6), never inside the status tone
     assert (
         'hg-st-unk">Δεν έχει ελεγχθεί ακόμα</span><span class="hg-sep" aria-hidden="true"> · '
-        '</span><span class="hg-st hg-st-neu">Φωτογραφίες: δεν ελέγχθηκαν<'
+        '</span><span class="hg-st hg-st-neu">Φωτογραφίες: δεν τις έχουμε δει ακόμα<'
     ) in unchecked
     assert "όροφος: δεν δηλώνεται" in unchecked and "έτος: δεν δηλώνεται" in unchecked
     assert "Λίγα παρόμοια" in unchecked

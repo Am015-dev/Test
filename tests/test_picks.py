@@ -69,7 +69,7 @@ def test_checked_pages_rank_first_and_unchecked_are_flagged():
     assert [p.listing["id"] for p in got] == [2, 1]
     assert got[0].checked and not got[1].checked
     assert got[0].status.startswith("Ελέγχθηκε η περιγραφή")
-    assert got[1].status == "Δεν έχει ελεγχθεί ακόμα · Φωτογραφίες: δεν ελέγχθηκαν"
+    assert got[1].status == "Δεν έχει ελεγχθεί ακόμα · Φωτογραφίες: δεν τις έχουμε δει ακόμα"
 
 
 def test_approved_go_first_and_dropped_leave_so_the_next_moves_up():
@@ -117,8 +117,8 @@ def test_checked_date_is_on_the_status_line():
 
     p = run([flat(1, 300_000, page_checked=True, page_checked_at=datetime(2026, 10, 30))])[0]
     assert p.status == (
-        "Ελέγχθηκε η περιγραφή (30/10/2026): δεν γράφει ότι χτίζεται ακόμα"
-        " · Φωτογραφίες: δεν ελέγχθηκαν"
+        "Ελέγχθηκε η περιγραφή (30/10/2026): δεν λέει ότι χτίζεται ακόμα"
+        " · Φωτογραφίες: δεν τις έχουμε δει ακόμα"
     )
 
 

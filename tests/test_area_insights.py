@@ -293,8 +293,8 @@ def test_why_is_a_filled_template_without_adjectives():
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert x.why == (
         "Μικτή απόδοση 4,5 % (1η από 1 περιοχή). Ενοίκιο (εκτίμηση) 11,2 €/τ.μ. τον μήνα από 38 "
-        "αγγελίες ενοικίασης· για νεόδμητο ζητούν 60 % περισσότερα από ένα παλιό (6 και 6 "
-        "αγγελίες)· ΗΣΑΠ Περισσός"
+        "αγγελίες ενοικίασης. Για νεόδμητο ζητούν 60 % περισσότερα από ένα παλιό (6 και 6 "
+        "αγγελίες). Σταθμός: ΗΣΑΠ Περισσός."
     )
 
 
@@ -420,7 +420,7 @@ def test_area_trend_6m_flows_into_the_insight():
     assert [n for _, _, n in x.trend_series] == [15, 15]
     # ...and the decision sentence quotes it with its basis
     s = [t for t in ai.decision([x], 300_000) if t.startswith("Για ανατίμηση")][0]
-    assert "Η τιμή ανά τ.μ. άλλαξε +4,1 % σε 6 μήνες (15 και 15 αγγελίες)" in s
+    assert "Η τιμή ανά τ.μ. ανέβηκε 4,1 % σε 6 μήνες (15 αγγελίες τότε, 15 τώρα)" in s
 
 
 def test_trend_6m_is_none_without_history():
@@ -539,7 +539,7 @@ def test_decision_appreciation_names_line4_and_trend_basis():
         "Γαλάτσι. Εκεί φτιάχνεται η Γραμμή 4 του μετρό (Άλσος Βεΐκου, Γαλάτσι, Ελικώνος, γύρω στο 2032)"
         in s
     )
-    assert "από τον Ιούλιο" in s and "60 και 60 αγγελίες" in s
+    assert "από τον Ιούλιο" in s and "60 αγγελίες τότε, 60 τώρα" in s
 
 
 def test_decision_liquidity_uses_gone_share_when_known():
@@ -603,9 +603,7 @@ def test_price_check_good_when_below_comps_and_warns_when_too_cheap_or_dear():
         r["id"] = 100 + i
     c = _checks(_subject(), rows, None)["Τιμή έναντι παρόμοιων"]
     assert (
-        c[2] == ai.GOOD
-        and "2.400 €/τ.μ. (−20,0 %). Τα άλλα σπίτια της γειτονιάς ζητούν συνήθως 3.000 €/τ.μ."
-        in c[1]
+        c[2] == ai.GOOD and "Ζητά 2.400 €/τ.μ., 20 % κάτω από τα άλλα σπίτια της γειτονιάς" in c[1]
     )
     assert "Παρόμοια (30)" in c[1]
     cheap = _checks(_subject() | {"price_per_m2": 1500.0}, rows, None)["Τιμή έναντι παρόμοιων"]
@@ -618,7 +616,7 @@ def test_price_check_good_when_below_comps_and_warns_when_too_cheap_or_dear():
 
 def test_price_check_unknown_without_comps():
     c = ai.investor_checks(_subject(), None, None)[0]
-    assert c[2] == ai.UNKNOWN and "λιγότερα από 5 παρόμοια" in c[1]
+    assert c[2] == ai.UNKNOWN and "αρκετά παρόμοια σπίτια (θέλουμε 5)" in c[1]
 
 
 def test_yield_check_shows_rent_and_price_and_verdict_bands():
@@ -643,7 +641,7 @@ def test_liquidity_and_rent_demand_checks_follow_the_insight():
     assert demand[2] == ai.UNKNOWN  # no rent sample count in this fixture
     x.supply_per_rent, x.supply_rel, x.rent_samples = 2.5, 0.5, 10
     good = ai.investor_checks(_subject(), None, x)[3]
-    assert good[2] == ai.GOOD and "2,5 σπίτια προς πώληση για κάθε ένα που νοικιάζεται" in good[1]
+    assert good[2] == ai.GOOD and "δηλαδή 2,5 προς 1" in good[1]
     x.supply_rel = 2.0
     assert ai.investor_checks(_subject(), None, x)[3][2] == ai.WARN
     x.supply_rel = 1.0
@@ -671,7 +669,7 @@ def test_exit_check_uses_trend_and_line4():
     d = _subject(neighborhood="Γαλάτσι (Άλσος Βεΐκου)")
     c = ai.investor_checks(d, None, x)[5]
     assert c[2] == ai.GOOD
-    assert "+4,1 % σε 6 μήνες" in c[1] and "15 και 15 αγγελίες" in c[1]
+    assert "ανέβηκε 4,1 % σε 6 μήνες" in c[1] and "15 αγγελίες τότε, 15 τώρα" in c[1]
     assert "σταθμός της Γραμμής 4 του μετρό: Άλσος Βεΐκου, γύρω στο 2032" in c[1]
     # a sub-area without a station name only gets the area-level stations
     other = _subject(neighborhood="Γαλάτσι (Λαμπρινή)")
