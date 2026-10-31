@@ -9,9 +9,11 @@ paged with ``?Property_page=N``. robots.txt disallows only ``/backend.php``, ``/
 ``/property/createPDF``.
 
 Each card (``div.property-miniature``) has the category («Διαμέρισμα»), sub-area and
-municipality, rooms, floor, m², price («€298,000») and photo count — but **no build year**.
-Without a year a listing joins neither the age-banded comparables nor cross-portal twins,
-so the UI shows it as year unknown rather than guessing one.
+municipality, rooms, floor, m², price («€298,000») and photo count — but **no build year**,
+which comparables and cross-portal twins need. So each card that passes the price/m² band
+gets ONE detail-page visit (same pacing) to read «Έτος Κατασκευής» from the
+characteristics table (``tr.constructionyear``). Fail-soft: no page or no row → the year
+stays unknown, never guessed. A year after this one marks the flat under construction.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ import random
 import re
 import time
 from collections.abc import Iterator
+from datetime import date
 from urllib.parse import urljoin
 
 import requests
@@ -84,6 +87,7 @@ class RemaxCollector(Collector):
     SEL_PHOTOS = ".photo-count .label"
     SEL_IMAGE = ".swiper-container img"
     SEL_NEXT_FMT = 'a[href*="Property_page={n}"]'
+    SEL_DETAIL_YEAR = "tr.constructionyear td:last-child"
 
     def search_urls(self, strategy: Strategy) -> list[str]:
         """The sale-homes page of the run's ONE municipality; unknown area → none, logged."""
@@ -136,6 +140,8 @@ class RemaxCollector(Collector):
                         logger.warning("remax: card parse error: %s", exc)
                         continue
                     if self._keep(raw, search):
+                        self._pause()
+                        raw.update(self._detail_fields(self._fetch(session, raw["url"])))
                         kept += 1
                         yield raw
                 nxt = tree.css_first(self.SEL_NEXT_FMT.format(n=page + 1))
@@ -153,6 +159,17 @@ class RemaxCollector(Collector):
         if not (search.price_min <= raw["price"] <= search.price_max):
             return False
         return raw["area_m2"] >= search.area_min_m2
+
+    @classmethod
+    def _detail_fields(cls, html: str | None) -> dict:
+        """Build year from the listing page; {} when the page or the row is missing."""
+        if not html:
+            return {}
+        node = HTMLParser(html).css_first(cls.SEL_DETAIL_YEAR)
+        year = parse_int(node.text(strip=True)) if node else None
+        if not year or not 1800 < year < 2100:
+            return {}
+        return {"year_built": year, "is_unfinished": year > date.today().year}
 
     @staticmethod
     def _neighborhood(subarea: str | None, path: str | None) -> str | None:

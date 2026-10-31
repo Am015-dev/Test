@@ -38,8 +38,6 @@ jobs:
           --url goldenhome=https://goldenhome.gr/property/pwlisi/katoikies/perioxi-holargos
           --url era=https://era.gr/
           --url noikaki=https://noikaki.gr/search
-      - name: RE/MAX detail-page probe
-        run: python diag/remax_probe.py
       - name: Smoke the collectors for one area (throwaway DB)
         timeout-minutes: 30
         env:

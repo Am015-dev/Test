@@ -14,6 +14,7 @@ from scout.config import Strategy
 from scout.normalize import normalize
 
 FIXTURE = Path(__file__).parent / "fixtures" / "remax_search.html"
+DETAIL = Path(__file__).parent / "fixtures" / "remax_detail.html"
 
 
 def _collector(municipality: str = "Cholargos") -> RemaxCollector:
@@ -90,6 +91,8 @@ def test_collect_follows_property_page_and_stops(monkeypatch):
     fetched: list[str] = []
 
     def fake_fetch(self, session, url):
+        if "/property/" in url:
+            return DETAIL.read_text(encoding="utf-8")
         fetched.append(url)
         return page1 if len(fetched) == 1 else page2.replace("409530", "1")
 
@@ -103,6 +106,7 @@ def test_collect_follows_property_page_and_stops(monkeypatch):
         "https://www.remax.gr/pwliseis-agora-katoikies/1031-xolargos?Property_page=2",
     ]
     assert len(raws) == 8 and {r["source"] for r in raws} == {"remax"}
+    assert {r["year_built"] for r in raws} == {1974}  # read from each listing page
 
 
 def test_sources_toggle_and_label(monkeypatch):
@@ -112,10 +116,24 @@ def test_sources_toggle_and_label(monkeypatch):
     assert SOURCE_LABELS["remax"] == "RE/MAX"
 
 
-def test_no_build_year_means_no_twin_and_no_age_comps():
-    """Honest limit: without a year a RE/MAX card is not matched to its XE twin."""
-    g = normalize(_cards()["386739"]).model_dump()
+def test_detail_page_gives_the_build_year():
+    assert RemaxCollector._detail_fields(DETAIL.read_text(encoding="utf-8")) == {
+        "year_built": 1974,
+        "is_unfinished": False,
+    }
+    future = DETAIL.read_text(encoding="utf-8").replace("<p>1974</p>", "<p>2099</p>")
+    assert RemaxCollector._detail_fields(future)["is_unfinished"] is True
+    assert RemaxCollector._detail_fields(None) == {}
+    assert RemaxCollector._detail_fields("<html></html>") == {}  # no row: unknown, not guessed
+
+
+def test_xe_and_remax_listing_of_one_flat_are_twins_once_the_year_is_read():
+    raw = {**_cards()["386739"], **RemaxCollector._detail_fields(DETAIL.read_text("utf-8"))}
+    g = normalize(raw).model_dump()
     g.update(id=2, price_per_m2=g["price"] / g["area_m2"])
-    x = {**g, "id": 1, "source": "xe", "year_built": 1980}
+    x = {**g, "id": 1, "source": "xe", "price": 262_000}
     intel = mi.build([x, g], year=2026)
-    assert intel.twins(x) == [] and intel.twins(g) == []
+    assert [t["source"] for t in intel.twins(x)] == ["remax"]
+    # Without the year (detail page missing) there is no match: unknown, not guessed.
+    g_no_year = {**g, "year_built": None}
+    assert mi.build([x, g_no_year], year=2026).twins(x) == []
