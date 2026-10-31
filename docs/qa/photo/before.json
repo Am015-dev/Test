@@ -1,0 +1,54 @@
+{
+  "guide-result": {
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "cards": 10,
+    "thumbs": 0,
+    "photos": 0,
+    "photosLoaded": 0,
+    "noPhoto": 0,
+    "clsWhilePhotosLoad": 0,
+    "clsPageSwap": 0.0297,
+    "boxSizes": [],
+    "boxesStable": true
+  },
+  "search": {
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "cards": 12,
+    "thumbs": 0,
+    "photos": 0,
+    "photosLoaded": 0,
+    "noPhoto": 0,
+    "clsWhilePhotosLoad": 0,
+    "clsPageSwap": 0.004,
+    "boxSizes": [],
+    "boxesStable": true
+  },
+  "search-marousi": {
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "cards": 12,
+    "thumbs": 0,
+    "photos": 0,
+    "photosLoaded": 0,
+    "noPhoto": 0,
+    "clsWhilePhotosLoad": 0,
+    "clsPageSwap": 0.2603,
+    "boxSizes": [],
+    "boxesStable": true
+  },
+  "listing": {
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "cards": 1,
+    "thumbs": 0,
+    "photos": 0,
+    "photosLoaded": 0,
+    "noPhoto": 0,
+    "clsWhilePhotosLoad": 0,
+    "clsPageSwap": 0,
+    "boxSizes": [],
+    "boxesStable": true
+  }
+}
