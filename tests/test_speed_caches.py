@@ -92,3 +92,26 @@ def test_guide_context_follows_the_rents():
     rents = [{"neighborhood": "Χολαργός", "price_per_m2": 12.0}]
     facts3, memo3 = derived.guide_context(listings, rents, year)
     assert memo3 is not memo1  # different rents: the per-listing work starts over
+
+
+def test_map_json_is_the_same_spec_compact(monkeypatch):
+    import json
+
+    import pydeck as pdk
+    import streamlit as st
+
+    from scout.ui import components
+
+    rows = [
+        _flat(i, 3000, lat=38.0 + i / 1000, lng=23.78, location_precision="exact", score=50)
+        for i in range(30)
+    ]
+    got = {}
+    monkeypatch.setattr(st, "pydeck_chart", lambda deck, **kw: got.setdefault("deck", deck))
+    components.results_map(rows, key="k", legend=False)
+    deck = got["deck"]
+    compact = deck.to_json()
+    assert json.loads(compact) == json.loads(pdk.Deck.to_json(deck))  # same spec
+    assert "\\u03" not in compact and "\n" not in compact  # Greek as UTF-8, no padding
+    pts = next(x for x in json.loads(compact)["layers"] if x["id"] == components.MAP_LAYER)
+    assert "title" not in pts["data"][0] and {"lid", "price", "hood"} <= set(pts["data"][0])
