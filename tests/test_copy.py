@@ -13,7 +13,7 @@ import re
 import pytest
 
 from .test_rent_guide import rent_env  # noqa: F401  (pytest fixture: rentals + fake assistant)
-from .test_ui_gauntlet import PAGES, env, fresh  # noqa: F401, F811  (env is a pytest fixture)
+from .test_ui_gauntlet import PAGES, env, fresh, goto  # noqa: F401, F811  (env is a pytest fixture)
 
 # Latin-alphabet words of 4+ letters that may appear. Everything else must be Greek.
 LATIN_ALLOWED = {
@@ -133,7 +133,7 @@ def _search_example_with_advice(env):
 def _favourite_and_details(env):
     at = fresh("Αναζήτηση")
     next(b for b in at.button if b.label == "Αγαπημένο").click().run()
-    at.radio(key="page").set_value("Αγαπημένα").run()
+    goto(at, "Αγαπημένα")
     return at
 
 
@@ -141,7 +141,7 @@ def _saved_search(env):
     at = fresh("Αναζήτηση")
     at.button(key="ex0").click().run()
     at.button(key="save_mandate").click().run()
-    at.radio(key="page").set_value("Αποθηκευμένες αναζητήσεις").run()
+    goto(at, "Αποθηκευμένες αναζητήσεις")
     return at
 
 
