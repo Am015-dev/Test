@@ -1411,6 +1411,13 @@ def page_map(listings: list[dict]) -> None:
     approx = sum(1 for d in shown if d.get("location_precision") != "exact")
     noun = "αγγελία" if len(shown) == 1 else "αγγελίες"
     st.markdown(f"**{fmt._gr_int(len(shown))} {noun} στον χάρτη**")
+    exact = len(shown) - approx
+    st.caption(
+        f"Μόνο {fmt._gr_int(exact)} αγγελίες έχουν ακριβή θέση· οι υπόλοιπες στο κέντρο της "
+        "περιοχής τους."
+        if exact
+        else "Καμία αγγελία δεν έχει ακριβή θέση· όλες είναι στο κέντρο της περιοχής τους."
+    )
     hidden_unfinished = sum(1 for d in listings if d.get("is_unfinished"))
     unchecked = sum(1 for d in shown if not d.get("page_checked"))
     notes = []
@@ -1420,8 +1427,6 @@ def page_map(listings: list[dict]) -> None:
         notes.append(
             f"{fmt._gr_int(unchecked)} δεν έχουν ελεγχθεί ακόμα (δεν ξέρουμε αν είναι έτοιμες)"
         )
-    if approx:
-        notes.append(f"{fmt._gr_int(approx)} με θέση κατά προσέγγιση (κέντρο περιοχής)")
     if no_loc:
         notes.append(f"{fmt._gr_int(no_loc)} ταιριάζουν αλλά δεν έχουν θέση")
     if notes:
@@ -1430,18 +1435,28 @@ def page_map(listings: list[dict]) -> None:
         st.info("Καμία αγγελία δεν ταιριάζει — χαλάρωσε την τιμή, το έτος ή την περιοχή.")
         return
     components.results_map(shown, key="map_chart", height=420)
-    st.caption(buyer.SCORE_LEGEND, help=buyer.SCORE_HELP)
 
     # The best few as the same cards as the search page (not a wide table).
     from scout import market_intel
 
     intel = market_intel.build(listings)
-    top = sorted(shown, key=lambda d: d.get("score") or 0, reverse=True)[:5]
+    # Same ranking as the search page's default sort, so the two pages agree.
+    from scout import nl_search
+    from scout.nl_search import SearchFilters
+
+    rank = buyer.SORTS[next(iter(buyer.SORTS))]
+    views = {d["id"]: buyer.buyer_view(d, intel) for d in shown}
+
+    def _key(d: dict):
+        m = nl_search.match(d, SearchFilters())
+        return rank(m[0] if m else 0, views[d["id"]], d)
+
+    top = sorted(shown, key=_key)[:5]
     st.markdown("#### Οι 5 καλύτερες στον χάρτη")
     for d in top:
         buyer.result_card(
             d,
-            buyer.buyer_view(d, intel),
+            views[d["id"]],
             "m",
             [("Λεπτομέρειες", buyer.open_detail, (d["id"],)), buyer._star_action(d)],
         )
@@ -2366,15 +2381,15 @@ def _pick_page() -> None:
 
 
 def _data_status(listings: list[dict]) -> str:
-    """«Αγγελίες XE.gr · ενημέρωση ΗΗ/ΜΜ · N ενεργές · M ελεγμένες σελίδες» from the data."""
+    """One line that fits 390 px: «XE.gr · ΗΗ/ΜΜ · N ενεργές · M ελεγμένες», from the data."""
     last_up = _last_updated(listings)
     if last_up is None:
         return "Δεν υπάρχουν δεδομένα ακόμα."
     active = sum(1 for d in listings if d.get("is_fresh", True))
     checked = sum(1 for d in listings if d.get("page_checked"))
     return (
-        f"Αγγελίες XE.gr · ενημέρωση {last_up:%d/%m} · {fmt._gr_int(active)} ενεργές · "
-        f"{fmt._gr_int(checked)} ελεγμένες σελίδες"
+        f"XE.gr · {last_up:%d/%m} · {fmt._gr_int(active)} ενεργές · "
+        f"{fmt._gr_int(checked)} ελεγμένες"
     )
 
 
@@ -2396,6 +2411,7 @@ def main() -> None:
         # «Αγγελία» needs a selected listing: reachable from cards only, listed only while open.
         shown = [p for p in pages if p != buyer.NAV_DETAIL or st.session_state.get("page") == p]
         page = st.radio("Σελίδα", shown, key="page", label_visibility="collapsed")
+        st.button("Ανανέωση δεδομένων", key="refresh", on_click=_refresh_data, width="stretch")
     # Pills mirror the current page (pages also navigate by setting session_state["page"]).
     st.session_state["nav_pill"] = _PILL_OF.get(page)
     st.pills(
@@ -2406,9 +2422,7 @@ def main() -> None:
         label_visibility="collapsed",
     )
     listings = get_listings()
-    with st.container(horizontal=True, vertical_alignment="center", wrap=False):
-        st.caption(_data_status(listings), width="stretch")
-        st.button("Ανανέωση", key="refresh", on_click=_refresh_data, width="content")
+    st.caption(_data_status(listings))
 
     if pages[page] in (page_opportunities, page_today):
         st.markdown(f"## {page}")

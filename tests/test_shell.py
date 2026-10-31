@@ -45,9 +45,9 @@ def test_every_short_label_routes_to_its_nav_key(env, short):  # noqa: F811
 
 def test_data_status_line_has_greek_numbers_and_no_english(env):  # noqa: F811
     at = _app()
-    line = next(c.value for c in at.caption if c.value.startswith("Αγγελίες XE.gr"))
+    line = next(c.value for c in at.caption if c.value.startswith("XE.gr ·"))
     assert re.fullmatch(
-        r"Αγγελίες XE\.gr · ενημέρωση \d\d/\d\d · [\d.]+ ενεργές · [\d.]+ ελεγμένες σελίδες",
+        r"XE\.gr · \d\d/\d\d · [\d.]+ ενεργές · [\d.]+ ελεγμένες",
         line,
     ), line
     assert not re.search(r"[A-Za-z]{3,}", line.replace("XE.gr", ""))
@@ -128,3 +128,11 @@ def test_map_filters_sit_in_one_expander(env):  # noqa: F811
     at.pills(key="nav_pill").set_value("Χάρτης").run()
     ok(at, "map")
     assert len(at.expander) == 1 and at.expander[0].label == "Φίλτρα"
+
+
+def test_status_is_one_short_line_and_refresh_lives_in_the_sidebar(env):  # noqa: F811
+    at = _app()
+    line = next(c.value for c in at.caption if c.value.startswith("XE.gr ·"))
+    assert len(line) <= 48  # one line at 390 px
+    assert any(b.key == "refresh" for b in at.sidebar.button)
+    assert not any(b.key == "refresh" for b in at.main.button)

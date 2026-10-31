@@ -92,3 +92,22 @@ def test_score_color_runs_red_to_green():
     red, green = components.score_color(0), components.score_color(70)
     assert red[0] > red[1] and green[1] > green[0]
     assert components.score_color(None) == [150, 150, 160]
+
+
+def test_map_colours_by_gross_yield_in_three_bands():
+    low, mid, high = (components.yield_color(g) for g in (0.03, 0.04, 0.06))
+    assert len({tuple(low), tuple(mid), tuple(high)}) == 3
+    assert components.yield_color(0.035) == mid and components.yield_color(0.05) == mid
+    assert components.yield_color(None) == [150, 150, 160]  # no rent figure: grey
+    d = {"price": 200_000, "est_monthly_rent": 700}
+    assert components.gross_yield_of(d) == pytest.approx(0.042)
+    assert components.gross_yield_of({"price": 200_000}) is None
+
+
+def test_map_page_says_how_few_positions_are_exact(env):  # noqa: F811
+    at = fresh(MAP)
+    first = next(c.value for c in at.caption if "θέση" in c.value and "κέντρο" in c.value)
+    assert re.match(
+        r"(Μόνο [\d.]+ αγγελίες έχουν ακριβή θέση· οι υπόλοιπες στο κέντρο|Καμία)", first
+    )
+    assert not any("Σκορ 0–100" in c.value for c in at.caption)
