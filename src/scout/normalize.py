@@ -13,6 +13,7 @@ from datetime import datetime
 
 from .data_quality_guards import clean_future_years
 from .models import Listing
+from .place_names import greek_place
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,11 @@ def normalize(raw: dict, now: datetime | None = None) -> Listing | None:
     payload["year_built"], payload["renovated_year"] = clean_future_years(
         payload.get("year_built"), payload.get("renovated_year"), current_year=now.year
     )
+
+    # One Greek name per place: a Latin «Nea Smyrni» / «Athina (Κυψέλη)» from a portal is
+    # stored in XE's Greek form (place_names.py); values it cannot map are kept as they are.
+    for key in ("neighborhood", "address"):
+        payload[key] = greek_place(payload.get(key))
 
     # Collectors that don't detect it omit the key; a None must not fail the bool field.
     payload["is_unfinished"] = bool(payload.get("is_unfinished"))
