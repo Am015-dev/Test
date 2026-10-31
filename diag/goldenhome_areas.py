@@ -21,7 +21,9 @@ REGIONS = [
     "athens-eastern-suburbs",
     "piraeus-suburbs",
 ]
-ITEM = re.compile(r'class="dropdown-item" href="/property/pwlisi/(perioxi-[a-z0-9-]+)">([^<]+?)\s*</a>')
+ITEM = re.compile(
+    r'class="dropdown-item" href="/property/pwlisi/(perioxi-[a-z0-9-]+)">([^<]+?)\s*</a>'
+)
 
 s = requests.Session()
 s.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "el-GR,el;q=0.9"})

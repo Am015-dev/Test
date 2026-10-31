@@ -1,30 +1,48 @@
-# Diagnostic only: survey Greek portals from a GitHub runner (the dev sandbox is blocked).
-# Runs on push to ws/sources or by hand; prints to the job log. Never writes to the DB branch.
+# Diagnostic only: survey Greek portals and smoke-test the plain-HTTP collectors from a
+# GitHub runner (the dev sandbox is blocked). Runs on push to ws/sources or by hand; prints to
+# the job log and writes only to a throwaway SQLite file — never to the `data` branch.
 name: diag-sources
 on:
   push:
     branches: [ws/sources]
-    paths: [diag/**, .github/workflows/diag-sources.yml, src/scout/collectors/**]
+    paths:
+      - diag/**
+      - scripts/smoke_sources.py
+      - src/scout/collectors/**
+      - .github/workflows/diag-sources.yml
   workflow_dispatch:
+    inputs:
+      area:
+        description: "Area for the collector smoke run"
+        default: "Cholargos"
+      sources:
+        description: "SOURCES for the smoke run"
+        default: "xe,goldenhome"
 permissions:
   contents: read
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: pip install -e . -q
-      - name: Golden Home area slugs
-        run: python diag/goldenhome_areas.py
-      - name: Probe search pages (dumps for fixtures)
+      - name: Survey portals (robots.txt, homepage, search page)
         run: >-
-          python diag/sources_probe.py --no-home --only remax,goldenhome
-          --grep 'xolarg|holarg|pwliseis-katoikies|/property/view/|page='
-          --dump remax,goldenhome
-          --url remax=https://www.remax.gr/pwliseis-katoikies/101-athhna-boreia-proastia
-          --url goldenhome=https://goldenhome.gr/property/pwlisi/perioxi-holargos
+          python diag/sources_probe.py
+          --url remax=https://www.remax.gr/
           --url goldenhome=https://goldenhome.gr/property/pwlisi/katoikies/perioxi-holargos
+          --url era=https://era.gr/
+          --url noikaki=https://noikaki.gr/search
+      - name: Smoke the collectors for one area (throwaway DB)
+        timeout-minutes: 30
+        env:
+          DATABASE_URL: sqlite:////tmp/smoke.db
+          SOURCES: ${{ inputs.sources || 'xe,goldenhome' }}
+          SCRAPE_DETAIL_PAGES: "false"
+          SCRAPE_REQUEST_MIN_S: "4"
+          SCRAPE_REQUEST_MAX_S: "7"
+        run: python scripts/smoke_sources.py --area "${{ inputs.area || 'Cholargos' }}"
