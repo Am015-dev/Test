@@ -27,10 +27,11 @@ import random
 import time
 from datetime import datetime, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import case, or_, select
 
 from scout.collectors.parse_helpers import parse_private_seller, parse_rent
 from scout.collectors.xe import (
+    UNFINISHED_CHECK_SINCE,
     XeCollector,
     parse_detail_coordinates,
     parse_detail_jsonld,
@@ -40,6 +41,7 @@ from scout.collectors.xe import (
 from scout.config import get_settings, load_strategy
 from scout.db import init_db, session_scope
 from scout.models import ListingRow
+from scout.picks import STATIONS
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("enrich_details")
@@ -69,7 +71,9 @@ def _incomplete_xe_rows(session, limit: int) -> list[ListingRow]:
 
 
 def _new_build_rows(session, limit: int) -> list[ListingRow]:
-    """Recent, never-checked listings of new buildings (≤10 years), cheapest-per-m² first.
+    """Recent listings of new buildings (≤10 years) not yet read with the under-construction
+    check — those in a rail station's neighbourhood first (the ones «Βρες μου σπίτι»
+    recommends), then cheapest per m².
 
     Their results-page cards say "νεόδμητο 2025" whether the flat is finished or still a
     shell sold off-plan; only the listing's own page says "Υπό κατασκευή" / "παράδοση
@@ -79,9 +83,18 @@ def _new_build_rows(session, limit: int) -> list[ListingRow]:
     stmt = (
         select(ListingRow)
         .where(ListingRow.source == "xe", ListingRow.status == "active")
-        .where(ListingRow.detail_checked_at.is_(None), ListingRow.excluded.is_(False))
+        .where(
+            or_(
+                ListingRow.detail_checked_at.is_(None),
+                ListingRow.detail_checked_at < UNFINISHED_CHECK_SINCE,
+            ),
+            ListingRow.excluded.is_(False),
+        )
         .where(ListingRow.last_seen >= recent, ListingRow.year_built >= year - 10)
-        .order_by(ListingRow.price_per_m2)
+        .order_by(
+            case((or_(*(ListingRow.neighborhood.contains(k) for k in STATIONS)), 0), else_=1),
+            ListingRow.price_per_m2,
+        )
         .limit(limit)
     )
     return list(session.scalars(stmt).all())

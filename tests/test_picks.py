@@ -66,3 +66,34 @@ def test_checked_pages_rank_first_and_unchecked_are_flagged():
     assert [p.listing["id"] for p in got] == [2, 1]
     assert got[0].checked and not got[1].checked
     assert any("δεν έχει ελεγχθεί" in r for r in got[1].risks)
+
+
+def test_approved_go_first_and_dropped_leave_so_the_next_moves_up():
+    from scout.ui.find import arrange
+
+    found = [
+        picks.Pick(listing={"source": "xe", "source_id": str(i)}, rank_score=0, rent=0,
+                   rent_low=0, rent_high=0, gross=0, net=0, offer=0, station=None)
+        for i in range(5)
+    ]  # fmt: skip
+    shown, dropped = arrange(found, {"xe:0": "no", "xe:3": "ok"})
+    assert [p.listing["source_id"] for p in shown] == ["3", "1", "2", "4"]
+    assert [p.listing["source_id"] for p in dropped] == ["0"]
+
+
+def test_review_verdicts_persist_and_approving_stars(monkeypatch):
+    import requests
+
+    from scout import shortlist as sl
+
+    from .test_shortlist import FakeGist
+
+    monkeypatch.setattr(requests, "request", FakeGist().request)
+    monkeypatch.setattr(sl, "_gist_id", None)
+    monkeypatch.setattr(sl, "_recent", None)
+    monkeypatch.setenv("GITHUB_TOKEN", "x")
+    sl.set_review("xe:1", "ok")
+    sl.set_review("xe:2", "no")
+    assert sl.review_map() == {"xe:1": "ok", "xe:2": "no"} and sl.watch_set() == {"xe:1"}
+    sl.set_review("xe:2", None)
+    assert sl.review_map() == {"xe:1": "ok"}
