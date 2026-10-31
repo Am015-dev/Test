@@ -27,16 +27,27 @@ from ..scoring import investment_archetype
 from ..strategy_fit import strategy_tags as _strategy_tags
 
 
-def _market_age_days(row: ListingRow) -> tuple[int | None, str | None]:
-    """Days on market and what they are counted from: the portal's own posting date when we
-    have it (``"listed"``), else when we first saw the listing (``"seen"``). The posting date
-    wins even when newer: a re-posted ad restarts its clock, and counting from our older
-    sighting showed «108 μέρες» next to a listing dated two days ago."""
-    if row.listed_date is not None:
-        return max((datetime.utcnow() - row.listed_date).days, 0), "listed"
-    if row.first_seen is not None:
-        return max((datetime.utcnow() - row.first_seen).days, 0), "seen"
-    return None, None
+def _market_age_days(row: ListingRow) -> tuple[int | None, str | None, datetime | None]:
+    """(days on market, basis, re-post date).
+
+    Days count from the EARLIEST evidence that the flat was for sale: the portal's posting
+    date or our first sighting, whichever is older. XE lets an agent refresh an ad, which
+    resets its posting date; counting from that showed «2 μέρες» for a flat we had watched
+    for 108 days. Basis is ``"listed"`` when the posting date is the earliest evidence,
+    ``"seen"`` when our first sighting is. The third value is the posting date when it is
+    more than a day AFTER our first sighting (the ad was re-posted), else None."""
+    now = datetime.utcnow()
+    listed, seen = row.listed_date, row.first_seen
+    if listed is None and seen is None:
+        return None, None, None
+    if listed is not None and (seen is None or listed <= seen):
+        start, basis = listed, "listed"
+    else:
+        start, basis = seen, "seen"
+    relisted = (
+        listed if listed is not None and seen is not None and (listed - seen).days >= 1 else None
+    )
+    return max((now - start).days, 0), basis, relisted
 
 
 def _building_age(year_built: int | None, renovated_year: int | None) -> int | None:
@@ -90,7 +101,7 @@ def _row_to_dict(
     area_median_ppm2: float | None = None,
 ) -> dict:
     price_dropped = bool(first_price and row.price < first_price)
-    days_on_market, dom_basis = _market_age_days(row)
+    days_on_market, dom_basis, relisted_on = _market_age_days(row)
     # A confident fair value is exactly the case where value_gap_pct survived the
     # valuation confidence + real-attributes gate (None otherwise).
     value_confident = row.value_gap_pct is not None
@@ -177,6 +188,7 @@ def _row_to_dict(
         "listed_date": row.listed_date,
         "days_on_market": days_on_market,
         "dom_basis": dom_basis,  # "listed" (posting date) | "seen" (our first sighting)
+        "relisted_on": relisted_on,  # posting date when the ad was re-posted after we saw it
         "suggested_offer": deal.suggested_offer if deal else None,
         "offer_discount_pct": deal.discount_pct if deal else None,
         "deal_thesis": deal.thesis if deal else None,
@@ -318,6 +330,7 @@ def _collapse_relistings(rows: list[dict]) -> list[dict]:
             oldest = max(aged, key=lambda m: m["days_on_market"])  # oldest posting
             rep["days_on_market"] = oldest["days_on_market"]
             rep["dom_basis"] = oldest.get("dom_basis")
+            rep["relisted_on"] = oldest.get("relisted_on")
         dates = [m.get("listed_date") for m in members if m.get("listed_date") is not None]
         if dates:
             rep["listed_date"] = min(dates)
