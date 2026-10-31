@@ -289,14 +289,31 @@ def covered_areas(listings: list[dict]) -> list[tuple[str, int]]:
     return [(a, c) for a, c in n.most_common() if c >= MIN_AREA]
 
 
+_ACC = (("ος", "ο"), ("ας", "α"), ("ης", "η"), ("οι", "ους"))  # nominative → accusative
+
+
+def accusative(name: str) -> str:
+    """The area name after «Σου προτείνω …»: masculine endings move to the accusative
+    (Χολαργός → Χολαργό, Αμπελόκηποι → Αμπελόκηπους, Άγιος Δημήτριος → Άγιο Δημήτριο);
+    feminine and neuter names (Νέα Σμύρνη, Γαλάτσι, Παπάγου) stay as they are."""
+    words = []
+    for w in name.split():
+        for end, acc in _ACC:
+            if len(w) > len(end) + 1 and w.endswith(end):
+                w = w[: -len(end)] + acc
+                break
+        words.append(w)
+    return " ".join(words)
+
+
 def recommend(
     found: list[picks.Pick], facts: dict, goal: str, budget: int | None = None
 ) -> str | None:
-    """One sentence: the area the list points to for ``goal`` and the numbers behind it.
-
-    Candidates are the areas of the listed flats; yield → highest median gross yield of the
-    flats there; safety → most active listings in the area (``AreaInsight.n_fresh``, else the
-    flats listed); growth → highest median growth points, then yield."""
+    """One spoken sentence: «Σου προτείνω Αμπελόκηπους: εκεί βγαίνει 3,6 % και 17 από τα 35
+    σπίτια είναι εκεί.» The area is the one the list points to for ``goal``: yield → highest
+    median gross yield of the flats there; safety → most active listings in the area
+    (``AreaInsight.n_fresh``, else the flats listed); growth → highest median growth points,
+    then yield. ``budget`` is kept for the caller (see ``over_budget``)."""
     if not found:
         return None
     by: dict[str, list[picks.Pick]] = {}
@@ -320,43 +337,34 @@ def recommend(
     }
     area = max(by, key=keys.get(goal, keys["yield"]))
     ps, x = by[area], facts.get(area)
-    out = (
-        f"Πρόταση: **{html.escape(area)}** · μικτή απόδοση "
-        f"{picks.gr_pct(med(ps, lambda p: p.gross))}  \n"
-        + (
-            "Η μόνη αγγελία της λίστας"
-            if len(found) == 1
-            else f"Διάμεση στις {len(ps)} από τις {len(found)} αγγελίες της λίστας εκεί"
-        )
-    )
-    extra = []
-    if goal == "yield" and x is not None and x.rent_ppm:
-        n = f" από {x.rent_samples} αγγελίες ενοικίασης" if x.rent_samples else ""
-        extra.append(f"ενοίκιο περιοχής {picks.gr_num(x.rent_ppm)} €/τ.μ.{n}")
-    if goal == "safety" and x is not None:
-        extra.append(f"{x.n_fresh} αγγελίες πώλησης στην περιοχή")
-        if x.median_dom:
-            extra.append(f"διάμεσα {x.median_dom:.0f} μέρες στην αγορά")
-    if goal == "growth":
-        stations = sorted({p.station for p in ps if p.station})
-        if stations:
-            extra.append(", ".join(stations[:2]))
+    why = f"εκεί βγαίνει {picks.gr_pct(med(ps, lambda p: p.gross))}"
+    if goal == "safety" and x is not None and x.n_fresh:
+        why = f"εκεί πουλιούνται τα περισσότερα σπίτια ({buyer._num(x.n_fresh)})"
+    elif goal == "growth":
         if l4 := picks.line4_stations(area):
-            extra.append(f"Γραμμή 4: {', '.join(l4[:2])}")
-        if x is not None and x.new_premium is not None:
-            extra.append(f"νεόδμητα {round(x.new_premium * 100):+d} % από τα παλιά")
-    out += " · " + " · ".join(extra) if extra else ""
-    out = out if out.endswith(".") else out + "."
+            why = f"εκεί έρχεται η Γραμμή 4 ({l4[0]})"
+        elif stations := sorted({p.station for p in ps if p.station}):
+            why = f"εκεί έχει σταθμό ({stations[0]})"
+    where = (
+        "είναι το μόνο σπίτι που βρήκα"
+        if len(found) == 1
+        else f"{len(ps)} από τα {len(found)} σπίτια είναι εκεί"
+    )
+    return f"Σου προτείνω {html.escape(accusative(area))}: {why} και {where}."
+
+
+def over_budget(found: list[picks.Pick], budget: int | None) -> str | None:
+    """Why the first of the list costs more than the budget (below the list, C17)."""
+    if not found or not budget:
+        return None
     top = found[0].listing
-    if budget and top.get("price") and top["price"] > budget:
-        top_area = area_insights.area_name(top.get("neighborhood"))
-        where = f", {html.escape(top_area)}" if top_area != area else ""
-        out += (
-            f"  \nΗ 1η της λίστας ({buyer.eur(top['price'])}{where}) είναι "
-            f"{buyer.eur(top['price'] - budget)} πάνω από τα {buyer.eur(budget)} που είπες.  \n"
-            f"Δείχνω έως {round(picks.BUDGET_BAND * 100)} % πάνω από το ποσό σου."
-        )
-    return out
+    if not top.get("price") or top["price"] <= budget:
+        return None
+    return (
+        f"Η 1η της λίστας ({buyer.eur(top['price'])}) είναι {buyer.eur(top['price'] - budget)} "
+        f"πάνω από τα {buyer.eur(budget)} που είπες. Δείχνουμε έως "
+        f"{round(picks.BUDGET_BAND * 100)} % πάνω από το ποσό σου."
+    )
 
 
 def loan_summary(found: list[picks.Pick]) -> str | None:
@@ -682,9 +690,9 @@ METHOD = """
 def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> None:
     """The compact card (five lines, C3): everything else — the title, net yield, loan,
     offer, the risks to check and the listing's own words — sits in «Από πού βγαίνουν».
-    Two buttons; «Εγκρίνω» / «Δεν μου κάνει» as a second row on the first ten only (and on
-    any card already approved, so it can be undone). ``has_map`` is kept for the caller: the
-    map is the «Χάρτης» toggle above the list."""
+    Under it the link to the ad, full width, then exactly two buttons, «Λεπτομέρειες» and
+    «Αγαπημένο» (C17: «Εγκρίνω» / «Δεν μου κάνει» live on the saved-searches page only).
+    ``approved`` and ``has_map`` are kept for the caller."""
     d = p.listing
     shown = {**d, "est_monthly_rent": p.rent, "rent_estimated": True, "listed_rent": None}
     more = [d["title"]] if d.get("title") else []
@@ -696,7 +704,7 @@ def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> No
         more.append(f"{GOAL_CHIP[p.goal].capitalize()}: " + " · ".join(why))
     more.append(
         f"Πρώτη προσφορά ~{buyer.eur(p.offer)}"
-        + (" (ιδιώτης πωλητής)" if d.get("is_private_seller") else "")
+        + (" (πουλά ιδιώτης)" if d.get("is_private_seller") else "")
     )
     more += [f"Έλεγξε: {r}" for r in p.risks]
     if p.excerpt:
@@ -706,7 +714,7 @@ def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> No
             buyer.card_html(shown, adv, compact=True, lead=f"{i}.", more=more),
             unsafe_allow_html=True,
         )
-        key = shortlist.lkey(d)
+        buyer.ad_link(d, f"pick-{d['id']}")
         star, toggle, args, kind = buyer._star_action(d)
         cols = st.columns(2)
         cols[0].button(
@@ -718,33 +726,6 @@ def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> No
         )
         cols[1].button(
             star, key=f"pick-fav-{d['id']}", on_click=toggle, args=args, type=kind, width="stretch"
-        )
-        if i > picks.PAGE and not approved:
-            return
-        cols = st.columns(2)
-        if approved:
-            cols[0].button(
-                "Αναίρεση",
-                key=f"pick-undo-{d['id']}",
-                on_click=set_verdict,
-                args=(key, None),
-                width="stretch",
-            )
-        else:
-            cols[0].button(
-                "Εγκρίνω",
-                key=f"pick-ok-{d['id']}",
-                on_click=set_verdict,
-                args=(key, "ok"),
-                type="primary",
-                width="stretch",
-            )
-        cols[1].button(
-            "Δεν μου κάνει",
-            key=f"pick-no-{d['id']}",
-            on_click=set_verdict,
-            args=(key, "no"),
-            width="stretch",
         )
 
 
@@ -901,8 +882,7 @@ def _results(g: dict, listings: list[dict]) -> None:
         else:
             st.info("Ούτε με έναν όρο λιγότερο βρίσκω κάτι. Άλλαξε το ποσό.")
     else:
-        if sentence := recommend(exact or every, area_facts, rules["goal"], budget):
-            st.markdown(sentence)
+        # C17: above the first card only the counts line and the recommendation.
         checked = sum(p.checked for p in every)
         if near or wide:
             st.markdown(counts_line(len(exact), near, what, checked, wide))
@@ -918,26 +898,11 @@ def _results(g: dict, listings: list[dict]) -> None:
                 f"**{len(every)}** αγγελίες {what}. "
                 f"Ελέγχθηκε η περιγραφή σε **{checked}** από αυτές."
             )
-        if g.get("loan") and (loan := loan_summary(every)):
-            st.markdown(loan)
-        if relax:
-            _relax(
-                relax,
-                f"Μόνο {len(exact)} ακριβώς όπως ζήτησες. Κάνε μόνιμο έναν όρο λιγότερο "
-                "(σε παρένθεση πόσες προστίθενται):",
-            )
-        facts = assistant_facts(every, g, area_facts, intel, rents, budget, rules["goal"])
-        _assistant_brief(facts)
+        if sentence := recommend(exact or every, area_facts, rules["goal"], budget):
+            st.markdown(sentence)
         n = st.session_state.setdefault("guide_shown", picks.PAGE)
         visible = every[:n]
         maplist = _maplist()
-        if maplist is not None:
-            st.toggle("Χάρτης", key="guide_map")
-            if st.session_state.get("guide_map"):
-                try:
-                    maplist.render([p.listing for p in visible], key="guide")
-                except Exception:
-                    st.caption("Ο χάρτης δεν φορτώθηκε.")
         for i, p in enumerate(visible, start=1):
             d = p.listing
             cmp = intel.comps(d)
@@ -954,6 +919,27 @@ def _results(g: dict, listings: list[dict]) -> None:
                     width="stretch",
                 )
         st.caption(f"Βλέπεις {buyer._num(len(visible))} από {buyer._num(len(every))}.")
+        # Below the list: the budget note, the loan line, the map, the relaxations, the
+        # assistant's brief and «Ρώτα με».
+        if note := over_budget(exact or every, budget):
+            st.caption(note)
+        if g.get("loan") and (loan := loan_summary(every)):
+            st.markdown(loan)
+        if maplist is not None:
+            st.toggle("Χάρτης", key="guide_map")
+            if st.session_state.get("guide_map"):
+                try:
+                    maplist.render([p.listing for p in visible], key="guide")
+                except Exception:
+                    st.caption("Ο χάρτης δεν φορτώθηκε.")
+        if relax:
+            _relax(
+                relax,
+                f"Μόνο {len(exact)} ακριβώς όπως ζήτησες. Κάνε μόνιμο έναν όρο λιγότερο "
+                "(σε παρένθεση πόσες προστίθενται):",
+            )
+        facts = assistant_facts(every, g, area_facts, intel, rents, budget, rules["goal"])
+        _assistant_brief(facts)
         _assistant_panel(facts)
     if dropped:
         _dropped(dropped)

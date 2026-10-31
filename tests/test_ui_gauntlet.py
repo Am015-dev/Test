@@ -260,10 +260,13 @@ def test_buyer_journey(env):
     next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
     ok(at, "details")
     assert at.session_state["page"] == DETAIL
-    # the listing page: what the listing says, rent & yield, comparables, no investor jargon
+    # the listing page (C17): the verdict first, then what the listing says, rent & yield and
+    # the comparables as collapsed sections; no investor jargon
     text = " ".join(m.value for m in at.markdown)
-    assert "Τι λέει η αγγελία" in text and "Ενοίκιο και απόδοση" in text
-    assert "#### Παρόμοια (" in text or "#### Λίγα παρόμοια" in text
+    labels = [e.label for e in at.expander]
+    assert "**Τι να κάνεις**" in text
+    assert "Τι λέει η αγγελία" in labels and "Ενοίκιο και απόδοση" in labels
+    assert any("από τα διπλανά (" in x or "Λίγα διπλανά" in x for x in labels)
     assert "12 × ενοίκιο ÷ τιμή" in " ".join(c.value for c in at.caption)
     assert "Έξοδα αγοράς" in text and "Καθαρή απόδοση" in text
     assert not any(w in text for w in ("Golden Visa", "Airbnb", "DSCR", "cap rate", "GRM"))
@@ -714,9 +717,9 @@ def test_listing_metric_delta_and_position_bar():
     assert buyer.confidence({**cmp, "n": 10}) == "Μέτρια"
     bar = buyer.position_bar(2100, cmp)
     assert "2.100 €/τ.μ." in bar and "2.700–3.400 €/τ.μ." in bar
-    assert buyer.comps_text({"cmp": cmp}) == "Παρόμοια (6): 30 % κάτω"
-    assert buyer.comps_text({"cmp": {**cmp, "pct": 0.12}}) == "Παρόμοια (6): 12 % πάνω"
-    assert buyer.comps_text({}) == "Λίγα παρόμοια για σύγκριση"
+    assert buyer.comps_text({"cmp": cmp}) == "30 % κάτω από τα διπλανά (6)"
+    assert buyer.comps_text({"cmp": {**cmp, "pct": 0.12}}) == "12 % πάνω από τα διπλανά (6)"
+    assert buyer.comps_text({}) == "Λίγα διπλανά για σύγκριση"
     # st.metric reads the sign from an ASCII minus: cheaper must render green/down
     assert f"{cmp['pct']:+.0%}".startswith("-")
 
