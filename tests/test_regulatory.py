@@ -62,3 +62,41 @@ if __name__ == "__main__":
         if callable(fn) and getattr(fn, "__name__", "").startswith("test_"):
             fn()
     print("ok")
+
+
+def test_flags_frozen_zone_by_greek_subarea_and_latin_search_area():
+    from scout.regulatory import flags
+
+    for d in (
+        {"neighborhood": "Αθήνα (Κουκάκι)"},
+        {"neighborhood": "Αθήνα", "search_area": "Koukaki"},
+        {"neighborhood": "Αθήνα (Νέος Κόσμος)", "search_area": "Neos Kosmos"},
+    ):
+        out = flags(d)
+        assert len(out) == 1 and "δεν εκδίδεται νέο ΑΜΑ" in out[0], d
+        assert "31/12/2026" in out[0] and "ν. 5170/2025" in out[0]
+
+
+def test_flags_watch_zone_is_not_a_ban():
+    from scout.regulatory import flags
+
+    out = flags({"neighborhood": "Αθήνα (Αμπελόκηποι)", "search_area": "Ampelokipoi"})
+    assert len(out) == 1 and "επιτρέπεται σήμερα" in out[0] and "δεν εκδίδεται" not in out[0]
+
+
+def test_flags_nothing_for_suburbs_or_unknown():
+    from scout.regulatory import flags
+
+    assert flags({"neighborhood": "Χολαργός (Κέντρο)", "search_area": "Cholargos"}) == []
+    assert flags({}) == []
+
+
+def test_flags_golden_visa_and_subsidy_only_when_data_supports():
+    from scout.regulatory import flags
+
+    big = flags({"price": 900_000, "area_m2": 140, "energy_class": "Δ", "neighborhood": "Μαρούσι"})
+    assert any(f.startswith("Golden Visa: επιλέξιμο") for f in big)
+    assert any("Εξοικονομώ" in f and "κλάση Δ" in f for f in big)
+    small = flags({"price": 300_000, "area_m2": 140, "energy_class": "Β"})
+    assert small == []
+    assert not any(ord(c) > 0x2600 and c in "❌✓⚠🛂🔧" for f in big for c in f)  # no emoji

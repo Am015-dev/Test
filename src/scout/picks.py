@@ -6,12 +6,43 @@ we have read first, real photos, then rent return, price against like-for-like f
 negotiate — and writes one short line per number with its basis. When too little qualifies,
 ``relaxations`` says which single rule to loosen and exactly how many flats that adds (same
 ``find`` logic, not an estimate). Pure functions over the listing dicts the UI already loads.
+
+Ranking by goal (the «Οδηγός» question «Τι σε νοιάζει πιο πολύ;»). Every listing gets four
+part scores, in points; ``rank_score`` = Σ ``GOAL_WEIGHTS[goal][part]`` × part. The sort is
+always: page read first, then >2 photos, then ``rank_score`` — a goal never lifts an unread
+page above a read one.
+
+=========  ===============================================================================
+part       points
+=========  ===============================================================================
+yield      1000 × gross yield (4,5 % → 45)
+value      price vs comparables (−15 %…+25 % → −6…+10) + 3 finished before this year
+           + 2 at 90+ days on market − 20 if >35 % under comparables (a warning, not a bonus)
+safety     6 each: page read · >2 photos · energy class stated · ≥8 comparables
+           · established area (≥50 active listings) · steady area (days-on-market
+           spread: stdev ≤ mean)
+growth     12 station today (from the neighbourhood name) · 12 Metro Line 4 station planned
+           for the listing (``metro_line4.line4_station`` when present) · 6 area
+           new-build premium ≤15 %
+           (``area_insights``, needs ``area_facts``)
+=========  ===============================================================================
+
+=========  =====  =====  ======  ======
+goal       yield  value  safety  growth
+=========  =====  =====  ======  ======
+yield      1.0    1.0    0.25    0.25
+safety     0.4    0.6    1.0     0.25
+growth     0.4    0.6    0.25    1.0
+=========  =====  =====  ======  ======
+
+With ``loan=True`` each pick carries the monthly instalment of a 70 % loan at 4 % over 25
+years (annuity) and ``cashflow`` = rent estimate − instalment.
 """
 
 from __future__ import annotations
 
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 
 from .area_insights import area_name
@@ -35,6 +66,66 @@ NEW_YEARS = 10  # "new" = built or renovated within this many years
 AGE_STEPS = (5, 10, 15, 20)  # the building-age limits the page offers
 BUDGET_BAND = 0.12  # ± around the stated budget
 TOP = 3
+PAGE = 10  # the «Οδηγός» shows the ranking 10 at a time
+
+GOALS = ("yield", "safety", "growth")
+GOAL_WEIGHTS: dict[str, dict[str, float]] = {
+    "yield": {"yield": 1.0, "value": 1.0, "safety": 0.25, "growth": 0.25},
+    "safety": {"yield": 0.4, "value": 0.6, "safety": 1.0, "growth": 0.25},
+    "growth": {"yield": 0.4, "value": 0.6, "safety": 0.25, "growth": 1.0},
+}
+SAFETY_PTS = 6
+STATION_PTS, LINE4_PTS, LOW_PREMIUM_PTS = 12, 12, 6
+ESTABLISHED = 50  # active listings in the area
+MANY_COMPS = 8
+LOW_PREMIUM = 0.15
+# The loan the «με δάνειο» answer assumes.
+LTV, RATE, YEARS = 0.70, 0.04, 25
+
+
+def instalment(price: float, ltv: float = LTV, rate: float = RATE, years: int = YEARS) -> float:
+    """Monthly annuity payment on a ``ltv`` × ``price`` loan."""
+    principal, r, n = price * ltv, rate / 12, years * 12
+    return principal / n if r == 0 else principal * r / (1 - (1 + r) ** -n)
+
+
+def line4_stations(area: str) -> list[str]:
+    """Planned Metro Line 4 stations in ``area`` (``metro_line4.line4_stations``, written by
+    the insights workstream); empty when that module is not there yet."""
+    try:
+        from . import metro_line4
+    except ImportError:
+        return []
+    return list(metro_line4.line4_stations(area) or [])
+
+
+def line4_station(d: dict) -> str | None:
+    """The planned Line 4 station for one listing (``metro_line4.line4_station``), or None."""
+    try:
+        from . import metro_line4
+    except ImportError:
+        return None
+    return metro_line4.line4_station(d)
+
+
+def area_stats(listings: list[dict]) -> dict[str, tuple[int, float | None, float | None]]:
+    """area → (active listings, mean days on market, stdev of days on market)."""
+    by: dict[str, list[int]] = {}
+    count: dict[str, int] = {}
+    for d in listings:
+        if not d.get("is_fresh", True):
+            continue
+        a = area_name(d.get("neighborhood"))
+        count[a] = count.get(a, 0) + 1
+        if d.get("days_on_market"):
+            by.setdefault(a, []).append(d["days_on_market"])
+    out = {}
+    for a, n in count.items():
+        doms = by.get(a, [])
+        mean = statistics.mean(doms) if len(doms) >= 5 else None
+        sd = statistics.stdev(doms) if len(doms) >= 5 else None
+        out[a] = (n, mean, sd)
+    return out
 
 
 def station(d: dict) -> str | None:
@@ -80,6 +171,26 @@ class Pick:
     lines: list[str] = field(default_factory=list)  # one short line per number, with its basis
     risks: list[str] = field(default_factory=list)
     excerpt: str | None = None  # the listing's own description, first ~300 characters
+    parts: dict[str, float] = field(default_factory=dict)  # yield/value/safety/growth points
+    reasons: dict[str, list[str]] = field(default_factory=dict)  # part → what earned points
+    instalment: int = 0  # €/month on a 70 % / 4 % / 25-year loan
+    cashflow: int = 0  # rent − instalment, €/month
+    loan: bool = False  # the buyer said «με δάνειο»: show the instalment line
+    goal: str = "yield"
+    offer_line: str = ""
+
+    @property
+    def loan_line(self) -> str:
+        """'Δόση ~1.110 €/μήνα → λείπουν 120 €' (or 'μένουν'), the «με δάνειο» answer."""
+        left = (
+            f"μένουν {_eur(self.cashflow)}"
+            if self.cashflow >= 0
+            else f"λείπουν {_eur(-self.cashflow)}"
+        )
+        return (
+            f"Δόση ~{_eur(self.instalment)}/μήνα (δάνειο {round(LTV * 100)} %, "
+            f"{gr_num(RATE * 100).replace(',0', '')} %, {YEARS} έτη) → {left}"
+        )
 
     def sort_key(self) -> tuple:
         # A page we have read beats one we have not, whatever its yield; real photos beat
@@ -127,8 +238,15 @@ def excerpt(text: str | None, limit: int = EXCERPT_CHARS) -> str | None:
     return text[:limit].rsplit(" ", 1)[0].rstrip(" ,.;:—-") + "…"
 
 
-def _build(d: dict, intel: Intel, rents: dict, year: int) -> Pick | None:
-    """Everything about one listing that does not depend on the buyer's filters."""
+def _build(
+    d: dict,
+    intel: Intel,
+    rents: dict,
+    year: int,
+    stats: dict | None = None,
+    area_facts: dict | None = None,
+) -> Pick | None:
+    """Everything about one listing that does not depend on the buyer's filters or goal."""
     rent_basis = area_rent(d, rents)
     if rent_basis is None:
         return None
@@ -151,13 +269,46 @@ def _build(d: dict, intel: Intel, rents: dict, year: int) -> Pick | None:
     checked = bool(d.get("page_checked"))
     few = bool(d.get("few_photos"))
     st_name = station(d)
-    rank = (
-        gross * 1000  # rent return leads
-        + max(min(gap, 0.25), -0.15) * 40
+    value = (
+        max(min(gap, 0.25), -0.15) * 40
         + (3 if built and built <= year - 1 else 0)  # finished, not "delivery this year"
         + (2 if dom >= 90 else 0)
         - (20 if too_cheap else 0)
     )
+    area = area_name(d.get("neighborhood"))
+    n_area, dom_mean, dom_sd = (stats or {}).get(area, (0, None, None))
+    safe = [
+        ("ελέγχθηκε η σελίδα", checked),
+        ("πάνω από 2 φωτογραφίες", (d.get("photo_count") or 0) > 2),
+        ("δηλώνει ενεργειακή κλάση", bool(d.get("energy_class"))),
+        (f"{cmp['n'] if cmp else 0} παρόμοια", bool(cmp and cmp["n"] >= MANY_COMPS)),
+        (f"{n_area} αγγελίες στην περιοχή", n_area >= ESTABLISHED),
+        ("σταθερός χρόνος πώλησης στην περιοχή", bool(dom_mean and dom_sd <= dom_mean)),
+    ]
+    fact = (area_facts or {}).get(area)
+    prem = getattr(fact, "new_premium", None)
+    l4 = line4_station(d)
+    grow = [
+        (st_name or "", bool(st_name), STATION_PTS),
+        (f"Γραμμή 4: {l4}" if l4 else "", bool(l4), LINE4_PTS),
+        (
+            f"νεόδμητα +{round(prem * 100)} % στην περιοχή" if prem is not None else "",
+            prem is not None and prem <= LOW_PREMIUM,
+            LOW_PREMIUM_PTS,
+        ),
+    ]
+    parts = {
+        "yield": gross * 1000,  # rent return
+        "value": value,
+        "safety": SAFETY_PTS * sum(ok for _, ok in safe),
+        "growth": sum(pts for _, ok, pts in grow if ok),
+    }
+    reasons = {
+        "safety": [t for t, ok in safe if ok],
+        "growth": [t for t, ok, _ in grow if ok],
+    }
+    rank = score(parts, "yield")
+    inst = instalment(d["price"])
     lines = [
         f"Ενοίκιο (εκτίμηση) ~{_eur(_r(rent, 10))}/μήνα ({gr_num(per_m2)} €/τ.μ. × "
         f"{d['area_m2']:g} τ.μ." + (", +10 % νεόδμητο" if new_premium > 1 else "") + ")",
@@ -197,11 +348,12 @@ def _build(d: dict, intel: Intel, rents: dict, year: int) -> Pick | None:
             if x
         )
     )
-    lines.append(
+    offer_line = (
         (f"{dom} {'μέρα' if dom == 1 else 'μέρες'} στην αγορά · " if dom else "")
         + f"Προσφορά: ξεκίνα από ~{_eur(offer)}"
         + (" (ιδιώτης πωλητής)" if d.get("is_private_seller") else "")
     )
+    lines.append(offer_line)
     risks = []
     if few:
         risks.append(FEW_PHOTOS)
@@ -233,7 +385,25 @@ def _build(d: dict, intel: Intel, rents: dict, year: int) -> Pick | None:
         lines=lines,
         risks=risks[:3],
         excerpt=excerpt(d.get("description")),
+        parts=parts,
+        reasons=reasons,
+        instalment=_r(inst, 10),
+        cashflow=_r(rent - inst, 10),
+        offer_line=offer_line,
     )
+
+
+def score(parts: dict[str, float], goal: str) -> float:
+    w = GOAL_WEIGHTS.get(goal, GOAL_WEIGHTS["yield"])
+    return sum(w[k] * parts.get(k, 0.0) for k in w)
+
+
+def _bedrooms_ok(d: dict, bedrooms: int | None) -> bool:
+    """``bedrooms`` 1 or 2 = exactly that; 3 = three or more; None = any."""
+    if bedrooms is None:
+        return True
+    n = d.get("bedrooms")
+    return n is not None and (n >= 3 if bedrooms >= 3 else n == bedrooms)
 
 
 def find(
@@ -246,16 +416,25 @@ def find(
     near_rail: bool = True,
     checked_only: bool = False,
     areas: list[str] | None = None,
+    bedrooms: int | None = None,
+    goal: str = "yield",
+    loan: bool = False,
+    area_facts: dict | None = None,
     year: int | None = None,
     top: int = TOP,
-    memo: dict[int, Pick | None] | None = None,
+    memo: dict | None = None,
 ) -> list[Pick]:
     """The ``top`` listings for ``budget`` (± BUDGET_BAND): read pages first, then real
-    photos, then best rent return. ``max_age=None`` = any building age. ``memo`` caches the
-    per-listing work between calls that only differ in the filters (see ``relaxations``)."""
+    photos, then ``rank_score`` for ``goal`` (module docstring). ``max_age=None`` = any
+    building age; ``areas`` = area names (``area_insights.area_name``); ``bedrooms`` see
+    ``_bedrooms_ok``; ``area_facts`` = area → ``AreaInsight`` for the growth part. ``memo``
+    caches the per-listing work between calls that only differ in the filters."""
     year = year or date.today().year
     rents = rent_index(rent_rows)
     memo = {} if memo is None else memo
+    if "_stats" not in memo:
+        memo["_stats"] = area_stats(listings)
+    stats = memo["_stats"]
     lo, hi = budget * (1 - BUDGET_BAND), budget * (1 + BUDGET_BAND)
     out: list[Pick] = []
     for d in listings:
@@ -274,10 +453,12 @@ def find(
             continue
         if areas and area_name(d.get("neighborhood")) not in areas:
             continue
+        if not _bedrooms_ok(d, bedrooms):
+            continue
         if id(d) not in memo:
-            memo[id(d)] = _build(d, intel, rents, year)
-        if memo[id(d)] is not None:
-            out.append(memo[id(d)])
+            memo[id(d)] = _build(d, intel, rents, year, stats, area_facts)
+        if (p := memo[id(d)]) is not None:
+            out.append(replace(p, rank_score=score(p.parts, goal), loan=loan, goal=goal))
     out.sort(key=Pick.sort_key, reverse=True)
     # One flat per building/listing group: skip near-identical units of the same block.
     seen: set[tuple] = set()
@@ -319,17 +500,22 @@ def relaxations(
     max_age: int | None = NEW_YEARS,
     near_rail: bool = True,
     checked_only: bool = False,
+    areas: list[str] | None = None,
+    bedrooms: int | None = None,
+    goal: str = "yield",
+    area_facts: dict | None = None,
     year: int | None = None,
     limit: int = 4,
 ) -> list[Relax]:
     """Up to ``limit`` single-rule relaxations that add flats, each with its exact count."""
-    memo: dict[int, Pick | None] = {}
+    memo: dict = {}
     now = {"budget": budget, "max_age": max_age, "near_rail": near_rail}
-    now["checked_only"] = checked_only
+    now |= {"checked_only": checked_only, "areas": areas, "bedrooms": bedrooms}
+    extra = {"goal": goal, "area_facts": area_facts}
 
     def ids(**kw) -> dict[int, bool]:
         args = {**now, **kw}
-        got = find(listings, intel, rent_rows, top=10**9, year=year, memo=memo, **args)
+        got = find(listings, intel, rent_rows, top=10**9, year=year, memo=memo, **extra, **args)
         return {id(p.listing): p.checked for p in got}
 
     base = ids()
@@ -341,6 +527,10 @@ def relaxations(
     options.append(("Προϋπολογισμός +10 %", {"budget": _r(budget * 1.1, 10_000)}))
     if near_rail:
         options.append(("Χωρίς όρο σταθμού", {"near_rail": False}))
+    if areas:
+        options.append(("Σε όλες τις περιοχές", {"areas": None}))
+    if bedrooms is not None:
+        options.append(("Χωρίς όρο υπνοδωματίων", {"bedrooms": None}))
     if checked_only:
         options.append(("Χωρίς όρο ελεγμένης περιγραφής", {"checked_only": False}))
     out = []

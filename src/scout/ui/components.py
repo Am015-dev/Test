@@ -406,29 +406,15 @@ def _status_gr(d: dict) -> str:
     return "Ελέγχθηκε η περιγραφή" if d.get("page_checked") else "Δεν έχει ελεγχθεί ακόμα"
 
 
-def results_map(
-    rows: list[dict],
-    key: str,
-    height: int = 420,
-    show_metro: bool = True,
-) -> None:
-    """Score-coloured, auto-zoomed map of listing dicts with a Greek tooltip.
+MAP_LAYER = "pts"  # pydeck layer id: selections arrive as selection["objects"]["pts"]
+_RING_LAYER = "sel"
+_SELECTED_ZOOM_EXACT, _SELECTED_ZOOM_APPROX = 15.0, 13.5
 
-    Rows without lat/lng are skipped (the caller explains how many). Approx locations are
-    jittered so they don't hide each other and are flagged in the tooltip."""
-    pts = [d for d in rows if d.get("lat") and d.get("lng")]
-    if not pts:
-        st.info("Καμία από αυτές τις αγγελίες δεν έχει θέση στον χάρτη.")
-        return
-    if len(pts) > _MAP_MAX_POINTS:
-        pts = sorted(pts, key=lambda d: d.get("score") or 0, reverse=True)[:_MAP_MAX_POINTS]
-        st.caption(
-            f"Εμφανίζονται οι πρώτες {fmt._gr_int(_MAP_MAX_POINTS)} — "
-            "περιόρισε την περιοχή ή την τιμή για να δεις όλες."
-        )
-    import pandas as pd
-    import pydeck as pdk
 
+def map_records(pts: list[dict]) -> list[dict]:
+    """One pydeck row per listing: position, colour/size and the Greek tooltip fields.
+
+    ``lid`` carries the listing id so a tapped point can be mapped back to its listing."""
     recs = []
     for d in pts:
         lat, lng = map_position(d)
@@ -438,6 +424,7 @@ def results_map(
         gy = gross_yield_of(d)
         recs.append(
             {
+                "lid": d.get("id"),
                 "lat": lat,
                 "lon": lng,
                 # exact positions solid; centroid positions small and ~40 % alpha
@@ -457,13 +444,62 @@ def results_map(
                 "prec": "θέση κατά προσέγγιση" if approx else "",
             }
         )
-    df = pd.DataFrame(recs)
+    return recs
+
+
+def selected_view(d: dict) -> tuple[float, float, float]:
+    """Centre + zoom for one selected listing: street level when exact, area level when the
+    position is the area centre (zooming further would fake precision we don't have)."""
+    lat, lng = map_position(d)
+    exact = d.get("location_precision") == "exact"
+    return lat, lng, _SELECTED_ZOOM_EXACT if exact else _SELECTED_ZOOM_APPROX
+
+
+def results_map(
+    rows: list[dict],
+    key: str,
+    height: int = 420,
+    show_metro: bool = True,
+    selected_id: int | None = None,
+    on_select=None,
+    legend: bool = True,
+):
+    """Yield-coloured, auto-zoomed map of listing dicts with a Greek tooltip.
+
+    Rows without lat/lng are skipped (the caller explains how many). Approx locations are
+    jittered so they don't hide each other and are flagged in the tooltip.
+
+    ``selected_id``: that listing is drawn larger with a dark ring and the map is centred on
+    it. ``on_select``: a callback (or "rerun") — tapping a point then selects it; the event
+    lands in ``st.session_state[key]`` with the tapped row under ``objects[MAP_LAYER]``.
+    ``legend=False`` leaves the colour legend to the caller (``map_legend()``).
+    Returns what ``st.pydeck_chart`` returns (the selection state when ``on_select`` is set)."""
+    pts = [d for d in rows if d.get("lat") and d.get("lng")]
+    if not pts:
+        st.info("Καμία από αυτές τις αγγελίες δεν έχει θέση στον χάρτη.")
+        return None
+    if len(pts) > _MAP_MAX_POINTS:
+        keep = sorted(pts, key=lambda d: d.get("score") or 0, reverse=True)[:_MAP_MAX_POINTS]
+        sel = [d for d in pts if selected_id is not None and d.get("id") == selected_id]
+        pts = keep + [d for d in sel if d not in keep]
+        st.caption(
+            f"Εμφανίζονται οι πρώτες {fmt._gr_int(_MAP_MAX_POINTS)} — "
+            "φίλτραρε περιοχή ή τιμή για να δεις όλες."
+        )
+    import pandas as pd
+    import pydeck as pdk
+
+    df = pd.DataFrame(map_records(pts))
     lat_c, lng_c, zoom = _map_view(df["lat"].tolist(), df["lon"].tolist())
     if sum(1 for d in pts if d.get("location_precision") != "exact") > len(pts) / 2:
         zoom = min(zoom, 13.5)  # mostly area-centroid points: don't zoom to fake street detail
+    chosen = next((d for d in pts if selected_id is not None and d.get("id") == selected_id), None)
+    if chosen is not None:
+        lat_c, lng_c, zoom = selected_view(chosen)
     layers = [
         pdk.Layer(
             "ScatterplotLayer",
+            id=MAP_LAYER,
             data=df,
             get_position="[lon, lat]",
             get_fill_color="fill",
@@ -475,35 +511,57 @@ def results_map(
             pickable=True,
         )
     ]
+    if chosen is not None:
+        ring = df[df["lid"] == selected_id].assign(
+            fill=lambda x: x["fill"].map(lambda c: [*c[:3], 255])
+        )
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                id=_RING_LAYER,
+                data=ring,
+                get_position="[lon, lat]",
+                get_fill_color="fill",
+                get_radius=11,
+                radius_units="'pixels'",
+                stroked=True,
+                get_line_color=[17, 24, 39, 255],
+                line_width_units="'pixels'",
+                get_line_width=3,
+                pickable=False,
+            )
+        )
     if show_metro:
         from ..enrich import METRO_STATIONS
 
         metro = pd.DataFrame(
             {"lat": la, "lon": lo, "name": n} for n, (la, lo) in METRO_STATIONS.items()
         )
-        layers.append(
+        layers.insert(
+            0,
             pdk.Layer(
                 "ScatterplotLayer",
+                id="metro",
                 data=metro,
                 get_position="[lon, lat]",
                 get_fill_color=[30, 90, 255, 200],
                 get_radius=4,
                 radius_units="'pixels'",  # quoted: pydeck evals bare strings
-            )
+            ),
         )
     tooltip = {
         "html": "<b>{price}</b> · {m2} · {ppm2}<br/>{floor} · {year}<br/>{status}<br/>"
         "{yield}<br/>{hood}<br/><i>{prec}</i>",
         "style": {"fontSize": "14px", "maxWidth": "260px", "whiteSpace": "normal"},
     }
-    st.pydeck_chart(
-        pdk.Deck(
-            map_style="light",  # token-free Carto basemap
-            initial_view_state=pdk.ViewState(latitude=lat_c, longitude=lng_c, zoom=zoom),
-            layers=layers,
-            tooltip=tooltip,
-        ),
-        height=height,
-        key=key,
+    deck = pdk.Deck(
+        map_style="light",  # token-free Carto basemap
+        initial_view_state=pdk.ViewState(latitude=lat_c, longitude=lng_c, zoom=zoom),
+        layers=layers,
+        tooltip=tooltip,
     )
-    map_legend()
+    kw = {"on_select": on_select, "selection_mode": "single-object"} if on_select else {}
+    event = st.pydeck_chart(deck, height=height, key=key, **kw)
+    if legend:
+        map_legend()
+    return event

@@ -1413,8 +1413,8 @@ def page_map(listings: list[dict]) -> None:
     st.markdown(f"**{fmt._gr_int(len(shown))} {noun} στον χάρτη**")
     exact = len(shown) - approx
     st.caption(
-        f"Μόνο {fmt._gr_int(exact)} {'αγγελία έχει' if exact == 1 else 'αγγελίες έχουν'} "
-        "ακριβή θέση· οι υπόλοιπες στο κέντρο της περιοχής τους."
+        f"Μόνο {fmt._gr_int(exact)} αγγελίες έχουν ακριβή θέση· οι υπόλοιπες στο κέντρο της "
+        "περιοχής τους."
         if exact
         else "Καμία αγγελία δεν έχει ακριβή θέση· όλες είναι στο κέντρο της περιοχής τους."
     )
@@ -1422,20 +1422,13 @@ def page_map(listings: list[dict]) -> None:
     unchecked = sum(1 for d in shown if not d.get("page_checked"))
     notes = []
     if hidden_unfinished:
-        notes.append(
-            f"{fmt._gr_int(hidden_unfinished)} υπό κατασκευή "
-            f"{'δεν εμφανίζεται' if hidden_unfinished == 1 else 'δεν εμφανίζονται'}"
-        )
+        notes.append(f"{fmt._gr_int(hidden_unfinished)} υπό κατασκευή δεν εμφανίζονται")
     if unchecked:
         notes.append(
-            f"{fmt._gr_int(unchecked)} {'δεν έχει' if unchecked == 1 else 'δεν έχουν'} "
-            "ελεγχθεί ακόμα (δεν ξέρουμε αν είναι έτοιμες)"
+            f"{fmt._gr_int(unchecked)} δεν έχουν ελεγχθεί ακόμα (δεν ξέρουμε αν είναι έτοιμες)"
         )
     if no_loc:
-        notes.append(
-            f"{fmt._gr_int(no_loc)} "
-            f"{'ταιριάζει αλλά δεν έχει' if no_loc == 1 else 'ταιριάζουν αλλά δεν έχουν'} θέση"
-        )
+        notes.append(f"{fmt._gr_int(no_loc)} ταιριάζουν αλλά δεν έχουν θέση")
     if notes:
         st.caption(" · ".join(notes) + ".")
     if not shown:
@@ -1459,8 +1452,7 @@ def page_map(listings: list[dict]) -> None:
         return rank(m[0] if m else 0, views[d["id"]], d)
 
     top = sorted(shown, key=_key)[:5]
-    st.markdown("#### Οι 5 πρώτες στον χάρτη")
-    st.caption("Σειρά: " + buyer.DEFAULT_SORT + ".")
+    st.markdown("#### Οι 5 καλύτερες στον χάρτη")
     for d in top:
         buyer.result_card(
             d,
@@ -2241,11 +2233,7 @@ def _compare_rows(d: dict, adv: dict) -> dict[str, str]:
         "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")),
         "Εμβαδόν": f"{d['area_m2']:g} τ.μ." if d.get("area_m2") else "—",
         "Όροφος": buyer._floor(d["floor"]) if d.get("floor") is not None else "—",
-        "Έτος": (
-            f"{built} ({age} {'έτους' if age == 1 else 'ετών'})"
-            if built and age is not None
-            else "—"
-        ),
+        "Έτος": f"{built} ({age} ετών)" if built and age is not None else "—",
         "Ενοίκιο (εκτίμηση)": (
             f"~{fmt.euro(round(rent, -1))}/μήνα"
             + ("" if not d.get("listed_rent") else " (αγγελία)")
@@ -2255,15 +2243,14 @@ def _compare_rows(d: dict, adv: dict) -> dict[str, str]:
         "Μικτή απόδοση": buyer.pct1(gy) if gy else "—",
         "Καθαρή απόδοση": buyer.pct1(ny) if ny else "—",
         "Παρόμοια": (
-            f"{buyer.comps_text(adv).split(': ', 1)[1]} ({cmp['n']}), "
-            f"αξιοπιστία {buyer.confidence(cmp).lower()}"
+            f"{cmp['pct']:+.0%} €/τ.μ. · {cmp['n']} παρόμοια, {buyer.confidence(cmp).lower()}"
             if cmp
             else "—"
-        ),
+        ).replace("-", "−"),
         "Κατάσταση": status,
         "Σταθμός": picks.station(d) or "—",
         "Στην αγορά": (
-            buyer._days(d["days_on_market"]) if d.get("days_on_market") is not None else "—"
+            f"{d['days_on_market']} μέρες" if d.get("days_on_market") is not None else "—"
         ),
     }
 
@@ -2320,7 +2307,7 @@ def page_compare(listings: list[dict]) -> None:
         placeholder="Γράψε περιοχή, τ.μ. ή τιμή",
     )
     if not pick_a or not pick_b:
-        st.info("Διάλεξε δύο αγγελίες — ή άνοιξε «Βρες μου σπίτι» για να δεις προτάσεις.")
+        st.info("Διάλεξε δύο αγγελίες — ή άνοιξε «Βρες μου σπίτι» για να δεις τις καλύτερες.")
         st.button("Βρες μου σπίτι", key="cmp_to_find", on_click=_go_find)
         return
     if pick_a == pick_b:
@@ -2341,9 +2328,10 @@ def page_compare(listings: list[dict]) -> None:
     rows = "".join(f"| {k} | {views[0][k]} | {views[1][k]} |\n" for k in views[0])
     st.markdown(f"| | Α | Β |\n|---|---|---|\n{rows}")
     st.caption(
-        "Ενοίκιο (εκτίμηση): από ζητούμενα ενοίκια της περιοχής (εκτός αν αναφέρεται στην αγγελία). "
-        "Μικτή απόδοση = 12 × ενοίκιο ÷ τιμή. Καθαρή απόδοση = μετά από έξοδα αγοράς και λειτουργίας. "
-        "Παρόμοια: τιμή €/τ.μ. σε σχέση με τη διάμεσο ίδιας περιοχής, ηλικίας και μεγέθους.",
+        "Ενοίκιο: εκτίμηση από ζητούμενα ενοίκια της περιοχής (εκτός αν αναφέρεται στην αγγελία). "
+        "Μικτή απόδοση = 12 × ενοίκιο ÷ τιμή. Καθαρή = μετά από κόστη αγοράς και λειτουργίας. "
+        "Παρόμοια: €/τ.μ. σε σχέση με τη διάμεσο ίδιας περιοχής, ηλικίας και μεγέθους· "
+        "αρνητικό = φθηνότερο.",
     )
     for tag, d in zip("ΑΒ", chosen, strict=True):
         st.link_button(f"Άνοιγμα {tag} στο {d['source'].upper()} ↗", d["url"], width="stretch")

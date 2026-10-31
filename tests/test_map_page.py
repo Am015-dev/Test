@@ -56,13 +56,14 @@ def test_map_hides_unfinished_flats_and_says_so(env):  # noqa: F811
     at = fresh(MAP)
     ok(at, "open")
     notes = " ".join(c.value for c in at.caption)
-    assert re.search(r"[\d.]+ υπό κατασκευή δεν εμφανίζ(εται|ονται)", notes), notes
+    assert re.search(r"[\d.]+ υπό κατασκευή δεν εμφανίζονται", notes), notes
 
 
 def test_map_cards_replace_the_wide_table(env):  # noqa: F811
+    """Listings under the map are the search page's cards, never a table to scroll to."""
     at = fresh(MAP)
     assert len(at.dataframe) == 0
-    assert any("Οι 5 πρώτες στον χάρτη" in m.value for m in at.markdown)
+    assert sum('class="hg-card"' in m.value for m in at.markdown) >= 5
 
 
 def test_map_popup_shows_card_facts_in_greek():

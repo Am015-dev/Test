@@ -347,3 +347,24 @@ def test_pipeline_stores_rent_comp_sample_counts(in_memory_db, monkeypatch):
     with sessionmaker(bind=in_memory_db, future=True)() as s:
         rows = {r.neighborhood: r.samples for r in s.scalars(select(RentCompRow)).all()}
     assert rows == {None: 6, "Ano Cholargos": 4}  # Tsakos: 2 < 3, no own median
+
+
+def test_same_flat_on_two_portals_is_stored_once_per_portal(in_memory_db):
+    """The fuzzy dedup only decides which copy counts in market stats; it must not drop a
+    portal's listing. Both rows are stored (the UI groups them as twins), both are seen."""
+    from scout.pipeline import run
+
+    xe = FakeCollector(Strategy(), [_raw("x1", 250_000, source="xe")], source="xe")
+    gh = FakeCollector(Strategy(), [_raw("g1", 245_000, source="goldenhome")], source="goldenhome")
+    summary = run(
+        strategy=Strategy(),
+        collectors=[xe, gh],
+        use_network=False,
+        observed_at=datetime(2026, 6, 1),
+    )
+    assert summary["deduped"] == 1  # one physical flat for market stats
+    assert summary["stored"] == 2
+    with sessionmaker(bind=in_memory_db, future=True)() as s:
+        rows = s.scalars(select(ListingRow)).all()
+        assert sorted(r.source for r in rows) == ["goldenhome", "xe"]
+        assert all(r.status == "active" and r.score is not None for r in rows)

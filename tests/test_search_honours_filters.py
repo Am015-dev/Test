@@ -269,6 +269,7 @@ def live(monkeypatch, tmp_path):
     st.cache_resource.clear()
     dbmod._engine = None
     dbmod._SessionFactory = None
+    dbmod.init_db()  # forward-migrate a downloaded DB that predates newer columns, as the app does
     monkeypatch.setattr(rdb.requests, "get", lambda *a, **k: (_ for _ in ()).throw(OSError()))
     yield
     dbmod._engine = None

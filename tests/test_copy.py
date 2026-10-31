@@ -21,8 +21,8 @@ LATIN_ALLOWED = {
     "mapbox",  # map tiles credit
     "cholargos",  # area names the source stores in Latin
 }
-# Text a user sees in functional glyphs on buttons only (see _BUTTON_GLYPHS).
-_BUTTON_GLYPHS = "✓✗★☆↗"
+# Functional glyphs allowed inside button labels only (see _BUTTON_GLYPHS).
+_BUTTON_GLYPHS = "✓✗★☆↗←→"  # functional glyphs on buttons (tick, cross, star, link, back/next)
 # Pictographic or decorative: emoji, arrows, geometric shapes, "≈". Math signs (− × ÷ ≥ ≤)
 # are allowed in formulas.
 _DECOR = re.compile(
@@ -98,16 +98,21 @@ def test_page_copy(env, page):  # noqa: F811
     assert not problems, "\n".join(sorted(set(problems)))
 
 
-def _find_tight(env):
-    at = fresh(PAGES[0])
-    at.number_input(key="find_budget").set_value(60_000).run()  # nothing fits: relaxation buttons
-    return at
+def _click(at, prefix: str):
+    next(b for b in at.button if (b.key or "").startswith(prefix)).click().run()
 
 
-def _find_checked_only(env):
-    at = fresh(PAGES[0])
-    at.toggle(key="find_checked").set_value(True).run()
-    return at
+def _guide_step(n: int):
+    """The guide page after answering its first ``n`` questions with the first option."""
+
+    def run(env):
+        at = fresh(PAGES[0])
+        for prefix in ("guide-b", "guide-g-", "guide-w-", "guide-show")[:n]:
+            _click(at, prefix)
+        return at
+
+    run.__name__ = f"_guide_after_{n}_answers"
+    return run
 
 
 def _search_example_with_advice(env):
@@ -134,8 +139,8 @@ def _saved_search(env):
 
 @pytest.mark.parametrize(
     "state",
-    [_find_tight, _find_checked_only, _search_example_with_advice, _favourite_and_details]
-    + [_saved_search],
+    [_guide_step(n) for n in (1, 2, 3, 4)]
+    + [_search_example_with_advice, _favourite_and_details, _saved_search],
 )
 def test_copy_in_interaction_states(env, state):  # noqa: F811
     at = state(env)

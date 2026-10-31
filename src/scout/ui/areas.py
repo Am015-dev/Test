@@ -18,10 +18,19 @@ import statistics
 
 import pandas as pd
 import streamlit as st
+from sqlalchemy import select
 
 from .. import area_insights as ai
+from ..db import session_scope
+from ..metro_line4 import OPENING, SOURCE_NOTE
+from ..models import ListingRow
 from ..nl_search import area_matches
 from . import components, queries
+
+# The citation names the English-language source article; say so in Greek.
+SOURCE_NOTE_GR = SOURCE_NOTE.replace(
+    "Wikipedia «Line 4 (Athens Metro)»", "το αγγλικό άρθρο της Βικιπαίδειας για τη Γραμμή 4"
+)
 
 SEARCH_PAGE = "Αναζήτηση"
 AREA_KEY = "area_pick"
@@ -142,6 +151,58 @@ def new_old_text(x: ai.AreaInsight) -> str:
     )
 
 
+def trend_line(x: ai.AreaInsight) -> str:
+    """Price trend of the area with its basis, or why there is none."""
+    t = ai.exit_trend(x)
+    if t is None:
+        return f"δεν υπάρχει αρκετό ιστορικό (n={x.trend_early_n}/{x.trend_late_n})"
+    return f"{gr_pct(t[0], sign=True)} {t[1]} (διάμεση €/τ.μ. αγγελιών που πρωτοεμφανίστηκαν, n={t[2]})"
+
+
+def supply_line(x: ai.AreaInsight) -> str:
+    if x.supply_per_rent is None:
+        return "άγνωστη"
+    return f"{gr_num(x.supply_per_rent, 1)} ({x.n_fresh} πώλησης / {x.rent_samples} ενοικίασης)"
+
+
+_MONTHS = ("Ιαν", "Φεβ", "Μαρ", "Απρ", "Μάι", "Ιουν", "Ιουλ", "Αυγ", "Σεπ", "Οκτ", "Νοε", "Δεκ")
+_BARS = "▁▂▃▄▅▆▇█"
+
+
+def sparkline(values: list[float]) -> str:
+    """One block character per value, scaled between the series' own min and max (flat
+    series → middle bar). Text, so it renders at any phone width."""
+    lo, hi = min(values), max(values)
+    if hi == lo:
+        return _BARS[3] * len(values)
+    return "".join(_BARS[round((v - lo) / (hi - lo) * 7)] for v in values)
+
+
+def series_text(x: ai.AreaInsight) -> str:
+    """«Ιουλ 2.589 (n=178) · Αυγ 2.376 (n=18)» — the monthly medians behind the trend."""
+    return " · ".join(
+        f"{_MONTHS[int(k[5:]) - 1]} {gr_num(p)} (n={n})" for k, p, n in x.trend_series
+    )
+
+
+def render_series(x: ai.AreaInsight) -> None:
+    """€/τ.μ. by month of first sighting (≥ 2 months): sparkline + the numbers with n."""
+    if len(x.trend_series) < 2:
+        return
+    st.markdown(f"`{sparkline([p for _, p, _ in x.trend_series])}`  \n{series_text(x)}")
+
+
+_VERDICT_COLOR = {ai.GOOD: "green", ai.MID: "orange", ai.WARN: "red", ai.UNKNOWN: "gray"}
+
+
+def render_checks(checks: list[tuple[str, str, str]]) -> None:
+    """The six investor checks as a phone-width list: label, value with its basis, verdict
+    word (coloured text, no icons). Used by the listing page and the guide."""
+    for label, value, verdict in checks:
+        color = _VERDICT_COLOR.get(verdict, "gray")
+        st.markdown(f"**{label}:** :{color}[**{verdict}**]  \n{value}")
+
+
 FILTERS_CAPTION = (
     "Μετράνε μόνο διαμερίσματα από 1ο όροφο και πάνω, με γνωστό όροφο, που εμφανίστηκαν "
     f"στην τελευταία σάρωση (έως {queries.FRESH_DAYS} μέρες πριν). Νεόδμητα = έως 5 ετών, "
@@ -237,6 +298,32 @@ def area_points(listings: list[dict], names: set[str]) -> dict[str, tuple[float,
 
 
 @st.cache_data(ttl=10800, show_spinner=False)
+def _lifecycle(stamp: tuple) -> list[dict]:
+    """Every listing of every status (active AND gone) with only the fields liquidity needs
+    — the page's own listings are active-only, so "went gone within N days" cannot be read
+    from them. Lean query: no scoring, no annotation."""
+    try:
+        with session_scope() as session:
+            return [
+                {
+                    "title": r.title,
+                    "neighborhood": r.neighborhood,
+                    "search_area": r.search_area,
+                    "floor": r.floor,
+                    "lat": r.lat,
+                    "price_per_m2": r.price_per_m2,
+                    "excluded": bool(r.excluded),
+                    "status": r.status,
+                    "first_seen": r.first_seen,
+                    "last_seen": r.last_seen,
+                }
+                for r in session.scalars(select(ListingRow)).all()
+            ]
+    except Exception:  # liquidity then reads «άγνωστη»; the page must still render
+        return []
+
+
+@st.cache_data(ttl=10800, show_spinner=False)
 def _ranked(_listings: list[dict], stamp: tuple, budget: int) -> list[ai.AreaInsight]:
     """Ranked over the 15 NE-Athens SEARCHES (so the reference median is NE Athens and a
     score does not change with the toggle). ``stamp`` keys the cache on the data."""
@@ -244,7 +331,8 @@ def _ranked(_listings: list[dict], stamp: tuple, budget: int) -> list[ai.AreaIns
         rents = queries.load_rent_comp_rows()
     except Exception:  # a missing rent table must not take the page down
         rents = []
-    return ai.rank_areas(_listings, rents, areas=ai.NE_ATHENS_AREAS, budget=budget)
+    life = _lifecycle(stamp) or None
+    return ai.rank_areas(_listings, rents, areas=ai.NE_ATHENS_AREAS, budget=budget, lifecycle=life)
 
 
 def _stamp(listings: list[dict]) -> tuple:
@@ -296,6 +384,19 @@ def _method() -> None:
             "τελική τιμή είναι συνήθως χαμηλότερη.\n"
             "- Το ενοίκιο είναι ζητούμενο ενοίκιο από αγγελίες ενοικίασης, όχι "
             "υπογεγραμμένα μισθωτήρια.\n"
+            f"- **Τάση €/τ.μ.** = διάμεση πρώτη ζητούμενη €/τ.μ. των αγγελιών που "
+            f"πρωτοεμφανίστηκαν τον τελευταίο μήνα ÷ τον ίδιο δείκτη 6 μήνες πριν − 1, "
+            f"με τουλάχιστον {ai.MIN_MONTH} αγγελίες σε κάθε μήνα· αλλιώς «δεν υπάρχει αρκετό "
+            "ιστορικό». Δείχνει αγγελίες που είναι ακόμα ενεργές (όσες πουλήθηκαν δεν "
+            "μετράνε) και τις νέες αγγελίες κάθε μήνα, όχι τα ίδια διαμερίσματα.\n"
+            f"- **Ρευστότητα** = ποσοστό αγγελιών που εξαφανίστηκαν σε 30 και 60 μέρες από "
+            f"την πρώτη φορά που τις είδαμε. Μετράει μόνο όταν οι σαρώσεις είναι τακτικές "
+            f"(κενό έως {ai.GAP_MAX} μέρες), με τουλάχιστον {ai.MIN_LIQ} αγγελίες· {ai.LIQUIDITY_THRESHOLDS}. "
+            "«Εξαφανίστηκε» δεν σημαίνει «πουλήθηκε»: μπορεί να αποσύρθηκε ή να ανανεώθηκε.\n"
+            "- **Προσφορά ανά αγγελία ενοικίασης** = αγγελίες πώλησης ÷ αγγελίες ενοικίασης "
+            "πίσω από το διάμεσο ενοίκιο της περιοχής.\n"
+            f"- **Μετρό Γραμμή 4**: {SOURCE_NOTE_GR} Ο ορίζοντας είναι εκτίμηση, όχι ημερομηνία "
+            "παράδοσης· η σύνδεση με αγγελία γίνεται μόνο από το όνομα της γειτονιάς.\n"
             "- Οι μέρες στην αγορά μετρούν από τότε που είδαμε πρώτη φορά την αγγελία· "
             "μέχρι να γίνονται τακτικές εβδομαδιαίες σαρώσεις δεν είναι αξιόπιστες και δεν "
             "μπαίνουν στη βαθμολογία.\n"
@@ -332,10 +433,23 @@ def _card(rank: int | None, x: ai.AreaInsight, *, key: str) -> None:
                 ),
             ),
             ("Με μείωση τιμής", gr_pct(x.cut_share, 0)),
+            ("Τάση €/τ.μ.", trend_line(x)),
+            (
+                "Ρευστότητα",
+                ai.liquidity_text(x) + (f" ({ai.LIQUIDITY_THRESHOLDS})" if x.liquidity else ""),
+            ),
+            ("Προσφορά ανά αγγελία ενοικίασης", supply_line(x)),
             ("Σταθμός", ", ".join(x.stations) if x.stations else "κανένας στις γειτονιές"),
-            ("Εμπιστοσύνη", confidence_text(x)),
         ]
+        if x.line4:
+            rows.append(
+                ("Μετρό Γραμμή 4 υπό κατασκευή", f"{', '.join(x.line4)} (ορίζοντας {OPENING})")
+            )
+        if x.reg_flags:
+            rows.append(("Κανονιστικά", " · ".join(x.reg_flags)))
+        rows.append(("Εμπιστοσύνη", confidence_text(x)))
         st.markdown("\n".join(f"- **{k}:** {v}" for k, v in rows))
+        render_series(x)
         st.markdown("**Προσοχή**\n" + "\n".join(f"- {r}" for r in x.risks))
         st.button(
             "Δες τις αγγελίες",
