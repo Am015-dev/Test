@@ -30,7 +30,7 @@ from .enrich import gross_yield as _gross_yield
 from .finance import net_yield as _net_yield_after_costs
 from .models import Listing, ListingRow, PriceHistoryRow
 from .normalize import normalize
-from .rent_comps import OVERALL_KEY, compute_rent_comps, load_rent_comps
+from .rent_comps import OVERALL_KEY, compute_rent_comps_with_counts, load_rent_comps
 from .rent_comps import rent_for as rent_comps_for
 from .scoring import compute_market_stats, score
 from .valuation import fit_and_apply_by_area
@@ -53,10 +53,14 @@ def _collect_all(collectors: Iterable[Collector]) -> list[dict]:
     return raws
 
 
-def _fetch_rent_comps(collectors: Iterable[Collector]) -> dict[str, float]:
+def _fetch_rent_comps(
+    collectors: Iterable[Collector],
+) -> tuple[dict[str, float], dict[str, int]]:
     """Scrape the area's rental market from any collector that supports it and reduce it
-    to neighbourhood → median €/m²/month. Fail-soft: returns {} on any failure so yield
-    falls back to sale-listing rents / the configured baseline."""
+    to (neighbourhood → median €/m²/month, neighbourhood → sample count). Fail-soft:
+    returns ({}, {}) on any failure so yield falls back to sale-listing rents / the
+    configured baseline. The counts are stored so the UI can say how many rentals a
+    median rests on."""
     rows: list[dict] = []
     for collector in collectors:
         fetch = getattr(collector, "collect_rent_rows", None)
@@ -66,14 +70,14 @@ def _fetch_rent_comps(collectors: Iterable[Collector]) -> dict[str, float]:
             rows.extend(fetch())
         except Exception as exc:
             logger.warning("rent comps: %s failed: %s", collector.source, exc)
-    comps = compute_rent_comps(rows)
+    comps, counts = compute_rent_comps_with_counts(rows)
     if comps:
         logger.info(
             "rent comps: %d neighbourhoods, overall %.1f €/m²/mo",
             len(comps) - 1,
             comps.get("__overall__", 0.0),
         )
-    return comps
+    return comps, counts
 
 
 def run(
@@ -128,13 +132,13 @@ def run(
     # actual local €/m²/month median per neighbourhood, not a flat guess. Fail-soft.
     rent_comps: dict[str, float] = {}
     if use_network:
-        rent_comps = _fetch_rent_comps(collectors)
+        rent_comps, rent_counts = _fetch_rent_comps(collectors)
         # Persist them so a later rescore (which never scrapes) applies real rent too.
         if rent_comps:
             from .rent_comps import save_rent_comps
 
             try:
-                save_rent_comps(effective_area, rent_comps)
+                save_rent_comps(effective_area, rent_comps, rent_counts)
             except Exception as exc:  # persistence must never break a run
                 logger.warning("rent comps: persist failed for %s: %s", effective_area, exc)
 

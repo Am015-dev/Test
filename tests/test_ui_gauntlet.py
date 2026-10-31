@@ -30,7 +30,8 @@ from .test_shortlist import FakeGist  # noqa: E402
 APP = str(Path(__file__).resolve().parents[1] / "src" / "scout" / "ui" / "app.py")
 SEARCH, SHORTLIST, STARRED = "🔎 Αναζήτηση", "🤖 Αποθηκευμένες αναζητήσεις", "⭐ Αγαπημένα"
 DETAIL = "🏠 Αγγελία"
-PAGES = [SEARCH, "🗺 Χάρτης", STARRED, SHORTLIST, "⚖️ Σύγκριση", DETAIL]
+AREAS = "Πού να αγοράσω"
+PAGES = [SEARCH, AREAS, "🗺 Χάρτης", STARRED, SHORTLIST, "⚖️ Σύγκριση", DETAIL]
 KINDS = [
     "button",
     "checkbox",
@@ -90,6 +91,34 @@ def _seed(db_path) -> None:
                 image_url="https://example.com/p.jpg" if i % 5 == 0 else None,
             )
         )
+    # Two areas with enough fresh, usable (1st floor+) flats to qualify for «Πού να αγοράσω»
+    # (area_insights.MIN_FRESH), one with recorded rent sample counts and one without.
+    for j, (hood, area, base) in enumerate(
+        [("Χαλάνδρι (Κέντρο)", "Chalandri", 3300)] * 26
+        + [("Γαλάτσι (Λαμπρινή)", "Galatsi", 2600)] * 24
+    ):
+        a = 60 + j % 35
+        price = int(base * a) + (j % 5 - 2) * 6000
+        listings.append(
+            make_listing(
+                source="xe",
+                source_id=f"q-{j}",
+                url=f"https://www.xe.gr/property/d/x/q-{j}",
+                title=f"Διαμέρισμα {a} τ.μ.",
+                price=price,
+                area_m2=float(a),
+                floor=float(1 + j % 4),
+                year_built=1990 + j % 33,
+                energy_class="BCD"[j % 3],
+                bedrooms=1 + j % 3,
+                metro_distance_m=400 + (j % 5) * 50,
+                neighborhood=hood,
+                address=hood,
+                search_area=area,
+                is_private_seller=bool(j % 2),
+                price_per_m2=price / a,
+            )
+        )
     fit_and_apply_by_area(listings)
     stats = compute_market_stats(listings)
     with session_scope() as session:
@@ -100,6 +129,10 @@ def _seed(db_path) -> None:
             row.excluded = scored.excluded
             row.predicted_price = lst.predicted_price
             row.value_gap_pct = lst.value_gap_pct
+    from scout.rent_comps import OVERALL_KEY, save_rent_comps
+
+    save_rent_comps("Chalandri", {OVERALL_KEY: 13.0, "Χαλάνδρι (Κέντρο)": 13.0}, {OVERALL_KEY: 42})
+    save_rent_comps("Galatsi", {OVERALL_KEY: 10.5, "Γαλάτσι (Λαμπρινή)": 10.5})
 
 
 @pytest.fixture
@@ -263,6 +296,26 @@ def test_compare_lines_up_every_picked_listing(env):
     ok(at, "compare")
     cols = list(at.dataframe[0].value.columns)
     assert len(cols) == len(set(cols)) == 4, cols
+
+
+def test_where_to_buy_cards_table_and_handoff(env):
+    at = fresh(AREAS)
+    ok(at, AREAS)
+    assert any("πρόσφατες αγγελίες" in c.value for c in at.caption)
+    text = " ".join(m.value for m in at.markdown)
+    cards = [m.value[5:] for m in at.markdown if m.value.startswith("#### ")]
+    assert sorted(cards) == ["1. Γαλάτσι", "2. Χαλάνδρι"], cards
+    assert "δείγματα ενοικίου: 42" in text and "δείγματα ενοικίου: —" in text
+    assert "Γιατί" in text and "Προσοχή" in text
+    df = at.dataframe[0].value
+    assert list(df["Περιοχή"]) == ["Γαλάτσι", "Χαλάνδρι"]
+    assert df["Σκορ"].is_monotonic_decreasing
+    go = [b for b in at.button if b.label == "Δες τις αγγελίες"]
+    assert len(go) == 2
+    go[1].click().run()
+    ok(at, "handoff")
+    assert at.session_state["page"] == SEARCH
+    assert at.session_state["area_pick"] == "Χαλάνδρι"
 
 
 ADMIN_PAGES = [  # only listed with ?admin=1

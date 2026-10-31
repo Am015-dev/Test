@@ -65,6 +65,12 @@ FEW_RENT_SAMPLES = 10
 LOW_YIELD = 0.04
 # Attica latitude band: the "Irakleio" search also returns Heraklion (Crete) listings.
 ATTICA_LAT = (37.6, 38.4)
+# The latitude band alone does not catch them: XE resolves the "Irakleio" search to
+# Heraklion, CRETE (bare "Ηράκλειο" plus Cretan villages such as Σκαλάνι or Αρχάνες), and
+# enrichment places those card-only listings on the Attica search-area centroid. From such a
+# search only listings naming a quarter in brackets ("Ηράκλειο (Ηπειρώτικα)") count, and its
+# rent comparables are ignored. Attica-Heraklion flats still arrive via neighbouring searches.
+CRETE_SEARCHES = frozenset({"Irakleio"})
 
 # Trend cohorts: first seen in July vs last seen in late October (of the analysis year).
 EARLY_MONTH = 7
@@ -134,6 +140,8 @@ def _day(v) -> date | None:
 
 
 def _in_attica(d: dict) -> bool:
+    if d.get("search_area") in CRETE_SEARCHES and "(" not in (d.get("neighborhood") or ""):
+        return False
     lat = d.get("lat")
     return lat is None or ATTICA_LAT[0] <= lat <= ATTICA_LAT[1]
 
@@ -180,7 +188,7 @@ def rent_by_area(rent_rows: list[dict]) -> dict[str, tuple[float, int | None]]:
     hoods: dict[str, list[dict]] = {}
     overall: dict[str, dict] = {}
     for r in rent_rows:
-        if not r.get("rent_per_m2"):
+        if not r.get("rent_per_m2") or r.get("area") in CRETE_SEARCHES:
             continue
         if r.get("neighborhood"):
             hoods.setdefault(r["area"], []).append(r)
@@ -311,7 +319,7 @@ def _reasons(x: AreaInsight, ref_ppm: float) -> list[str]:
     cands: list[tuple[float, str]] = []
     c = x.components
     if x.gross_yield is not None:
-        n = f"{x.rent_samples} δείγματα" if x.rent_samples else "δείγματα μη καταγεγραμμένα"
+        n = f"{x.rent_samples} δείγματα" if x.rent_samples else "δείγματα: —"
         cands.append(
             (
                 WEIGHTS["yield"] * c["yield"],

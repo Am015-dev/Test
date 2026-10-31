@@ -218,3 +218,25 @@ def test_falling_prices_and_old_stock_are_risks():
     assert x.risks[0].startswith("Πτωτικές ζητούμενες τιμές: -10,0%")
     assert len(x.risks) == 2  # capped
     assert not any("πάνω από τον Ιούλιο" in r for r in x.reasons)
+
+
+def test_heraklion_crete_never_appears():
+    """XE's "Irakleio" search returns Heraklion, Crete, geocoded onto the Attica centroid
+    (so the latitude band passes it): bare "Ηράκλειο" and Cretan villages are dropped, and
+    so is that search's (Cretan) rent. Attica-Heraklion quarters in brackets still count."""
+    crete = many(30, neighborhood="Ηράκλειο", search_area="Irakleio", lat=38.05)
+    crete += many(25, neighborhood="Σκαλάνι", search_area="Irakleio", lat=38.05)
+    attica = many(ai.MIN_FRESH, neighborhood="Ηράκλειο (Ηπειρώτικα)", search_area="Pefki", ppm=2800)
+    rents = [rent("Irakleio", None, 11.0, 40), rent("Irakleio", "Ηράκλειο", 11.0, 40)]
+    (x,) = ai.rank_areas(crete + attica, rents, year=YEAR)
+    assert x.area == "Ηράκλειο" and x.n_fresh == ai.MIN_FRESH and x.median_ppm == 2800
+    assert x.rent_ppm is None
+    assert ai.rank_areas(crete, rents, year=YEAR) == []
+
+
+def test_unrecorded_rent_samples_read_as_dash():
+    rows = many(25, ppm=3000)
+    rents = [rent("Cholargos", None, 12.0, 0), rent("Cholargos", "Χολαργός (Κέντρο)", 12, 0)]
+    (x,) = ai.rank_areas(rows, rents, year=YEAR)
+    assert x.rent_samples is None
+    assert any("δείγματα: —" in r for r in x.reasons)
