@@ -140,7 +140,7 @@ def data_line(listings: list[dict]) -> str:
     days = (date.today() - newest.date()).days
     late = f" (πριν {days} μέρες)" if days >= 3 else ""
     n = f"{len(listings):,}".replace(",", ".")
-    return f"Δεδομένα XE.gr έως {newest:%d/%m}{late} · {n} αγγελίες"
+    return f"Δεδομένα XE.gr έως {newest:%d/%m}{late} · {n} {_noun(len(listings))}"
 
 
 # ---- session state: starred listings -------------------------------------------------------
@@ -222,6 +222,7 @@ CARD_CSS = """<style>
 .hg-card summary { cursor: pointer; color: var(--hg-accent, #0F766E); font-weight: 600; }
 .hg-card details p { margin: 4px 0 0; }
 .hg-desc { white-space: pre-line; font-size: .9rem; }
+.hg-rank { font-size: 1rem; font-weight: 700; color: var(--hg-muted, #64748B); }
 </style>"""
 
 
@@ -360,24 +361,41 @@ def _join(parts: list[str]) -> str:
     return '<span class="hg-sep"> · </span>'.join(parts)
 
 
-def card_html(d: dict, adv: dict, basis: bool = True) -> str:
-    """The card body: five fixed lines, extras, and (``basis``) the one-tap basis."""
-    e = html.escape
-    l1 = [f'<span class="hg-price">{eur(d.get("price"))}</span>']
-    if d.get("area_m2"):
-        l1.append(f"{_m2(d['area_m2'])} τ.μ.")
-    if d.get("price_per_m2"):
-        l1.append(f"{eur(d['price_per_m2'])}/τ.μ.")
-    floor = d.get("floor")
-    l2 = [_floor(floor) if floor is not None else "όροφος: δεν δηλώνεται", _year_text(d)]
-    if d.get("neighborhood"):
-        l2.append(e(d["neighborhood"]))
-    if stn := picks.station(d):
-        l2.append(f"Σταθμός {e(stn)}")
-    tone, text = status(d)
-    l3 = f'<span class="hg-st hg-st-{tone}">{text}</span>'
-    if d.get("few_photos"):
-        l3 += f' <span class="hg-st hg-st-photo">{picks.FEW_PHOTOS}</span>'
+def _is_rent(d: dict) -> bool:
+    return d.get("listing_type") == "rent"
+
+
+def short_status(d: dict) -> tuple[str, str]:
+    """(tone, glossary term) for the compact card's badge; the full sentence is one tap away."""
+    if _unfinished(d):
+        return "bad", UNFINISHED_NOTE
+    if d.get("page_checked"):
+        return "ok", "Ελέγχθηκε η περιγραφή"
+    return "unk", "Δεν έχει ελεγχθεί ακόμα"
+
+
+def _station_text(d: dict) -> str:
+    """The station words for line 2 (W19's ``picks.station_text`` once it exists)."""
+    if fn := getattr(picks, "station_text", None):
+        return fn(d) or ""
+    stn = picks.station(d)
+    return f"Σταθμός {stn}" if stn else ""
+
+
+def _rent_line(d: dict) -> str:
+    """Line 4: rent + gross yield, or (a rental) the rent and its €/τ.μ."""
+    if not _is_rent(d):
+        return rent_text(d)
+    rent, area = d.get("price"), d.get("area_m2")
+    per = d.get("rent_per_m2") or (rent / area if rent and area else None)
+    out = f'<span class="hg-nw">Ενοίκιο {eur(rent)}/μήνα</span>'
+    if per:
+        out += f' · <span class="hg-nw">{f"{per:.1f}".replace(".", ",")} €/τ.μ.</span>'
+    return out
+
+
+def _extras(d: dict, adv: dict) -> list[str]:
+    """Facts beyond the five lines, as plain text (escaped where they are rendered)."""
     extras = []
     first = d.get("first_price")
     if d.get("price_dropped") and first and d.get("price") and first > d["price"]:
@@ -396,25 +414,78 @@ def card_html(d: dict, adv: dict, basis: bool = True) -> str:
             f"{cheaper}"
         )
     if d.get("energy_class"):
-        extras.append(f"Ενεργειακή κλάση {e(str(d['energy_class']).strip())}")
-    out = (
-        f'<div class="hg-card" data-lid="{d.get("id")}">'
-        f'<div class="hg-l1">{_join(l1)}</div>'
-        f'<div class="hg-l2">{_join(l2)}</div>'
-        f'<div class="hg-l3">{l3}</div>'
-        f'<div class="hg-l4">{rent_text(d)}</div>'
-        f'<div class="hg-l5">{e(comps_text(adv))}</div>'
-    )
-    if extras:
-        out += f'<div class="hg-more">{_join(extras)}</div>'
-    if basis:
-        lines = [status_basis(d), rent_basis(d)]
+        extras.append(f"Ενεργειακή κλάση {str(d['energy_class']).strip()}")
+    return extras
+
+
+def _basis_lines(d: dict, adv: dict) -> list[str]:
+    lines = [status_basis(d)]
+    if _is_rent(d):
+        lines.append("Ενοίκιο: αυτό που ζητά η αγγελία, όχι συμβόλαιο.")
+    else:
+        lines.append(rent_basis(d))
         if (gy := gross_yield(d)) is not None:
             lines.append(
                 f"Μικτή απόδοση = 12 × ενοίκιο ÷ τιμή = 12 × {eur(_r(_rent(d), 10))} ÷ "
                 f"{eur(d['price'])} = {pct1(gy)}, πριν από έξοδα και φόρους."
             )
-        lines.append(comps_basis(d, adv))
+    lines.append(comps_basis(d, adv))
+    return lines
+
+
+def card_html(
+    d: dict,
+    adv: dict,
+    basis: bool = True,
+    *,
+    compact: bool = False,
+    lead: str = "",
+    more: list[str] | None = None,
+) -> str:
+    """The card body: five fixed lines, then (``basis``) the one-tap «Από πού βγαίνουν».
+
+    ``compact`` (guide result, search, compare): exactly those five lines are visible —
+    price · τ.μ. · €/τ.μ.; floor · year · area · station; status badge; rent + gross yield;
+    one comparison line — and every other fact (``more``, days on market, price drop, seller,
+    twins, energy class, the full status sentence) moves into the expander. The full card
+    (listing page) shows the extras as a sixth line. ``lead`` prefixes line 1 (the rank)."""
+    e = html.escape
+    rent_row = _is_rent(d)
+    price = eur(d.get("price")) + ("/μήνα" if rent_row else "")
+    l1 = [f'<span class="hg-price">{price}</span>']
+    if lead:
+        l1[0] = f'<span class="hg-rank">{e(lead)}</span> ' + l1[0]
+    if d.get("area_m2"):
+        l1.append(f"{_m2(d['area_m2'])} τ.μ.")
+    if d.get("price_per_m2") and not rent_row:
+        l1.append(f"{eur(d['price_per_m2'])}/τ.μ.")
+    floor = d.get("floor")
+    l2 = [_floor(floor) if floor is not None else "όροφος: δεν δηλώνεται", _year_text(d)]
+    if d.get("neighborhood"):
+        l2.append(e(d["neighborhood"]))
+    if stn := _station_text(d):
+        l2.append(e(stn))
+    tone, text = short_status(d) if compact else status(d)
+    l3 = f'<span class="hg-st hg-st-{tone}">{text}</span>'
+    if d.get("few_photos"):
+        l3 += f' <span class="hg-st hg-st-photo">{picks.FEW_PHOTOS}</span>'
+    extras = _extras(d, adv)
+    out = (
+        f'<div class="hg-card{" hg-compact" if compact else ""}" data-lid="{d.get("id")}">'
+        f'<div class="hg-l1">{_join(l1)}</div>'
+        f'<div class="hg-l2">{_join(l2)}</div>'
+        f'<div class="hg-l3">{l3}</div>'
+        f'<div class="hg-l4">{_rent_line(d)}</div>'
+        f'<div class="hg-l5">{e(comps_text(adv))}</div>'
+    )
+    hidden: list[str] = []
+    if compact:
+        full = status(d)[1]
+        hidden = [*(more or []), *extras] + ([full] if full != text else [])
+    elif extras:
+        out += f'<div class="hg-more">{_join([e(x) for x in extras])}</div>'
+    if basis or hidden:
+        lines = hidden + (_basis_lines(d, adv) if basis else [])
         out += (
             "<details><summary>Από πού βγαίνουν</summary>"
             + "".join(f"<p>{e(x)}</p>" for x in lines)
@@ -423,19 +494,25 @@ def card_html(d: dict, adv: dict, basis: bool = True) -> str:
     return out + "</div>"
 
 
-def result_card(d: dict, adv: dict, k: str, actions: list, advice=None) -> None:
-    """One listing. ``actions`` = [(label, callback, args[, type])], each rendered as a button."""
+def result_card(
+    d: dict, adv: dict, k: str, actions: list, advice=None, *, compact: bool = False
+) -> None:
+    """One listing. ``actions`` = [(label, callback, args[, type])], each rendered as a button.
+    The full card adds «Άνοιγμα στο …» first; the compact card has only ``actions`` (the
+    portal link is on the listing page, one tap away through «Λεπτομέρειες»)."""
     key = shortlist.lkey(d)
     uid = f"{k}-{d['id']}"
     with st.container(border=True, key=f"card-{uid}"):
-        st.markdown(card_html(d, adv), unsafe_allow_html=True)
+        st.markdown(card_html(d, adv, compact=compact), unsafe_allow_html=True)
         if advice is not None:
             st.markdown(_advice_html(advice), unsafe_allow_html=True)
         with st.container(key=f"act-{uid}"):
-            cols = st.columns(len(actions) + 1, gap="small")
-            cols[0].link_button(f"Άνοιγμα στο {source_label(d)}", d["url"], width="stretch")
+            first = 0 if compact else 1
+            cols = st.columns(len(actions) + first, gap="small")
+            if not compact:
+                cols[0].link_button(f"Άνοιγμα στο {source_label(d)}", d["url"], width="stretch")
             for i, (label, cb, args, *kind) in enumerate(actions, start=1):
-                cols[i].button(
+                cols[i - 1 + first].button(
                     label,
                     key=f"{k}-{i}-{key}",
                     on_click=cb,
@@ -675,6 +752,11 @@ def _municipality_counts(pool: list[dict]) -> dict[str, int]:
 
 def _num(n: int) -> str:
     return f"{n:,}".replace(",", ".")
+
+
+def _noun(n: int, one: str = "αγγελία", many: str = "αγγελίες") -> str:
+    """Singular for exactly one, plural otherwise («1 αγγελία», «0/2 αγγελίες»)."""
+    return one if n == 1 else many
 
 
 def _days(n: int) -> str:
@@ -950,6 +1032,7 @@ def page_search(listings: list[dict]) -> None:
             "s",
             [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)],
             advice=verdicts.get(shortlist.lkey(d)),
+            compact=True,
         )
     if len(hits) > limit:
         st.button(
@@ -1066,7 +1149,10 @@ def page_shortlist(listings: list[dict]) -> None:
     try:
         mandates = shortlist.list_mandates()
     except shortlist.StorageNotConfigured:
-        st.info("Η αποθήκευση αναζητήσεων δεν είναι διαθέσιμη σε αυτή την εγκατάσταση.")
+        st.info(
+            "Η αποθήκευση αναζητήσεων δεν είναι διαθέσιμη εδώ. Η «Αναζήτηση» δουλεύει "
+            "κανονικά· απλώς δεν κρατιέται."
+        )
         return
     except Exception as e:
         st.caption(f"Οι αποθηκευμένες αναζητήσεις δεν διαβάστηκαν ({_reason(e)}).")
@@ -1088,7 +1174,7 @@ def page_shortlist(listings: list[dict]) -> None:
                 "Διαγραφή αναζήτησης", key=f"del{m.id}", on_click=_delete_mandate, args=(m.id,)
             )
             if not found:
-                st.write("Καμία νέα αγγελία αυτή τη στιγμή.")
+                st.write("Καμία νέα αγγελία αυτή τη στιγμή. Δες ξανά μετά την επόμενη ενημέρωση.")
             for d, _adv, _reasons in found:
                 key = shortlist.lkey(d)
                 result_card(
