@@ -18,6 +18,8 @@ portal's own name for a spot («Νέα Φιλαδέλφεια Αττικής (Ό
 
 from __future__ import annotations
 
+import unicodedata
+
 # Latin municipality (every search area and every portal spelling seen) → XE's Greek form.
 MUNICIPALITIES: dict[str, str] = {
     # search areas (regions.REGIONS), outside central Athens
@@ -119,8 +121,28 @@ BRAND_WORDS: tuple[str, ...] = ("Renault",)
 SEARCH_AREA_GREEK: dict[str, str] = {**MUNICIPALITIES, **ATHENS_QUARTERS}
 
 
+def _fold(text: str) -> str:
+    """Accent-stripped, casefolded: «ΝΕΑ ΦΙΛΑΔΕΛΦΕΙΑ» and «Νέα Φιλαδέλφεια» meet."""
+    text = unicodedata.normalize("NFD", text.casefold())
+    return "".join(c for c in text if not unicodedata.combining(c))
+
+
+# Golden Home writes municipalities in capitals («ΓΑΛΑΤΣΙ (Λαμπρινή)»). Index of the Greek
+# municipality names, with and without the «Αττικής» suffix, by their folded form.
+_CAPS_INDEX: dict[str, str] = {
+    _fold(form): greek
+    for greek in MUNICIPALITIES.values()
+    for form in (greek, greek.removesuffix(" Αττικής"))
+}
+
+
+def _all_caps_greek(text: str) -> bool:
+    return text == text.upper() and any("Α" <= c <= "Ω" for c in text)
+
+
 def greek_place(value: str | None) -> str | None:
-    """«Nea Smyrni» → «Νέα Σμύρνη»; «Athina (Κυψέλη)» → «Αθήνα (Κυψέλη)»; unknown → unchanged."""
+    """«Nea Smyrni» → «Νέα Σμύρνη»; «Athina (Κυψέλη)» → «Αθήνα (Κυψέλη)»;
+    «ΓΑΛΑΤΣΙ (Λαμπρινή)» → «Γαλάτσι (Λαμπρινή)»; unknown → unchanged."""
     if not value:
         return value
     value = value.strip()
@@ -132,6 +154,8 @@ def greek_place(value: str | None) -> str | None:
     if head in ATHENS_QUARTERS and rest.rstrip(")").strip() == ATHENS_QUARTERS[head]:
         return f"Αθήνα ({ATHENS_QUARTERS[head]})"  # «Ampelokipi (Αμπελόκηποι)»
     greek = MUNICIPALITIES.get(head)
+    if greek is None and _all_caps_greek(head):
+        greek = _CAPS_INDEX.get(_fold(head))  # «ΓΑΛΑΤΣΙ» → «Γαλάτσι»; unknown head stays
     if greek is None:
         return value
     if not bracket or rest.rstrip(")").strip() == greek:

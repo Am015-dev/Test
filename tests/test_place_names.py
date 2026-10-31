@@ -1,4 +1,4 @@
-"""C12: one Greek name per place — the table, normalize, and the offline repair script."""
+"""C12: one Greek name per place (Latin and all-caps names) — the table, normalize, and the offline repair script."""
 
 from __future__ import annotations
 
@@ -33,6 +33,15 @@ PUBLISHED_LATIN = (
     "Korydallos", "Kypseli", "Papagos (Παπάγου)", "Prassas", "Psichiko (Πλατεία Ελευθερίας)",
     "Vrilissia (Κέντρο)", "ΠEYKH (Κάτω Πεύκη)", "Ampelokipi (Αμπελόκηποι)",
     "Athina (Άνω Κυψέλη)", "Zografou (Κέντρο)", "Αθήνα (Όπισθεν Renault)",
+)  # fmt: skip
+
+# Golden Home's all-caps municipalities on the published DB (2026-10-31, all statuses).
+PUBLISHED_CAPS = (
+    "ΓΑΛΑΤΣΙ (Άλσος Βεΐκου)", "ΓΑΛΑΤΣΙ (Ακτήμονες)", "ΓΑΛΑΤΣΙ (Καραγιαννέικα)",
+    "ΓΑΛΑΤΣΙ (Κρητικά)", "ΓΑΛΑΤΣΙ (Λαμπρινή)", "ΓΑΛΑΤΣΙ (Μενιδιάτικα)", "ΓΑΛΑΤΣΙ (Περιβόλια)",
+    "ΝΕΑ ΦΙΛΑΔΕΛΦΕΙΑ (RENAULT)", "ΝΕΑ ΦΙΛΑΔΕΛΦΕΙΑ (Άλσος)", "ΝΕΑ ΦΙΛΑΔΕΛΦΕΙΑ (Αστέρας)",
+    "ΝΕΑ ΦΙΛΑΔΕΛΦΕΙΑ (Ειρήνη)", "ΝΕΑ ΦΙΛΑΔΕΛΦΕΙΑ (Κόκκινος Μύλος)",
+    "ΝΕΑ ΦΙΛΑΔΕΛΦΕΙΑ (Μάδυτος)", "ΝΕΑ ΦΙΛΑΔΕΛΦΕΙΑ (Νησίδα)",
 )  # fmt: skip
 
 # Repaired names whose area is not one of the covered search areas, and why.
@@ -96,13 +105,30 @@ def test_examples_and_brand_words():
 
 def test_area_name_resolves_every_repaired_name_to_a_covered_area():
     covered = _covered()
-    for value in PUBLISHED_LATIN:
+    for value in PUBLISHED_LATIN + PUBLISHED_CAPS:
         area = area_name(greek_place(value))
         assert _GREEK.search(area), value
         assert area in covered or area in OUTSIDE_COVERAGE, (value, area)
     # the bulk of the Latin rows land in the same bucket as their Greek siblings
     assert area_name(greek_place("Kallithea")) == area_name("Καλλιθέα (Κέντρο)") == "Καλλιθέα"
     assert area_name(greek_place("Koukaki")) == area_name("Αθήνα (Κουκάκι)") == "Κουκάκι"
+
+
+@pytest.mark.parametrize("value", PUBLISHED_CAPS)
+def test_golden_home_capitals_join_the_greek_municipality(value):
+    greek = greek_place(value)
+    head, _, rest = greek.partition(" (")
+    assert head in ("Γαλάτσι", "Νέα Φιλαδέλφεια Αττικής"), greek
+    assert rest.rstrip(")") == value.partition(" (")[2].rstrip(")").replace("RENAULT", "Renault")
+    assert greek_place(greek) == greek
+
+
+def test_capitals_bucket_with_their_greek_siblings():
+    assert area_name(greek_place("ΓΑΛΑΤΣΙ (Λαμπρινή)")) == area_name("Γαλάτσι (Κέντρο)")
+    assert area_name(greek_place("ΓΑΛΑΤΣΙ")) == "Γαλάτσι"
+    assert area_name(greek_place("ΝΕΑ ΦΙΛΑΔΕΛΦΕΙΑ (Άλσος)")) == "Νέα Φιλαδέλφεια Αττικής"
+    for unknown in ("ΝΕΑΠΟΛΗ ΕΞΑΡΧΕΙΩΝ", "Ν"):  # an unknown capital head is never guessed
+        assert greek_place(unknown) == unknown
 
 
 def test_normalize_stores_the_greek_name():
@@ -128,6 +154,7 @@ def seeded(tmp_path, monkeypatch):
         "c": ("Χολαργός (Άνω Χολαργός)", "Χολαργός"),
         "d": ("Νέα Φιλαδέλφεια Αττικής (Όπισθεν Renault)", None),
         "e": ("Somewhere Unknown", "Somewhere Unknown"),
+        "f": ("ΓΑΛΑΤΣΙ (Λαμπρινή)", "ΓΑΛΑΤΣΙ (Λαμπρινή)"),
     }
     with db.session_scope() as s:
         for sid in rows:
@@ -148,14 +175,15 @@ def test_repair_script_dry_run_then_real_then_idempotent(seeded):
     before = _stored()
     dry = repair(dry_run=True)
     assert _stored() == before
-    assert (dry["neighborhood"], dry["address"], dry["rows"]) == (2, 2, 2)
+    assert (dry["neighborhood"], dry["address"], dry["rows"]) == (3, 3, 3)
     assert dry["skipped"] == {"Somewhere Unknown": 1}  # Renault is a brand word, not a leftover
 
     out = repair()
-    assert (out["neighborhood"], out["address"], out["rows"]) == (2, 2, 2)
+    assert (out["neighborhood"], out["address"], out["rows"]) == (3, 3, 3)
     after = _stored()
     assert after["a"] == ("Καλλιθέα", "Καλλιθέα")
     assert after["b"] == ("Αθήνα (Κυψέλη)", "Αθήνα (Κυψέλη)")
+    assert after["f"] == ("Γαλάτσι (Λαμπρινή)", "Γαλάτσι (Λαμπρινή)")
     assert after["c"] == before["c"] and after["d"] == before["d"]
     assert after["e"] == before["e"]  # never touches what it cannot map
 

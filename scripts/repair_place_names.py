@@ -1,4 +1,5 @@
-"""Rewrite Latin place names on stored listings to the Greek form (``scout/place_names.py``).
+"""Rewrite Latin and all-caps place names on stored listings to the Greek form
+(``scout/place_names.py``).
 
 ``normalize`` maps new listings; this repairs the rows stored before it did. For every row it
 applies ``greek_place`` to ``neighborhood`` and ``address``; a value the table cannot map is
