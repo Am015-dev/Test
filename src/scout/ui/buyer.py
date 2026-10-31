@@ -602,12 +602,12 @@ NO_PHOTO = "Χωρίς φωτογραφία"
 def photo_html(d: dict, *, hero: bool = False) -> str:
     """The listing's first photo in a fixed 4:3 box (``theme``: ``.hg-thumb``), loaded lazily
     from the portal's own CDN; nothing is downloaded or stored here. Without a photo there is
-    no box (C17); if it fails to load, the box reads «Χωρίς φωτογραφία»."""
+    no box; if the photo fails to load the box reads «Χωρίς φωτογραφία»."""
     cls = "hg-thumb hg-thumb-hero" if hero else "hg-thumb"
     url = d.get("image_url") or ""
     label = f'<span class="hg-thumb-none">{NO_PHOTO}</span>'
     if not url.startswith("https://"):
-        return ""  # C17: no empty box; the card's text starts at the edge
+        return ""  # no photo: no box at all (a grey placeholder on every card reads as broken)
     fail = "this.parentNode.classList.add('hg-thumb-empty');this.remove()"
     return (
         f'<figure class="{cls}"><img src="{html.escape(url)}" loading="lazy" '
@@ -728,25 +728,28 @@ def card_score(d: dict, adv: dict) -> int | None:
     return nl_search.advise(d, cmp["pct"] if cmp else None)["score"]
 
 
-LINK_LABEL = "Δες την αγγελία στο {portal}"
+def open_label(d: dict) -> str:
+    """«Δες την αγγελία στο XE.gr» — the one link a buyer needs on every card."""
+    return f"Δες την αγγελία στο {source_label(d)}"
 
 
-def link_label(d: dict) -> str:
-    return LINK_LABEL.format(portal=source_label(d))
-
-
-def ad_link(d: dict, key: str) -> None:
-    """The link to the ad, full width, under every card and at the top of the listing page."""
+def ad_link(d: dict, key: str, *, primary: bool = False) -> None:
+    """The link to the ad (C14), full width: under every card and, as the primary control,
+    at the top of the listing page."""
     with st.container(key=f"link-{key}"):
-        st.link_button(link_label(d), d["url"], width="stretch")
+        st.link_button(
+            open_label(d), d["url"], type="primary" if primary else "secondary", width="stretch"
+        )
 
 
 def result_card(
     d: dict, adv: dict, k: str, actions: list, advice=None, *, compact: bool = False
 ) -> None:
     """One listing. ``actions`` = [(label, callback, args[, type])], each rendered as a button.
-    Under the card: the link to the ad, full width, then the ``actions`` in one row (two on
-    every list: «Λεπτομέρειες» and «Αγαπημένο»; the saved searches add their verdicts)."""
+    The link to the ad on the portal is always the first thing under the card, full width
+    (C14); then the ``actions`` in one row: two on every list, «Λεπτομέρειες» and «Αγαπημένο»
+    (C17); the saved searches add their verdicts. Nobody should have to open «Λεπτομέρειες»
+    and scroll to reach the ad."""
     key = shortlist.lkey(d)
     uid = f"{k}-{d['id']}"
     with st.container(border=True, key=f"card-{uid}"):
@@ -1744,7 +1747,7 @@ def page_listing(listings: list[dict]) -> None:
     d = by_id[labels[choice]]
     intel = market_intel.build(listings)
     adv = buyer_view(d, intel)
-    ad_link(d, f"l-{d['id']}")
+    ad_link(d, f"l-{d['id']}", primary=True)
     with st.container(border=True, key=f"card-l-{d['id']}"):  # the same card as every list
         st.markdown(card_html(d, adv, compact=True), unsafe_allow_html=True)
     st.markdown(

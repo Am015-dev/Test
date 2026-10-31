@@ -83,6 +83,7 @@ from scout import (  # noqa: E402
     investment,
     liquidity,
     listing_report,
+    market_intel,
     projection,
     score_explain,
     sensitivity,
@@ -110,6 +111,7 @@ from scout.ui import (  # noqa: E402
     areas,  # noqa: E402
     buyer,  # noqa: E402
     components,  # noqa: E402
+    derived,  # noqa: E402
     queries,  # noqa: E402
 )
 
@@ -172,11 +174,47 @@ def _sync_data() -> bool:
     return fresh
 
 
-@st.cache_resource(
-    ttl=10800, show_spinner="Φορτώνω τις αγγελίες και υπολογίζω τις τιμές της αγοράς…"
-)
+def _data_version() -> tuple:
+    """(data file path, mtime, listing rows): what the per-data caches below are keyed by. A new
+    published DB (or any write to it) is a new version; a rerun on the same data is a hit. With
+    DATABASE_URL there is no file: the URL's host/db part and the row count stand in."""
+    from sqlalchemy import func, select
+
+    from scout.config import REPO_ROOT, get_settings
+    from scout.db import session_scope
+    from scout.models import ListingRow
+
+    s = get_settings()
+    if s.database_url:
+        where, mtime = s.database_url.rsplit("@", 1)[-1], None
+    else:
+        path = Path(s.db_path)
+        path = path if path.is_absolute() else REPO_ROOT / path
+        where, mtime = str(path), (path.stat().st_mtime_ns if path.exists() else None)
+    try:
+        with session_scope() as session:
+            rows = session.scalar(select(func.count()).select_from(ListingRow))
+    except Exception:  # no table yet: load_listings reports that itself
+        rows = None
+    return where, mtime, rows
+
+
 def get_listings() -> list[dict]:
+    """The active sale listings: ONE shared list per data version (see ``_listings_for``)."""
     _sync_data()
+    listings = _listings_for(_data_version())
+    # C13: the comparables index is built once per data version and shared read-only: every
+    # market_intel.build(listings) on this list (any page, any session) returns it.
+    market_intel.share(listings)
+    return listings
+
+
+@st.cache_resource(
+    ttl=10800,
+    max_entries=1,  # one data version in memory: a new DB replaces the old list
+    show_spinner="Φορτώνω τις αγγελίες και υπολογίζω τις τιμές της αγοράς…",
+)
+def _listings_for(version: tuple) -> list[dict]:
     # Market-position annotation (price/yield percentile vs comparable active listings),
     # strategy tags and the BUY/WATCH/PASS recommendation are all computed inside
     # load_listings() itself now — every caller (this page, the digest, health/data-quality
@@ -1381,15 +1419,42 @@ def _map_filter(
     return out
 
 
+def _map_ranked(listings: list[dict]) -> tuple[dict, object]:
+    """Per data version (C13): the map's visible listings with the buyer score as ``score``
+    (one score everywhere: colours and legend use the buyer score on the cards), their buyer
+    views, and all of them in the search page's default order. Shared read-only."""
+    intel = market_intel.build(listings)  # the shared index (get_listings)
+
+    def make() -> dict:
+        from scout import nl_search
+        from scout.nl_search import SearchFilters
+
+        scores = buyer.buyer_scores(listings, intel)
+        visible = [
+            {**d, "score": scores[d["id"]]}
+            for d in listings
+            if not _map_hidden(d) and d.get("is_fresh", True)
+        ]
+        views = {d["id"]: buyer.buyer_view(d, intel) for d in visible}
+        rank = buyer.SORTS[buyer.DEFAULT_SORT]
+
+        def _key(d: dict):
+            m = nl_search.match(d, SearchFilters())
+            return rank(m[0] if m else 0, views[d["id"]], d)
+
+        return {"visible": visible, "views": views, "order": sorted(visible, key=_key)}
+
+    return derived.memo(listings, "map", make), intel
+
+
 def page_map(listings: list[dict]) -> None:
     st.subheader("Χάρτης")
     if not listings:
         st.info("Δεν υπάρχουν αγγελίες ακόμα. Πάτα «Ανανέωση δεδομένων» στο μενού.")
         return
-    # One score everywhere: colours and legend use the buyer score on the cards.
-    scores = buyer.buyer_scores(listings)
-    listings = [{**d, "score": scores[d["id"]]} for d in listings]
-    visible = [d for d in listings if not _map_hidden(d) and d.get("is_fresh", True)]
+    base = listings
+    ranked, intel = _map_ranked(base)
+    visible = ranked["visible"]
     options = [g for g, _ in Counter(_map_area_group(d) for d in visible).most_common()]
     prices = sorted(d["price"] for d in visible if d.get("price"))
     p_hi = int(-(-prices[min(len(prices) * 99 // 100, len(prices) - 1)] // 10_000) * 10_000)
@@ -1419,7 +1484,7 @@ def page_map(listings: list[dict]) -> None:
             help="Στο τέρμα αριστερά = χωρίς όριο. Αγγελίες χωρίς έτος κρύβονται όταν βάλεις όριο.",
         )
     matched = _map_filter(
-        listings,
+        visible,
         areas=areas,
         price_max=None if k_max * 1000 >= p_hi else k_max * 1000,
         min_year=None if year <= MAP_YEAR_MIN else year,
@@ -1440,7 +1505,7 @@ def page_map(listings: list[dict]) -> None:
         if exact
         else "Καμία αγγελία δεν έχει ακριβή θέση· όλες είναι στο κέντρο της περιοχής τους."
     )
-    hidden_unfinished = sum(1 for d in listings if d.get("is_unfinished"))
+    hidden_unfinished = sum(1 for d in base if d.get("is_unfinished"))
     unchecked = sum(1 for d in shown if not d.get("page_checked"))
     notes = []
     if hidden_unfinished:
@@ -1456,26 +1521,19 @@ def page_map(listings: list[dict]) -> None:
     if not shown:
         st.info("Καμία αγγελία δεν ταιριάζει — χαλάρωσε την τιμή, το έτος ή την περιοχή.")
         return
-    from scout import market_intel
-
-    intel = market_intel.build(listings)
-    # Same ranking as the search page's default sort, so the two pages agree.
-    from scout import nl_search
-    from scout.nl_search import SearchFilters
-
-    rank = buyer.SORTS[buyer.DEFAULT_SORT]
-    views = {d["id"]: buyer.buyer_view(d, intel) for d in shown}
-
-    def _key(d: dict):
-        m = nl_search.match(d, SearchFilters())
-        return rank(m[0] if m else 0, views[d["id"]], d)
+    # Same ranking as the search page's default sort, so the two pages agree. The order of
+    # every visible listing is computed once per data version (_map_ranked); filtering that
+    # ordered list keeps exactly the order a sort of ``shown`` gives (stable sort, same keys).
+    keep = {id(d) for d in shown}
+    in_order = [d for d in ranked["order"] if id(d) in keep]
+    views = ranked["views"]
 
     if maplist is not None:  # one map, one selection, the ranked list directly under it
-        maplist.render(sorted(shown, key=_key), key="map", intel=intel)
+        maplist.render(in_order, key="map", intel=intel)
         return
     components.results_map(shown, key="map_chart", height=420)
     # The best few as the same cards as the search page (not a wide table).
-    top = sorted(shown, key=_key)[:5]
+    top = in_order[:5]
     st.markdown("#### Οι 5 καλύτερες στον χάρτη")
     for d in top:
         buyer.result_card(
@@ -2271,8 +2329,9 @@ def page_compare(listings: list[dict]) -> None:
     from scout import nl_search, shortlist
 
     starred = buyer.watch_keys()
+    pool = derived.memo(listings, "compare_pool", lambda: nl_search.candidates(listings))
     elig = sorted(  # starred first — the usual "which of my favourites?" question
-        nl_search.candidates(listings), key=lambda d: shortlist.lkey(d) not in starred
+        pool, key=lambda d: shortlist.lkey(d) not in starred
     )
     if len(elig) < 2:
         st.info(
@@ -2298,7 +2357,9 @@ def page_compare(listings: list[dict]) -> None:
     if len(favs) >= 2:
         default = favs[:2]
     else:  # no favourites yet: start from the two best-scoring finished flats
-        scores = buyer.buyer_scores(elig)
+        # Scored against the candidates' own comparables (as before), once per data version;
+        # the starred-first order does not change a score.
+        scores = derived.memo(listings, "compare_scores", lambda: buyer.buyer_scores(pool))
         best = sorted(
             (d for d in elig if not d.get("is_unfinished")), key=lambda d: -scores[d["id"]]
         )[:2]
@@ -2327,8 +2388,6 @@ def page_compare(listings: list[dict]) -> None:
         st.info("Διάλεξε δύο διαφορετικές αγγελίες: άλλαξε την Α ή τη Β.")
         return
     chosen = [by_id[opts[pick_a]], by_id[opts[pick_b]]]
-
-    from scout import market_intel
 
     intel = market_intel.build(listings)
     views = [_compare_rows(d, intel) for d in chosen]
@@ -2442,7 +2501,7 @@ def main() -> None:
     listings = get_listings()
     with st.container(key="app-head"):  # theme.py: the wordmark and the quiet data line
         st.markdown('<div class="hg-app-head">Σκάουτ ακινήτων</div>', unsafe_allow_html=True)
-        st.caption(_data_status(listings))
+        st.caption(derived.memo(listings, "status", lambda: _data_status(listings)))
     # Pills mirror the current page (pages also navigate by setting session_state["page"]).
     # With ?admin=1 the owner's tools follow the buyer pages, under their own names.
     st.session_state["nav_pill"] = _PILL_OF.get(page, page if page in ADMIN_NAV else None)

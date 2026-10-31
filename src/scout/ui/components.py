@@ -455,6 +455,27 @@ def selected_view(d: dict) -> tuple[float, float, float]:
     return lat, lng, _SELECTED_ZOOM_EXACT if exact else _SELECTED_ZOOM_APPROX
 
 
+def _compact_deck_class():
+    """``pydeck.Deck`` whose JSON is the same spec, compact: no indent, and Greek as UTF-8
+    instead of ``\\uXXXX`` escapes (C13: the 1.500-point map was 1,7 MB, mostly padding)."""
+    import json
+
+    import pydeck as pdk
+    from pydeck.bindings.json_tools import default_serialize
+
+    class CompactDeck(pdk.Deck):
+        def to_json(self):
+            return json.dumps(
+                self,
+                sort_keys=True,
+                default=default_serialize,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+
+    return CompactDeck
+
+
 def results_map(
     rows: list[dict],
     key: str,
@@ -489,7 +510,8 @@ def results_map(
     import pandas as pd
     import pydeck as pdk
 
-    df = pd.DataFrame(map_records(pts))
+    # Only the columns the layers and the tooltip read (C13: "title" is in neither).
+    df = pd.DataFrame(map_records(pts)).drop(columns=["title"])
     lat_c, lng_c, zoom = _map_view(df["lat"].tolist(), df["lon"].tolist())
     if sum(1 for d in pts if d.get("location_precision") != "exact") > len(pts) / 2:
         zoom = min(zoom, 13.5)  # mostly area-centroid points: don't zoom to fake street detail
@@ -554,7 +576,7 @@ def results_map(
         "{yield}<br/>{hood}<br/><i>{prec}</i>",
         "style": {"fontSize": "14px", "maxWidth": "260px", "whiteSpace": "normal"},
     }
-    deck = pdk.Deck(
+    deck = _compact_deck_class()(
         map_style="light",  # token-free Carto basemap
         initial_view_state=pdk.ViewState(latitude=lat_c, longitude=lng_c, zoom=zoom),
         layers=layers,
