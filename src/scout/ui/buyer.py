@@ -372,7 +372,7 @@ def card_html(d: dict, adv: dict, basis: bool = True) -> str:
     l2 = [_floor(floor) if floor is not None else "όροφος: δεν δηλώνεται", _year_text(d)]
     if d.get("neighborhood"):
         l2.append(e(d["neighborhood"]))
-    if stn := picks.station(d):
+    if stn := picks.station_text(d):
         l2.append(f"Σταθμός {e(stn)}")
     tone, text = status(d)
     l3 = f'<span class="hg-st hg-st-{tone}">{text}</span>'

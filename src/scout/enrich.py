@@ -13,56 +13,16 @@ from datetime import datetime
 
 import requests
 
+from . import stations as _stations
 from .config import Settings, get_settings
 from .finance import net_yield as _net_yield_after_costs
 from .models import Listing
 
-# Metro **Line 2 (red)** and **Line 3 (blue)** stations — the modern metro the strategy
-# counts. The Line 1 / ISAP electric railway (Kifisia, Marousi, Nea Ionia) is deliberately
-# excluded, so listings out there correctly fall outside the max-metro-distance filter.
-# Coordinates are OSM station nodes (~11 m precision), cross-checked against Wikipedia.
+# Every Line 1/2/3 station and the suburban railway stops of the covered municipalities, with
+# Greek names and coordinates, come from ``stations.py`` (one data file, source and date in it).
+# Keyed by the Greek label stored in ``listing.nearest_metro`` («Μετρό Χολαργός»).
 METRO_STATIONS: dict[str, tuple[float, float]] = {
-    # Line 3 (blue) — north-east corridor
-    "Evangelismos": (37.9761, 23.7471),
-    "Megaro Moussikis": (37.9790, 23.7530),
-    "Ambelokipi": (37.9872, 23.7577),
-    "Panormou": (37.9932, 23.7636),
-    "Katehaki": (37.9931, 23.7764),
-    "Ethniki Amyna": (37.9992, 23.7845),
-    "Holargos": (38.0049, 23.7947),
-    "Nomismatokopio": (38.0091, 23.8058),
-    "Agia Paraskevi": (38.0171, 23.8125),
-    "Chalandri": (38.0217, 23.8208),
-    "Doukissis Plakentias": (38.0240, 23.8326),
-    # Line 2 (red) — southern corridor
-    "Syntagma": (37.9755, 23.7357),
-    "Akropoli": (37.9689, 23.7295),
-    "Syngrou-Fix": (37.9646, 23.7268),
-    "Neos Kosmos": (37.9577, 23.7284),
-    "Agios Ioannis": (37.9564, 23.7347),
-    "Dafni": (37.9496, 23.7372),
-    "Agios Dimitrios": (37.9404, 23.7407),
-    "Ilioupoli": (37.9297, 23.7445),
-    "Alimos": (37.9181, 23.7442),
-    "Argyroupoli": (37.9030, 23.7455),
-    "Elliniko": (37.8926, 23.7471),
-    # Line 2 (red) — north-west leg (Peristeri)
-    "Larissa Station": (37.9923, 23.7207),
-    "Attiki": (37.9995, 23.7228),
-    "Sepolia": (38.0026, 23.7140),
-    "Agios Antonios": (38.0061, 23.6997),
-    "Peristeri": (38.0129, 23.6958),
-    "Anthoupoli": (38.0171, 23.6909),
-    # Line 3 (blue) — west leg to Piraeus (Aigaleo / Nikaia / Korydallos / Piraeus)
-    "Kerameikos": (37.9787, 23.7110),
-    "Eleonas": (37.9878, 23.6934),
-    "Aigaleo": (37.9914, 23.6818),
-    "Agia Marina": (37.9969, 23.6671),
-    "Nikaia": (37.9658, 23.6473),
-    "Korydallos": (37.9771, 23.6504),
-    "Maniatika": (37.9596, 23.6398),
-    "Piraeus": (37.9481, 23.6423),
-    "Dimotiko Theatro": (37.9429, 23.6476),
+    s.label: (s.lat, s.lng) for s in _stations.all_stations()
 }
 
 EARTH_RADIUS_M = 6_371_000
@@ -107,7 +67,7 @@ MUNICIPALITY_CENTROIDS: dict[str, tuple[float, float]] = {
     "Exarcheia": (37.9862, 23.7330),
     "Kolonaki": (37.9795, 23.7440),
     "Neos Kosmos": (37.9555, 23.7250),
-    "Metaxourgeio": (37.9865, 23.7205),
+    "Metaxourgeio": (37.9852, 23.7188),
     "Gkyzi": (37.9930, 23.7420),
     "Kypseli": (37.9930, 23.7360),
     "Zografou": (37.9790, 23.7700),
@@ -254,7 +214,7 @@ def nearest_metro(
     settings: Settings | None = None,
     use_osrm: bool = True,
 ) -> MetroResult:
-    """Nearest Holargos-line station and walking distance.
+    """Nearest rail station (Greek label) and walking distance.
 
     Tries OSRM walking route; falls back to haversine * WALK_DETOUR_FACTOR. The
     nearest station is chosen by haversine first (cheap), then refined.

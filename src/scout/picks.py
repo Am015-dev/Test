@@ -45,6 +45,7 @@ import statistics
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 
+from . import stations
 from .area_insights import area_name
 from .finance import acquisition_costs
 from .market_intel import Intel
@@ -131,6 +132,41 @@ def area_stats(listings: list[dict]) -> dict[str, tuple[int, float | None, float
 def station(d: dict) -> str | None:
     hood = d.get("neighborhood") or ""
     return next((s for key, s in STATIONS.items() if key in hood), None)
+
+
+NAME_BASED = "(από το όνομα της γειτονιάς)"
+NEAR_RAIL_M = 800  # walking distance that counts as «κοντά σε μετρό»
+
+
+def _exact_station(d: dict) -> tuple[str, int] | None:
+    """(Greek station label, metres) when the listing's own point was measured, else None.
+    Approximate points (area centroids) carry no usable distance."""
+    if d.get("location_precision") != "exact" or d.get("metro_distance_m") is None:
+        return None
+    name = stations.label(d.get("nearest_metro"))
+    return (name, int(d["metro_distance_m"])) if name else None
+
+
+def station_text(d: dict) -> str:
+    """The station line a user reads. Exact point: «Μετρό Άγιος Δημήτριος · 450 μ.». Otherwise
+    the station the neighbourhood name carries, with no distance: «ΗΣΑΠ Περισσός (από το όνομα
+    της γειτονιάς)». Empty when neither is known."""
+    if hit := _exact_station(d):
+        return f"{hit[0]} · {hit[1]:,} μ.".replace(",", ".")
+    if name := station(d):
+        return f"{name.split(' (Γραμμή')[0]} {NAME_BASED}"
+    return ""
+
+
+def near_rail(d: dict) -> bool:
+    """Within 800 m of a station when the point is exact; otherwise when the neighbourhood name
+    carries a station."""
+    if hit := _exact_station(d):
+        return hit[1] <= NEAR_RAIL_M
+    return station(d) is not None
+
+
+_near_rail = near_rail  # ``find`` has a parameter of the same name
 
 
 def rent_index(rent_rows: list[dict]) -> dict[str, tuple[float, int]]:
@@ -268,7 +304,7 @@ def _build(
     too_cheap = gap > 0.35
     checked = bool(d.get("page_checked"))
     few = bool(d.get("few_photos"))
-    st_name = station(d)
+    st_name = station_text(d) if _near_rail(d) else None
     value = (
         max(min(gap, 0.25), -0.15) * 40
         + (3 if built and built <= year - 1 else 0)  # finished, not "delivery this year"
@@ -447,7 +483,7 @@ def find(
         built = d.get("renovated_year") or d.get("year_built")
         if max_age is not None and not (built and year - max_age <= built <= year):
             continue
-        if near_rail and not station(d):
+        if near_rail and not _near_rail(d):
             continue
         if checked_only and not d.get("page_checked"):
             continue

@@ -91,6 +91,12 @@ jobs:
           timeout 36m python scripts/enrich_details.py --new-builds --limit 600
           --max-fetches 400 --no-rescore || true
 
+      - name: Recompute nearest station for exact-coordinate rows (offline, seconds)
+        if: always()
+        timeout-minutes: 5
+        continue-on-error: true
+        run: python scripts/recompute_metro.py
+
       - name: Rescore whole panel from the DB (no network)
         if: always()
         timeout-minutes: 15

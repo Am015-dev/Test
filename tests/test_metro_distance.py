@@ -33,5 +33,5 @@ def test_nearest_metro_falls_back_when_osrm_returns_zero(monkeypatch):
 
 def test_nearest_metro_offline_is_plausible():
     res = nearest_metro(38.0085, 23.8195, use_osrm=False)
-    assert res.nearest_metro == "Agia Paraskevi"
+    assert res.nearest_metro == "Μετρό Αγία Παρασκευή"
     assert 500 < res.metro_distance_m < 3000
