@@ -10,7 +10,7 @@ from datetime import datetime
 
 import pytest
 
-from .test_ui_gauntlet import APP, SEARCH, env  # noqa: F401  (env is a fixture)
+from .test_ui_gauntlet import APP, SEARCH, env, goto  # noqa: F401  (env is a fixture)
 
 AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
 READ_AT = datetime(2026, 11, 1)  # after xe.UNFINISHED_CHECK_SINCE: counts as page read
@@ -86,7 +86,7 @@ def _cards(monkeypatch, sort: str | None = None) -> list[tuple[dict, dict]]:
     monkeypatch.setattr(buyer, "result_card", record)
     monkeypatch.setattr(buyer, "PAGE_SIZE", 1_000)  # every card, not just the first screen
     at = AppTest.from_file(APP, default_timeout=120).run()
-    at.radio(key="page").set_value(SEARCH).run()
+    goto(at, SEARCH)
     if sort:
         seen.clear()
         at.selectbox(key="sort").set_value(sort).run()
