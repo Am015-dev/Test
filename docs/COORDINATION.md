@@ -58,7 +58,7 @@ Trust beats cleverness. If we don't know, the UI says we don't know, in one shor
    Never edit `app.py` unless it is in your list.
 2. **Gate before every push** (CI runs the same):
    `python -m pytest -q && ruff check src/ tests/ scripts/ && black --check src/ tests/ scripts/`
-   plus `GAUNTLET=0 python -m pytest -q tests/test_ui_gauntlet.py` (renders every page).
+   plus `python -m pytest -q tests/test_ui_gauntlet.py` with GAUNTLET unset (renders every page; `GAUNTLET=0` is a non-empty string and would start the 25-minute widget sweep — run that only once, at the end).
 3. **Look at your page on a phone before claiming done.** Run the app against the live DB
    (`streamlit run src/scout/ui/app.py --server.headless true --server.port 8501`) and
    screenshot it with Playwright at viewport 390×844 (Chromium is pre-installed:
