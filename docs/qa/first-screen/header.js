@@ -1,5 +1,5 @@
 // C18 first-screen check (390×844): on the guide result the first card starts within the top
-// 45 % of the screen; the pills are at most two rows; no sources/counts line above the pills;
+// 45 % of the screen; the header (wordmark + pills) ends within 170 px; the pills are at most two rows; no sources/counts line above the pills;
 // Streamlit's own chrome (status widget, decoration, deploy/host badges) is hidden.
 // Usage: NODE_PATH=$(npm root -g) node docs/qa/first-screen/header.js [baseUrl]
 // Exit code 1 when a check fails; the measurements are printed as JSON either way.
@@ -29,9 +29,11 @@ async function tap(page, name) { await page.getByRole('button', { name, exact: t
   const m = await page.evaluate(() => {
     const H = window.innerHeight;
     const card = document.querySelector('[data-testid="stMain"] .hg-card');
-    const pills = [...document.querySelectorAll('.st-key-nav_pill button')].map((b) => Math.round(b.getBoundingClientRect().top));
+    const boxes = [...document.querySelectorAll('.st-key-nav_pill button')].map((b) => b.getBoundingClientRect());
+    const pills = boxes.map((r) => Math.round(r.top));
     const rows = new Set(pills).size;
     const pillsTop = Math.min(...pills);
+    const headerBottom = Math.round(Math.max(...boxes.map((r) => r.bottom)));
     const above = [...document.querySelectorAll('[data-testid="stMain"] [data-testid="stElementContainer"]')]
       .filter((e) => e.getBoundingClientRect().height > 0 && e.getBoundingClientRect().bottom <= pillsTop + 1)
       .map((e) => e.innerText.trim()).filter(Boolean);
@@ -41,6 +43,7 @@ async function tap(page, name) { await page.getByRole('button', { name, exact: t
       firstCardTop: card ? Math.round(card.getBoundingClientRect().top) : null,
       firstCardShare: card ? Math.round((card.getBoundingClientRect().top / H) * 1000) / 1000 : null,
       pillRows: rows,
+      headerBottom,  // the header (wordmark + pills) ends here; round 6 target ≤ 170 px
       textAbovePills: above,
       chromeHidden: {
         statusWidget: hidden('[data-testid="stStatusWidget"]'),
@@ -53,6 +56,7 @@ async function tap(page, name) { await page.getByRole('button', { name, exact: t
   const fails = [];
   if (m.firstCardShare === null || m.firstCardShare > 0.45) fails.push(`first card starts at ${m.firstCardShare} of the screen (limit 0.45)`);
   if (m.pillRows > 2) fails.push(`pills take ${m.pillRows} rows`);
+  if (m.headerBottom > 170) fails.push(`the header ends at ${m.headerBottom} px (limit 170)`);
   if (m.textAbovePills.some((t) => /ενεργές|ελεγμένες|XE\.gr/.test(t))) fails.push('the sources/counts line is still above the pills');
   for (const [k, v] of Object.entries(m.chromeHidden)) if (!v) fails.push(`${k} is visible`);
   m.fails = fails;
