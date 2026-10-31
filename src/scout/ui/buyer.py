@@ -24,6 +24,7 @@ MAX_ADVICE = 25  # AI second opinions per browser session — bounds API cost
 ADVICE_TONE = {"Αξίζει": "good", "Με επιφύλαξη": "warn", "Απόφυγε": "bad"}
 MAX_SEARCHES = 30  # AI-parsed searches per browser session — bounds API cost
 NAV_DETAIL = "Αγγελία"  # label of the listing-detail page (cards link to it)
+NAV_SAVED = "Αποθηκευμένες αναζητήσεις"  # opened from the sidebar and from «Αναζήτηση»
 NAV_SEARCH = "Αναζήτηση"  # label of the search page (the listing page links back to it)
 AI_LABEL = "Δεύτερη γνώμη από τεχνητή νοημοσύνη"
 
@@ -209,6 +210,10 @@ def open_detail(listing_id: int) -> None:
         st.session_state["detail_from"] = st.session_state.get("page")
     st.session_state["page"] = NAV_DETAIL
     st.session_state["detail_id"] = listing_id
+
+
+def open_saved() -> None:
+    st.session_state["page"] = NAV_SAVED
 
 
 def _back_from_detail() -> None:
@@ -1036,8 +1041,10 @@ def page_search(listings: list[dict]) -> None:
     if st.session_state.get("nl_error"):
         st.error(st.session_state["nl_error"])
 
-    if asked:
-        st.button("Καθαρισμός αναζήτησης", key="clear_q", on_click=_clear_query)
+    with st.container(key="search-links", horizontal=True, gap="small"):
+        if asked:
+            st.button("Καθαρισμός αναζήτησης", key="clear_q", on_click=_clear_query)
+        st.button("Αποθηκευμένες", key="to_saved", on_click=open_saved)
 
     stale_ok = st.session_state.get("include_stale", False)
     pool = [d for d in listings if stale_ok or d.get("is_fresh", True)]

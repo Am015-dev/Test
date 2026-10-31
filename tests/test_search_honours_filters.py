@@ -28,7 +28,7 @@ import pytest
 from scout.config import get_settings
 from scout.nl_search import NOT_A_HOME, SearchFilters, _norm
 
-from .test_ui_gauntlet import APP, SEARCH, env  # noqa: F401  (env is a fixture)
+from .test_ui_gauntlet import APP, SEARCH, env, goto  # noqa: F401  (env is a fixture)
 
 FLAT_WORDS = ("διαμερισμα", "apartment", "studio", "γκαρσονιερα", "loft", "flat")
 AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
@@ -133,7 +133,7 @@ def _run(at, f: SearchFilters | None = None):
 
 def _open_search(timeout: int):
     at = AppTest.from_file(APP, default_timeout=timeout).run()
-    at.radio(key="page").set_value(SEARCH).run()
+    goto(at, SEARCH)
     return at
 
 
