@@ -205,7 +205,7 @@ def test_reasons_and_risks_are_factual_greek():
     rents = [rent("Cholargos", None, 12.0, 40), rent("Cholargos", "Χολαργός (Κέντρο)", 12, 40)]
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert 2 <= len(x.reasons) <= 4 and 1 <= len(x.risks) <= 2
-    assert any("Μικτή απόδοση 5,8%" in r and "40 δείγματα" in r for r in x.reasons)
+    assert any("Μικτή απόδοση 5,8 %" in r and "40 δείγματα" in r for r in x.reasons)
     assert any("Μικρό δείγμα: μόνο 40" in r for r in x.risks)
     assert all(any(ch.isdigit() for ch in r) for r in x.reasons)
 
@@ -215,7 +215,7 @@ def test_falling_prices_and_old_stock_are_risks():
     late = many(60, ppm=2700, first_seen=OCT, year_built=1970)
     (x,) = ai.rank_areas(early + late, year=YEAR)
     assert x.trend_pct == pytest.approx(-0.10)
-    assert x.risks[0].startswith("Πτωτικές ζητούμενες τιμές: -10,0%")
+    assert x.risks[0].startswith("Πτωτικές ζητούμενες τιμές: -10,0 %")
     assert len(x.risks) == 2  # capped
     assert not any("πάνω από τον Ιούλιο" in r for r in x.reasons)
 
@@ -240,3 +240,112 @@ def test_unrecorded_rent_samples_read_as_dash():
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert x.rent_samples is None
     assert any("δείγματα: —" in r for r in x.reasons)
+
+
+# ---- per-area facts, explained why, decision sentences -----------------------------------
+
+
+def _stock(n_new=6, n_old=6, **kw):
+    """Fresh flats: ≤5-year at 4000 €/m², 16+-year at 2500 €/m², padded to MIN_FRESH."""
+    rows = many(n_new, ppm=4000, year_built=2024, **kw) + many(
+        n_old, ppm=2500, year_built=1990, **kw
+    )
+    return rows + many(max(0, 25 - len(rows)), ppm=3000, year_built=2015, **kw)
+
+
+def test_new_build_premium_vs_old_stock():
+    (x,) = ai.rank_areas(_stock(), year=YEAR)
+    assert (x.n_new, x.ppm_new, x.n_old, x.ppm_old) == (6, 4000, 6, 2500)
+    assert x.new_premium == pytest.approx(0.6)
+    (y,) = ai.rank_areas(_stock(n_new=4), year=YEAR)  # < MIN_BAND new → no premium
+    assert y.ppm_new is None and y.new_premium is None and y.n_new == 4
+
+
+def test_only_upper_floor_flats_count():
+    rows = _stock() + many(10, floor=0.0) + many(10, floor=None) + many(10, title="Μονοκατοικία")
+    (x,) = ai.rank_areas(rows, year=YEAR)
+    assert x.n_fresh == 25
+
+
+def test_under_construction_share_counts_only_checked_pages():
+    rows = _stock()
+    rows += many(2, year_built=2026, is_unfinished=True, page_checked=True)
+    rows += many(3, year_built=2024, page_checked=True)  # finished, checked
+    rows += many(4, year_built=2026, is_unfinished=True, page_checked=False)  # not read: ignored
+    rows += many(5, year_built=2024, page_checked=False)  # not read: ignored
+    (x,) = ai.rank_areas(rows, year=YEAR)
+    assert (x.uc_unfinished, x.uc_checked) == (2, 5)
+    assert x.n_fresh == 25 + 3 + 5  # flagged ones never enter the medians
+
+
+def test_stations_come_from_neighbourhoods():
+    rows = _stock() + many(3, neighborhood="Χολαργός (Περισσός)")
+    # the Περισσός key lives in picks.STATIONS
+    (x,) = ai.rank_areas(rows, year=YEAR)
+    assert x.stations == ["ΗΣΑΠ Περισσός"]
+    (y,) = ai.rank_areas(_stock(), year=YEAR)
+    assert y.stations == []
+
+
+def test_why_is_a_filled_template_without_adjectives():
+    rows = _stock(neighborhood="Χολαργός (Περισσός)")
+    rents = [rent("Cholargos", None, 11.2, 38), rent("Cholargos", "Χολαργός (Περισσός)", 11.2, 38)]
+    (x,) = ai.rank_areas(rows, rents, year=YEAR)
+    assert x.why == (
+        "Απόδοση 4,5 % (1η από 1) με ενοίκιο 11,2 €/τ.μ. σε 38 αγγελίες"
+        "· νεόδμητα 60 % ακριβότερα από τα παλιά (n=6/6)· ΗΣΑΠ Περισσός"
+    )
+
+
+def test_why_leaves_out_missing_parts():
+    (x,) = ai.rank_areas(many(25), year=YEAR)
+    assert x.why.startswith("25 αγγελίες, διάμεση 3.000")
+
+
+def test_decision_sentences_have_numbers_and_budget():
+    cheap_rent = [rent("Cholargos", None, 9.0, 30), rent("Cholargos", "Χολαργός (Κέντρο)", 9, 30)]
+    a = many(61, ppm=3000)
+    b = many(55, area="Παπάγου", search_area="Papagou", ppm=2500, price=200_000)
+    b += many(
+        5,
+        area="Παπάγου",
+        search_area="Papagou",
+        ppm=2500,
+        year_built=2024,
+        neighborhood="Παπάγου (Κέντρο)",
+    )
+    c = many(
+        30,
+        area="Μαρούσι",
+        search_area="Marousi",
+        ppm=3500,
+        year_built=2024,
+        neighborhood="Μαρούσι (Κέντρο)",
+        price=250_000,
+        page_checked=True,
+    )
+    rents = cheap_rent + [
+        rent("Papagou", None, 12.0, 20),
+        rent("Papagou", "Παπάγου (Κέντρο)", 12, 20),
+    ]
+    ranked = ai.rank_areas(a + b + c, rents, year=YEAR)
+    s = ai.decision(ranked, 300_000)
+    assert s[0].startswith("Για απόδοση: Παπάγου, μικτή ") and "ενοίκιο 12,0 €/τ.μ." in s[0]
+    assert s[1].startswith("Για ρευστότητα: Χολαργός, 61 αγγελίες")
+    assert s[2].startswith("Για νεόδμητο κοντά σε σταθμό έως 300.000 €: Μαρούσι (ΗΣΑΠ Μαρούσι)")
+    assert "30 αγγελίες, 30 με ελεγμένη περιγραφή" in s[2]
+    assert all(any(ch.isdigit() for ch in line) for line in s)
+
+
+def test_decision_says_when_nothing_is_in_budget():
+    ranked = ai.rank_areas(many(60), year=YEAR)
+    assert ai.decision(ranked, 300_000)[-1] == (
+        "Νεόδμητο έως 300.000 € σε γειτονιά με σταθμό: δεν βρέθηκε αγγελία."
+    )
+
+
+def test_decision_still_answers_on_small_samples_and_says_so():
+    rents = [rent("Cholargos", None, 12.0, 30), rent("Cholargos", "Χολαργός (Κέντρο)", 12, 30)]
+    ranked = ai.rank_areas(many(25), rents, year=YEAR)
+    s = ai.decision(ranked, 300_000)
+    assert s[0].startswith("Για απόδοση: Χολαργός") and s[0].endswith("Μικρό δείγμα.")
