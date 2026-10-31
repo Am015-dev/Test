@@ -613,7 +613,7 @@ footer {{ visibility: hidden; height: 0; }}
 [class*="st-key-act-"] button, [class*="st-key-act-"] a {{
     min-height: var(--hg-target) !important; padding: 4px 12px !important;
 }}
-[class*="st-key-act-"] button p, [class*="st-key-act-"] a p {{ font-size: var(--hg-fs-footnote) !important; }}
+[class*="st-key-act-"] button p, [class*="st-key-act-"] a p {{ font-size: var(--hg-fs-subhead) !important; }}
 [class*="st-key-act-"] [data-testid="stBaseButton-primary"] {{
     background: #FEF3C7; border-color: #FCD34D; color: #92400E;
 }}
@@ -886,6 +886,25 @@ footer {{ visibility: hidden; height: 0; }}
     border-radius: var(--hg-r-control);
 }}
 [data-testid="stMain"] [data-testid="stButtonGroup"] button {{ border-radius: var(--hg-r-pill); }}
+/* Option chips and segmented controls wrap with an 8 px gap: never touching, never clipped. */
+[data-testid="stMain"] [data-testid="stButtonGroup"] :has(> button) {{
+    flex-wrap: wrap; gap: var(--hg-s2);
+}}
+[data-testid="stMain"] [data-testid="stButtonGroup"] button {{
+    border-width: 1px; border-style: solid;  /* separate chips, not a joined segment */
+}}
+[data-testid="stMain"] [data-testid="stButtonGroup"] button:not([aria-checked="true"]):not([aria-pressed="true"]) {{
+    border-color: #CBD5E1;
+}}
+/* Streamlit clears the left border of the chip after the chosen one (a joined segment). */
+[data-testid="stMain"] [data-testid="stButtonGroup"] button[data-selected]
+    + button[data-variant]:not([aria-checked="true"]):not([aria-pressed="true"]) {{
+    border-left-color: #CBD5E1;
+}}
+[data-testid="stMain"] [data-testid="stButtonGroup"]
+    button[data-variant]:not([aria-checked="true"]):not([aria-pressed="true"]):has(+ button[data-selected]) {{
+    border-right-color: #CBD5E1;
+}}
 
 /* Cards: 14 px radius, hairline on the canvas, no shadow (elevation declared once). */
 [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"] {{
@@ -894,11 +913,14 @@ footer {{ visibility: hidden; height: 0; }}
 
 /* The guide card's four buttons (C6 decision): «Εγκρίνω» primary; «Λεπτομέρειες» and
  * «Αγαπημένο» secondary; «Δεν μου κάνει» tertiary — text weight, same height. */
-[data-testid="stMain"] [class*="st-key-pick-no-"] button {{
+[data-testid="stMain"] :is([class*="st-key-pick-no-"], [class*="st-key-rent-no-"]) button {{
     background: transparent; border-color: transparent; color: var(--hg-muted);
 }}
-[data-testid="stMain"] [class*="st-key-pick-no-"] button p {{ font-weight: 500; }}
-[data-testid="stMain"] [class*="st-key-pick-fav-"] [data-testid="stBaseButton-primary"] {{
+[data-testid="stMain"] :is([class*="st-key-pick-no-"], [class*="st-key-rent-no-"]) button p {{
+    font-weight: 500;
+}}
+[data-testid="stMain"] :is([class*="st-key-pick-fav-"], [class*="st-key-rent-star-"])
+    [data-testid="stBaseButton-primary"] {{
     background: var(--hg-warn-bg); border-color: var(--hg-warn-line); color: var(--hg-warn-fg);
 }}
 /* The result header: «Πίσω» small and secondary next to the title. */
@@ -993,6 +1015,7 @@ footer {{ visibility: hidden; height: 0; }}
 /* The sidebar opener: a hairline control, not a floating card. */
 header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {{
     box-shadow: none; border-radius: var(--hg-r-control);
+    min-width: var(--hg-target); min-height: var(--hg-target);
 }}
 
 /* Notes: Streamlit's alerts as the product's own notes — a hairline box on the surface,

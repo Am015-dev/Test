@@ -454,7 +454,8 @@ def _card(rank: int | None, x: ai.AreaInsight, *, key: str) -> None:
             (
                 "Στην αγορά",
                 (
-                    f"{gr_num(x.median_dom)} μέρες (διάμεσα, από την πρώτη φορά που τις είδαμε)"
+                    f"{gr_num(x.median_dom)} {'μέρα' if round(x.median_dom) == 1 else 'μέρες'} "
+                    "(διάμεσα, από την πρώτη φορά που τις είδαμε)"
                     if x.median_dom
                     else "άγνωστο"
                 ),
