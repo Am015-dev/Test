@@ -22,7 +22,7 @@ KIND_WORDS: dict[str, tuple[str, ...]] = {
     "house": ("μονοκατοικια", "house", "βιλα", "villa"),
 }
 KIND_LABEL = {"apartment": "διαμέρισμα", "maisonette": "μεζονέτα", "house": "μονοκατοικία"}
-NOT_A_HOME = ("πολυκατοικια", "συγκροτημα", "αερα", "οικοπεδο", "κτιριο", "μπλοκ")
+NOT_A_HOME = ("πολυκατοικια", "συγκρ", "αερα", "οικοπεδο", "κτιριο", "μπλοκ")
 
 # The listing dict has no feature columns, so wants are matched on title/location text.
 WANT_WORDS: dict[str, tuple[str, ...]] = {
@@ -67,6 +67,11 @@ class SearchFilters(BaseModel):
     include_unfinished: bool = Field(
         False, description="True only if the user explicitly wants unfinished/under-construction."
     )
+    include_undeclared: bool = Field(
+        False,
+        description="True only if the user explicitly also wants listings that do not state "
+        "their floor or build year when a floor/year filter is set.",
+    )
     budget: int | None = Field(
         None,
         description="Total capital the user wants to invest, EUR, when stated as an amount to "
@@ -100,9 +105,11 @@ def describe(f: SearchFilters) -> str:
     if f.kinds:
         parts.append("τύπος: " + "/".join(KIND_LABEL[k] for k in f.kinds))
     if f.year_min:
-        parts.append(f"κατασκευή από {f.year_min}")
+        parts.append(f"κτίριο από {f.year_min}")
     if f.include_unfinished:
-        parts.append("και ημιτελή")
+        parts.append("και υπό κατασκευή")
+    if f.include_undeclared and (f.floor_min is not None or f.year_min):
+        parts.append("και χωρίς δηλωμένο όροφο/έτος")
     if f.private_only:
         parts.append("μόνο ιδιώτης")
     parts += [WANT_LABEL[w] for w in f.wants]
@@ -146,12 +153,26 @@ def area_matches(area: str, place: str) -> bool:
     return _area_in(area, f"{where} {_latin(where)}")
 
 
-def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
-    """Return (match %, reasons), or None if a hard criterion fails.
+# Why a listing is hidden, in the order the reasons are checked: a listing that fails several
+# filters is counted under the first. Floor/year come after everything else, and a missing
+# floor/year after a known-but-wrong one, so "include undeclared" brings back exactly the
+# "undeclared" group and dropping the floor/year filters brings back exactly those groups.
+HIDE_ORDER = (
+    "area",
+    "not_home",
+    "price",
+    "size",
+    "bedrooms",
+    "kind",
+    "private",
+    "unfinished",
+    "floor",
+    "year",
+    "undeclared",
+)
 
-    Unknown (None) listing fields never exclude. Wants are soft: 60 + 40 * confirmed/total.
-    """
-    reasons: list[str] = []
+
+def _where(d: dict) -> str:
     # Match on where the listing IS. `search_area` is only the area XE was searched for, and XE's
     # area search also returns neighbouring places (a Χαλάνδρι flat under "Cholargos"), so it is a
     # fallback for listings that carry no location of their own.
@@ -159,51 +180,83 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
     place = d.get("neighborhood") or d.get("address") or ""
     where = _norm(place.split(" (")[0])
     if where.strip():
-        where = f"{where} {_latin(where)}"  # so "Cholargos" also finds "Χολαργός"
-    else:
-        where = _norm(str(d.get("search_area") or ""))
+        return f"{where} {_latin(where)}"  # so "Cholargos" also finds "Χολαργός"
+    return _norm(str(d.get("search_area") or ""))
+
+
+def why_hidden(d: dict, f: SearchFilters) -> str | None:
+    """The first filter ``d`` fails (a ``HIDE_ORDER`` code), or None when it matches.
+
+    Unknown size/bedrooms never exclude. Floor and build year are what this buyer filters on
+    most, so a listing that does not state them fails a floor/year filter as "undeclared" —
+    unless ``f.include_undeclared``. The year filter is the BUILD year: a renovated flat in a
+    1970s block is still a 1970s block.
+    """
+    if f.areas and not any(_area_in(a, _where(d)) for a in f.areas):
+        return "area"
+    title = _norm(d.get("title") or "")
+    if title.startswith(NOT_A_HOME):
+        return "not_home"
+    price = d.get("price")
+    if price is not None:
+        if (f.price_min and price < f.price_min) or (f.price_max and price > f.price_max):
+            return "price"
+        if f.budget:
+            cash = price + (acquisition_costs(price, bool(d.get("is_private_seller"))) or 0)
+            if cash > f.budget:
+                return "price"
+    m2 = d.get("area_m2")
+    if m2 is not None and ((f.area_min and m2 < f.area_min) or (f.area_max and m2 > f.area_max)):
+        return "size"
+    beds = d.get("bedrooms")
+    if beds is not None and (
+        (f.bedrooms_min is not None and beds < f.bedrooms_min)
+        or (f.bedrooms_max is not None and beds > f.bedrooms_max)
+    ):
+        return "bedrooms"
+    # An unstated kind (no title) is not proof of a house: it never excludes.
+    if title and f.kinds and not any(title.startswith(w) for k in f.kinds for w in KIND_WORDS[k]):
+        return "kind"
+    if f.private_only and d.get("is_private_seller") is False:
+        return "private"
+    if d.get("is_unfinished") and not f.include_unfinished:
+        return "unfinished"
+    floor, built = d.get("floor"), d.get("year_built")
+    if f.floor_min is not None and floor is not None and floor < f.floor_min:
+        return "floor"
+    if f.year_min and built is not None and built < f.year_min:
+        return "year"
+    if not f.include_undeclared and (
+        (f.floor_min is not None and floor is None) or (f.year_min and built is None)
+    ):
+        return "undeclared"
+    return None
+
+
+def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
+    """Return (match %, reasons), or None if a hard criterion fails (see ``why_hidden``).
+
+    Wants are soft: 60 + 40 * confirmed/total.
+    """
+    if why_hidden(d, f) is not None:
+        return None
+    where = _where(d)
+    reasons: list[str] = []
     if f.areas:
-        hit = next((a for a in f.areas if _area_in(a, where)), None)
-        if hit is None:
-            return None
-        reasons.append(f"περιοχή: {hit}")
-    bounds = (
+        reasons.append("περιοχή: " + next(a for a in f.areas if _area_in(a, where)))
+    for key, lo, hi, label in (
         ("price", f.price_min, f.price_max, "τιμή"),
         ("area_m2", f.area_min, f.area_max, "τ.μ."),
         ("bedrooms", f.bedrooms_min, f.bedrooms_max, "υπνοδωμάτια"),
         ("floor", f.floor_min, None, "όροφος"),
-    )
-    for key, lo, hi, label in bounds:
-        v = d.get(key)
-        if v is None:
-            # An unstated floor is usually a ground/basement flat (XE omits the label), so a floor
-            # filter must not let it through.
-            if key == "floor" and lo is not None:
-                return None
-            continue
-        if (lo is not None and v < lo) or (hi is not None and v > hi):
-            return None
-        if lo is not None or hi is not None:
-            reasons.append(f"{label}: {v:g}")
-    title = _norm(d.get("title") or "")
-    if title.startswith(NOT_A_HOME):
-        return None
-    if f.kinds and not any(title.startswith(w) for k in f.kinds for w in KIND_WORDS[k]):
-        return None
-    if f.private_only and d.get("is_private_seller") is False:
-        return None
-    if d.get("is_unfinished") and not f.include_unfinished:
-        return None
-    built = d.get("renovated_year") or d.get("year_built")
-    if f.year_min:
-        if built is None or built < f.year_min:
-            return None
-        reasons.append(f"έτος {built}")
+    ):
+        if (lo is not None or hi is not None) and d.get(key) is not None:
+            reasons.append(f"{label}: {d[key]:g}")
+    if f.year_min and d.get("year_built"):
+        reasons.append(f"έτος {d['year_built']}")
     if f.budget and d.get("price"):
         cash = d["price"] + (acquisition_costs(d["price"], bool(d.get("is_private_seller"))) or 0)
-        if cash > f.budget:
-            return None
-        reasons.append(f"συνολικό κόστος {cash:,.0f} €")
+        reasons.append(f"συνολικό κόστος {_gr(cash)} €")
     text = _norm(f"{where} {d.get('title') or ''}")
     confirmed = [
         w
