@@ -7,19 +7,27 @@
  "scores_sha256": "86b8ec2802fd48844d6e90550cbab39c8f48a13f86cfe52615023e1d11dbf67f",
  "guide-160k-rail-new": [
   "xe:fffd66ce-2af0-4f3a-8557-5b3c77b5d5f4",
-  "xe:25a3bedd-7b22-4025-89eb-44fcab6d2a79"
+  "xe:25a3bedd-7b22-4025-89eb-44fcab6d2a79",
+  "xe:dbfd9ab6-4284-4007-87d2-5ddd98260352",
+  "xe:c55264c2-fa66-4935-aa3b-c8321ed6bc33",
+  "xe:8cda5bef-86ad-4196-bed3-d9be18941b93",
+  "xe:b5398240-e860-4569-b300-9d233c02e478",
+  "xe:2c03fdb9-b418-49ec-8cd7-14c3ed6a4951",
+  "xe:e634e56f-77a2-4101-bcc4-0e8612eefdd2",
+  "xe:2a7c7634-38a8-4ba1-812f-a23a3b5ac99a",
+  "xe:ae5f7ada-aa57-4c0e-8e26-29326949921a"
  ],
  "guide-250k-best-any": [
-  "xe:a4a4fe9d-635d-4a84-b0ce-bf6ea86b4ce4",
+  "xe:f9d12ccb-5af9-4c76-8bad-2b600dc94239",
+  "xe:4a245313-3d43-4126-8825-e4e839d001a1",
+  "xe:5a89396b-4827-4581-b11d-e46876837ec4",
+  "xe:0a38fb10-96e3-4f50-bde2-1556d84ec347",
+  "xe:439d0798-e8e4-40a3-8c48-cd0429aeb437",
+  "xe:e7b7abe6-0338-4576-8793-18e27e90afe0",
+  "xe:eda06190-e707-4ce0-9bc3-a034453b580d",
   "xe:f4649671-1ce2-4894-b2e9-b81bf207596b",
   "xe:fa73474c-a560-422f-bc88-f455141ff789",
-  "xe:7458f995-11f2-4604-a422-056d4bbaba39",
-  "xe:5a89396b-4827-4581-b11d-e46876837ec4",
-  "xe:439d0798-e8e4-40a3-8c48-cd0429aeb437",
-  "xe:d95c49b5-b38b-403a-ac1d-d7c41e4f25d1",
-  "xe:d8f06054-ca75-4eaf-ac9c-f943076ebef2",
-  "xe:baf769f5-370a-4dbe-9ecc-793748800c9c",
-  "xe:f9d12ccb-5af9-4c76-8bad-2b600dc94239"
+  "xe:26a0b4de-1473-4ca9-a93c-3b611a06a13f"
  ],
  "search-landing": [
   "xe:c55264c2-fa66-4935-aa3b-c8321ed6bc33",
@@ -74,15 +82,15 @@
   "Νέα Ιωνία (Λαζάρου) · 103 τ.μ. · 282.707 € · #26914"
  ],
  "cards_sha256": {
-  "guide-160k-rail-new": "cdb92596ff7f6d840464922708c676a4ae450f0c62c95037bc2db8ff95fe5e9c",
-  "guide-250k-best-any": "b5a1b533c57ceca895e13b303c17f8eadd0a802da15d5ecb7780ca2e6fa506aa",
-  "search-landing": "c91471e5d69a0744ca8f1182548632015473be456382476323e9bf4fcc6c7ac2",
+  "guide-160k-rail-new": "52c303b81204c523ddf4c722b66c04b0051b6ff5a391fa823cde6b5753af70d5",
+  "guide-250k-best-any": "165fe8ed9acd7837325718f0f8b85178bd66fc934572b37f70e01eaeca039369",
+  "search-landing": "01b2316e26039e9f7efe626650a8049fc797591c0c7c9eac6a8819f49fedac44",
   "search-typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "search-example-1": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "search-example-2": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "search-3bed-250k": "ca6353053d245b44a3da2c59ce9591fd869d28f19a36a71b8e7bb06d682b5cfd",
-  "search-marousi": "845078092449ba414f28992e0e6b40d0c34411dca679cc31030af4d82250b785",
-  "map": "0554aefffa7135187b0210d91c3e0d05a42e5943686089c2cba6b106095ac7c6",
-  "compare": "25fc25d2a314812735665459dd7c67b6c62489a077eb31801a666c1742473046"
+  "search-3bed-250k": "cfc3573b810fde665fd7a68be7f342cc9f56dd8b4f4b62636ed980d822e4058c",
+  "search-marousi": "1db12d37ea948b2c1f04f76c6987bd9229a83d0a0a547f17de6c001238f55247",
+  "map": "f7bda5108f4a955a2943514ce02c29a55b121a898190f6fe09ff97c502ffc78f",
+  "compare": "bf985f2f3ab30aa58513b972bb25212f7db84815db5738b03d6ff5f5e330805a"
  }
 }
