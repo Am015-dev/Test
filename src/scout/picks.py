@@ -36,14 +36,14 @@ growth     0.4    0.6    0.25    1.0
 =========  =====  =====  ======  ======
 
 Never a thin list (C7). ``find(..., near=True)`` returns the strict matches first and then
-**near matches**: listings that fail exactly ONE of the buyer's answers, loosened one step at
-a time in this fixed order until at least ``NEAR_MIN`` (3 × ``PAGE``) candidates exist or the
-steps run out: price band 12 % → 20 % → 30 % over the budget; building age one step up
-(10 → 20 → any); station rule off; chosen areas → all areas; bedrooms off. Each near match
-carries ``relaxed``, the loosened answer in the user's words («ποσό +18 %», «κτίριο 1998»,
-«χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»); near matches sort after every strict one, the
-earlier (smaller) step first, then by the usual sort. A listing that fails two answers is never
-shown — nothing is loosened twice on one candidate.
+**near matches**: listings that fail exactly ONE of the buyer's answers. The loosening steps,
+smallest first: price band 12 % → 20 % → 30 % over the budget; building age one step up
+(10 → 20); station rule off; chosen areas → all areas; bedrooms off; and last, any building
+age. Every step keeps its best ``NEAR_MIN`` (3 × ``PAGE``); all near matches are then ranked
+together by the usual sort (page read, photos, ``rank_score``), the smaller loosening first
+on a tie, and sort after every strict match. Each carries ``relaxed``, the loosened answer in
+the user's words («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»).
+A listing that fails two answers is never shown — nothing is loosened twice on one candidate.
 
 The buyer score (``buyer_score``) on every pick is the 0–100 score of ``nl_search.advise``,
 the same number the map colour and the search advice use.
@@ -529,17 +529,19 @@ def _misses(
 
 
 def near_steps(max_age: int | None, near_rail: bool, areas, bedrooms) -> list[tuple[str, int]]:
-    """The loosening steps in the fixed C7 order, only for answers the buyer gave."""
+    """The loosening steps, smallest first, only for answers the buyer gave: price, age by
+    named limits (10 → 20), station, areas, bedrooms, and LAST age «any»."""
     steps = [("price", i + 1) for i in range(len(PRICE_STEPS))]
-    if max_age is not None:
-        wider = [a for a in AGE_LOOSEN if a is None or a > max_age]
-        steps += [("age", i + 1) for i in range(len(wider))]
+    wider = [a for a in AGE_LOOSEN if a is None or a > max_age] if max_age is not None else []
+    steps += [("age", i + 1) for i, a in enumerate(wider) if a is not None]
     if near_rail:
         steps.append(("rail", 1))
     if areas:
         steps.append(("areas", 1))
     if bedrooms is not None:
         steps.append(("bedrooms", 1))
+    if wider:
+        steps.append(("age", len(wider)))  # any building age
     return steps
 
 
@@ -602,10 +604,12 @@ def find(
     # One flat per building/listing group: skip near-identical units of the same block.
     seen: set[tuple] = set()
 
-    def unique(group: list[Pick]) -> list[Pick]:
+    def unique(group: list[Pick], cap: int | None = None) -> list[Pick]:
         group.sort(key=Pick.sort_key, reverse=True)
-        kept = []
+        kept: list[Pick] = []
         for p in group:
+            if cap is not None and len(kept) >= cap:
+                break
             d = p.listing
             key = (d.get("neighborhood"), d.get("year_built"), round(d["price"], -4))
             if key not in seen:
@@ -615,10 +619,13 @@ def find(
 
     out = unique(strict)
     if near:
-        for step in near_steps(max_age, near_rail, areas, bedrooms):
-            if len(out) >= NEAR_MIN:
-                break
-            out += unique(loose.get(step, []))
+        # Every step contributes its best NEAR_MIN; then one ranking over all near matches,
+        # the smaller loosening first on a tie.
+        ranked = []
+        for i, step in enumerate(near_steps(max_age, near_rail, areas, bedrooms)):
+            ranked += [(p.sort_key(), -i, p) for p in unique(loose.get(step, []), NEAR_MIN)]
+        ranked.sort(key=lambda x: x[:2], reverse=True)
+        out += [p for *_, p in ranked]
     return out[:top]
 
 

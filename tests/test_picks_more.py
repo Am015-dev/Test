@@ -58,18 +58,33 @@ def run(rows=ROWS, **kw):
     return picks.find(rows, intel, RENTS, BUDGET, **args)
 
 
-def test_strict_first_then_near_in_the_fixed_order_with_labels():
+def test_strict_first_then_near_ranked_with_labels():
     got = run()
     ids = [p.listing["id"] for p in got]
     assert set(ids[:2]) == {1, 2} and all(p.relaxed == "" for p in got[:2])
-    assert ids[2:] == [3, 4, 5, 6, 7]
-    assert [p.relaxed for p in got[2:]] == [
-        "ποσό +17 %",
-        "ποσό +29 %",
-        "κτίριο 2010",
-        "κτίριο 1980",
-        "χωρίς όρο σταθμού",
+    labels = {p.listing["id"]: p.relaxed for p in got[2:]}
+    assert labels == {
+        3: "ποσό +17 %",
+        4: "ποσό +29 %",
+        5: "κτίριο 2010",
+        6: "κτίριο 1980",
+        7: "χωρίς όρο σταθμού",
+    }
+    keys = [p.sort_key() for p in got[2:]]
+    assert keys == sorted(keys, reverse=True)  # one ranking over all near matches
+
+
+def test_steps_order_any_age_last():
+    assert picks.near_steps(10, True, ["Γαλάτσι"], 2) == [
+        ("price", 1),
+        ("price", 2),
+        ("age", 1),  # 10 → 20
+        ("rail", 1),
+        ("areas", 1),
+        ("bedrooms", 1),
+        ("age", 2),  # any building age
     ]
+    assert picks.near_steps(None, False, None, None) == [("price", 1), ("price", 2)]
 
 
 def test_nothing_is_loosened_twice_and_hard_rules_stay():
@@ -98,13 +113,12 @@ def test_areas_and_bedrooms_are_loosened_last():
     ]
 
 
-def test_stops_once_three_pages_exist():
-    # 30 strict flats: no near match is added on top.
-    rows = [flat(i, 280_000 + i * 500, year=1990 + i) for i in range(30)]  # distinct blocks
-    rows += [flat(100, 350_000)]
+def test_each_step_keeps_at_most_three_pages():
+    # 40 off-station flats in distinct blocks: the station step contributes NEAR_MIN.
+    rows = [flat(i, 280_000 + i * 500, hood="Γαλάτσι (Λαμπρινή)", year=1990 + i) for i in range(36)]
     got = run(rows, max_age=None)
-    assert len(got) == 30 and all(not p.relaxed for p in got)
-    assert picks.NEAR_MIN == 3 * picks.PAGE
+    assert len(got) == picks.NEAR_MIN == 3 * picks.PAGE
+    assert all(p.relaxed == "χωρίς όρο σταθμού" for p in got)
 
 
 def test_every_pick_carries_the_buyer_score_of_advise():
@@ -161,11 +175,13 @@ def test_rent_near_matches_and_labels():
     got = picks_rent.find(RENTALS, 800, bedrooms=2, top=10**6, near=True)
     strict = [p for p in got if not p.relaxed]
     assert {p.listing["id"] for p in strict} == {10_000 + i for i in range(6)}
-    assert [(p.listing["id"], p.relaxed) for p in got[len(strict) :]] == [
-        (10_020, "ποσό +19 %"),
-        (10_021, "ποσό +29 %"),
-        (10_022, "3 υπν."),
-    ]
+    near = got[len(strict) :]
+    assert {p.listing["id"]: p.relaxed for p in near} == {
+        10_020: "ποσό +19 %",
+        10_021: "ποσό +29 %",
+        10_022: "3 υπν.",
+    }
+    assert [p.score for p in near] == sorted((p.score for p in near), reverse=True)
     assert len(picks_rent.find(RENTALS, 800, bedrooms=2, top=10**6)) == 6
 
 
@@ -211,3 +227,10 @@ def test_owner_answers_give_at_least_three_pages(published):
     near = [p for p in got if p.relaxed]
     assert len(got) >= 3 * picks.PAGE
     assert near and all(p.relaxed for p in got[len(got) - len(near) :])
+    # The newer flats one station rule away come before the old blocks of «any age».
+    first = near[0].relaxed
+    assert not first.startswith("κτίριο 19")
+    # (a read page still beats an unread one, as for strict matches)
+    station = [i for i, p in enumerate(near) if p.relaxed == "χωρίς όρο σταθμού" and p.checked]
+    old = [i for i, p in enumerate(near) if p.relaxed.startswith("κτίριο 19")]
+    assert station and old and max(station) < min(old)

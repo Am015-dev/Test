@@ -14,9 +14,11 @@ Band: monthly rent ≤ budget × (1 + ``BUDGET_BAND``); no lower bound. ``relaxa
 one rule at a time and counts exactly what it adds (same ``find``, not an estimate).
 
 Near matches (C7, ``find(..., near=True)``): after the strict matches, rentals that fail
-exactly ONE answer, loosened in the fixed order rent band 10 % → 20 % → 30 % over the budget;
-building age one step up (10 → 20 → any); station rule off; chosen areas → all areas;
-bedrooms off — until at least ``picks.NEAR_MIN`` candidates exist. Each carries ``relaxed``
+exactly ONE answer. Steps (``picks.near_steps``): rent band 10 % → 20 % → 30 % over the
+budget; building age one step up (10 → 20); station rule off; chosen areas → all areas;
+bedrooms off; last, any building age. Each step keeps its best ``picks.NEAR_MIN`` by value;
+all near matches are then sorted by ``score`` (smaller loosening first on a tie), after every
+strict one. Each carries ``relaxed``
 («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»). «Επιπλωμένο» is
 not loosened (C7 does not list it).
 
@@ -358,10 +360,14 @@ def find(
     strict.sort(key=RentPick.sort_key)
     out = strict
     if near:
-        for step in picks.near_steps(max_age, near_rail, areas, bedrooms):
-            if len(out) >= picks.NEAR_MIN:
-                break
-            out += sorted(loose.get(step, []), key=RentPick.sort_key)
+        # Each step's best NEAR_MIN by value, then all near matches by score, the smaller
+        # loosening first on a tie.
+        ranked = []
+        for i, step in enumerate(picks.near_steps(max_age, near_rail, areas, bedrooms)):
+            best = sorted(loose.get(step, []), key=RentPick.sort_key)[: picks.NEAR_MIN]
+            ranked += [(-p.score, i, p) for p in best]
+        ranked.sort(key=lambda x: x[:2])
+        out += [p for *_, p in ranked]
     return out[:top]
 
 
