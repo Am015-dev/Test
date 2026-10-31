@@ -230,3 +230,26 @@ def test_new_builds_queue_rereads_checked_pages_missing_photos_after_unchecked(m
     with db.session_scope() as s:
         picked = [r.source_id for r in _new_build_rows(s, 10)]
     assert picked == ["unchecked", "backfill"]  # fully read pages leave the queue
+
+
+def test_days_on_market_counts_from_the_posting_date_when_known(mem_db):
+    from datetime import timedelta
+
+    now = datetime.utcnow()
+    with db.session_scope() as s:
+        # first seen 108 days ago, but the ad was (re)posted 2 days ago
+        db.upsert_listing_with_history(
+            s,
+            make_listing(
+                source_id="reposted", listed_date=now - timedelta(days=2), first_seen=None
+            ),
+            observed_at=now - timedelta(days=108),
+        )
+        db.upsert_listing_with_history(
+            s,
+            make_listing(source_id="cardonly", price=260_000, area_m2=99.0, first_seen=None),
+            observed_at=now - timedelta(days=40),
+        )
+    by_id = {d["source_id"]: d for d in load_listings()}
+    assert (by_id["reposted"]["days_on_market"], by_id["reposted"]["dom_basis"]) == (2, "listed")
+    assert (by_id["cardonly"]["days_on_market"], by_id["cardonly"]["dom_basis"]) == (40, "seen")

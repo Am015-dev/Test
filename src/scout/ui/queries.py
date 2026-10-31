@@ -27,13 +27,16 @@ from ..scoring import investment_archetype
 from ..strategy_fit import strategy_tags as _strategy_tags
 
 
-def _market_age_days(row: ListingRow) -> int | None:
-    """True days on market: from the portal's own posting date when known, else from when
-    we first tracked it — whichever is earlier (the earliest evidence it was live)."""
-    anchors = [d for d in (row.listed_date, row.first_seen) if d is not None]
-    if not anchors:
-        return None
-    return max((datetime.utcnow() - min(anchors)).days, 0)
+def _market_age_days(row: ListingRow) -> tuple[int | None, str | None]:
+    """Days on market and what they are counted from: the portal's own posting date when we
+    have it (``"listed"``), else when we first saw the listing (``"seen"``). The posting date
+    wins even when newer: a re-posted ad restarts its clock, and counting from our older
+    sighting showed «108 μέρες» next to a listing dated two days ago."""
+    if row.listed_date is not None:
+        return max((datetime.utcnow() - row.listed_date).days, 0), "listed"
+    if row.first_seen is not None:
+        return max((datetime.utcnow() - row.first_seen).days, 0), "seen"
+    return None, None
 
 
 def _building_age(year_built: int | None, renovated_year: int | None) -> int | None:
@@ -87,7 +90,7 @@ def _row_to_dict(
     area_median_ppm2: float | None = None,
 ) -> dict:
     price_dropped = bool(first_price and row.price < first_price)
-    days_on_market = _market_age_days(row)
+    days_on_market, dom_basis = _market_age_days(row)
     # A confident fair value is exactly the case where value_gap_pct survived the
     # valuation confidence + real-attributes gate (None otherwise).
     value_confident = row.value_gap_pct is not None
@@ -173,6 +176,7 @@ def _row_to_dict(
         "value_confident": value_confident,
         "listed_date": row.listed_date,
         "days_on_market": days_on_market,
+        "dom_basis": dom_basis,  # "listed" (posting date) | "seen" (our first sighting)
         "suggested_offer": deal.suggested_offer if deal else None,
         "offer_discount_pct": deal.discount_pct if deal else None,
         "deal_thesis": deal.thesis if deal else None,
@@ -309,9 +313,11 @@ def _collapse_relistings(rows: list[dict]) -> list[dict]:
             key=lambda m: (len(m.get("data_missing") or []), -(m.get("data_confidence") or 0)),
         )
         rep = dict(rep)
-        doms = [m.get("days_on_market") for m in members if m.get("days_on_market") is not None]
-        if doms:
-            rep["days_on_market"] = max(doms)  # oldest posting = true time on market
+        aged = [m for m in members if m.get("days_on_market") is not None]
+        if aged:
+            oldest = max(aged, key=lambda m: m["days_on_market"])  # oldest posting
+            rep["days_on_market"] = oldest["days_on_market"]
+            rep["dom_basis"] = oldest.get("dom_basis")
         dates = [m.get("listed_date") for m in members if m.get("listed_date") is not None]
         if dates:
             rep["listed_date"] = min(dates)
