@@ -292,7 +292,7 @@ def test_why_is_a_filled_template_without_adjectives():
     rents = [rent("Cholargos", None, 11.2, 38), rent("Cholargos", "Χολαργός (Περισσός)", 11.2, 38)]
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert x.why == (
-        "Απόδοση 4,5 % (1η από 1) με ενοίκιο 11,2 €/τ.μ. σε 38 αγγελίες"
+        "Απόδοση 4,5 % (1η από 1) με ενοίκιο 11,2 €/τ.μ. από 38 αγγελίες ενοικίασης"
         "· νεόδμητα 60 % ακριβότερα από τα παλιά (n=6/6)· ΗΣΑΠ Περισσός"
     )
 
@@ -349,3 +349,30 @@ def test_decision_still_answers_on_small_samples_and_says_so():
     ranked = ai.rank_areas(many(25), rents, year=YEAR)
     s = ai.decision(ranked, 300_000)
     assert s[0].startswith("Για απόδοση: Χολαργός") and s[0].endswith("Μικρό δείγμα.")
+
+
+def test_gross_yield_new_uses_the_new_build_median():
+    rents = [rent("Cholargos", None, 12.0, 38), rent("Cholargos", "Χολαργός (Κέντρο)", 12, 38)]
+    (x,) = ai.rank_areas(_stock(), rents, year=YEAR)
+    assert x.gross_yield_new == pytest.approx(12 * 12 / 4000)  # 3,6 %
+    assert x.gross_yield == pytest.approx(12 * 12 / x.median_ppm)
+    (y,) = ai.rank_areas(_stock(n_new=4), rents, year=YEAR)  # < MIN_BAND new builds
+    assert y.gross_yield_new is None
+    (z,) = ai.rank_areas(_stock(), year=YEAR)  # no rent
+    assert z.gross_yield_new is None
+
+
+def test_decision_yield_sentence_splits_old_and_new():
+    rents = [rent("Cholargos", None, 12.0, 38), rent("Cholargos", "Χολαργός (Κέντρο)", 12, 38)]
+    ranked = ai.rank_areas(_stock() + many(30, ppm=3000, year_built=2015), rents, year=YEAR)
+    first = ai.decision(ranked, 300_000)[0]
+    assert first == (
+        "Για απόδοση: Χολαργός, μικτή 4,8 % στα παλιά (3,6 % στα νεόδμητα), "
+        "ενοίκιο 12,0 €/τ.μ. από ζητούμενα ενοίκια της περιοχής, 55 αγγελίες πώλησης."
+    )
+
+
+def test_why_names_the_rent_sample_as_rent_listings():
+    rents = [rent("Cholargos", None, 12.0, 38), rent("Cholargos", "Χολαργός (Κέντρο)", 12, 38)]
+    (x,) = ai.rank_areas(_stock(), rents, year=YEAR)
+    assert "από 38 αγγελίες ενοικίασης" in x.why

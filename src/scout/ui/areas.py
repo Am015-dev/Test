@@ -114,6 +114,13 @@ def trend_text(x: ai.AreaInsight) -> str:
     return f"— ({n})" if x.trend_pct is None else f"{gr_pct(x.trend_pct, sign=True)} ({n})"
 
 
+def yield_text(x: ai.AreaInsight) -> str:
+    """Yield at the all-stock median, and at the new-build median when there is one."""
+    if x.gross_yield_new is None:
+        return gr_pct(x.gross_yield)
+    return f"{gr_pct(x.gross_yield)} στο σύνολο, {gr_pct(x.gross_yield_new)} στα νεόδμητα"
+
+
 def uc_text(x: ai.AreaInsight) -> str:
     """Under-construction share among new builds whose page was read: '2/5 ελεγμένα'."""
     if not x.uc_checked:
@@ -310,7 +317,7 @@ def _card(rank: int | None, x: ai.AreaInsight, *, key: str) -> None:
                 f"{gr_rent(x.rent_ppm)}/μήνα"
                 + (f", n={x.rent_samples}" if x.rent_samples else ", n δεν έχει καταγραφεί"),
             ),
-            ("Μικτή απόδοση", gr_pct(x.gross_yield)),
+            ("Μικτή απόδοση", yield_text(x)),
             ("Υπό κατασκευή", uc_text(x)),
             (
                 "Στην αγορά",

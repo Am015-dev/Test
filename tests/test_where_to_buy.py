@@ -135,3 +135,9 @@ def test_phone_table_has_at_most_four_columns():
 
 def test_percent_has_a_space_in_greek_style():
     assert areas.gr_pct(0.049) == "4,9 %"
+
+
+def test_yield_text_shows_old_and_new():
+    assert areas.yield_text(_insight(gross_yield=0.055)) == "5,5 %"
+    x = _insight(gross_yield=0.055, gross_yield_new=0.036)
+    assert areas.yield_text(x) == "5,5 % στο σύνολο, 3,6 % στα νεόδμητα"

@@ -133,6 +133,7 @@ class AreaInsight:
     # Fresh, not-flagged ≤5-year flats priced within budget in a station neighbourhood.
     near_station_in_budget: int = 0
     near_station_in_budget_checked: int = 0  # …of which the listing page was read
+    gross_yield_new: float | None = None  # 12 × rent / ppm_new (rent is area-wide, not new-only)
     yield_rank: int | None = None  # 1 = best gross yield among ranked areas with a rent
     yield_of: int = 0
     why: str = ""
@@ -347,6 +348,7 @@ def _insight(
         n_old=len(old),
         ppm_old=ppm_old,
         new_premium=ppm_new / ppm_old - 1 if ppm_new and ppm_old else None,
+        gross_yield_new=12 * rent_ppm / ppm_new if rent_ppm and ppm_new else None,
         uc_unfinished=unfinished[0],
         uc_checked=unfinished[1],
         stations=stations,
@@ -556,7 +558,7 @@ def why(x: AreaInsight) -> str:
     missing are left out (never guessed)."""
     parts = []
     if x.gross_yield is not None:
-        n = f" σε {x.rent_samples} αγγελίες" if x.rent_samples else ""
+        n = f" από {x.rent_samples} αγγελίες ενοικίασης" if x.rent_samples else ""
         rank = f" ({x.yield_rank}η από {x.yield_of})" if x.yield_rank else ""
         parts.append(
             f"Απόδοση {_pct(x.gross_yield, 1)}{rank} με ενοίκιο {_rent(x.rent_ppm)} €/τ.μ.{n}"
@@ -584,9 +586,13 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
     ys = [x for x in solid if x.gross_yield is not None]
     if ys:
         x = max(ys, key=lambda a: a.gross_yield)
+        new_y = (
+            f" ({_pct(x.gross_yield_new, 1)} στα νεόδμητα)" if x.gross_yield_new is not None else ""
+        )
         out.append(
-            f"Για απόδοση: {x.area}, μικτή {_pct(x.gross_yield, 1)} "
-            f"(ενοίκιο {_rent(x.rent_ppm)} €/τ.μ., {x.n_fresh} αγγελίες).{small}"
+            f"Για απόδοση: {x.area}, μικτή {_pct(x.gross_yield, 1)} στα παλιά{new_y}, "
+            f"ενοίκιο {_rent(x.rent_ppm)} €/τ.μ. από ζητούμενα ενοίκια της περιοχής, "
+            f"{x.n_fresh} αγγελίες πώλησης.{small}"
         )
     ok = [x for x in solid if x.trend_pct is None or x.trend_pct > FALLING_TREND]
     if ok:
