@@ -8,9 +8,9 @@ sys.path.insert(0, "src")
 from selectolax.lexbor import LexborHTMLParser as HTMLParser  # noqa: E402
 
 from scout.collectors.xe import XeCollector, parse_detail_jsonld  # noqa: E402
-from scout.config import get_settings  # noqa: E402
+from scout.config import get_settings, load_strategy  # noqa: E402
 
-c = XeCollector()
+c = XeCollector(load_strategy())
 s = c._new_session()
 for url in Path("diag/urls.txt").read_text().split():
     html = c._fetch_detail(s, url)
