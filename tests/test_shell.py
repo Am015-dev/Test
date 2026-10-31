@@ -195,7 +195,7 @@ def test_wrong_pin_is_refused_without_echoing_it(env):  # noqa: F811
 def test_favourites_follow_the_profile(env):  # noqa: F811
     at = _sign_up(_app(), "Ελένη", "1111")
     at.pills(key="nav_pill").set_value("Αναζήτηση").run()
-    star = next(b for b in at.main.button if b.label == "☆ Αγαπημένο")
+    star = next(b for b in at.main.button if b.label == "Αγαπημένο")
     star.click().run()
     ok(at, "star")
     starred = set(at.session_state["watch"])

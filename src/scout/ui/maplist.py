@@ -134,7 +134,7 @@ def render(ranked: list[dict], *, key: str, height: int = 380, intel=None) -> No
         st.markdown(_header(current, ids.index(current["id"]) + 1, len(ids), chosen is not None))
         c1, c2 = st.container(key=f"{key}-nav").columns(2, gap="small")
         c1.button(
-            "‹ Προηγούμενο",
+            "Προηγούμενο",
             key=f"{key}-prev",
             on_click=step,
             args=(key, ids, -1),
@@ -142,7 +142,7 @@ def render(ranked: list[dict], *, key: str, height: int = 380, intel=None) -> No
             disabled=len(ids) < 2,
         )
         c2.button(
-            "Επόμενο ›",
+            "Επόμενο",
             key=f"{key}-next",
             on_click=step,
             args=(key, ids, 1),

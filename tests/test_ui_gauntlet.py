@@ -230,7 +230,7 @@ def test_buyer_journey(env):
     """Search → card actions → details → star → favourites → saved search → review → delete."""
     at = fresh(SEARCH)
     # landing state shows the best listings with working card buttons
-    assert any(b.label == "☆ Αγαπημένο" for b in at.button)
+    assert any(b.label == "Αγαπημένο" for b in at.button)
     # an example search runs and shows what was understood
     at.button(key="ex0").click().run()
     ok(at, "example")
@@ -242,9 +242,9 @@ def test_buyer_journey(env):
     assert any("Δεύτερη γνώμη από τεχνητή νοημοσύνη" in m.value for m in at.markdown)
     assert any("Δεύτερη γνώμη από τεχνητή νοημοσύνη: Αξίζει" in m.value for m in at.markdown)
     # star the first result
-    next(b for b in at.button if b.label == "☆ Αγαπημένο").click().run()
+    next(b for b in at.button if b.label == "Αγαπημένο").click().run()
     ok(at, "star")
-    assert any(b.label == "★ Αφαίρεση" for b in at.button)
+    assert any(b.label == "Αφαίρεση από αγαπημένα" for b in at.button)
     # it is on the favourites page and persisted in the gist
     at.radio(key="page").set_value(STARRED).run()
     ok(at, "favourites")
@@ -270,7 +270,7 @@ def test_buyer_journey(env):
         for m in at.markdown
     )
     # unstar from the listing page
-    next(b for b in at.button if b.label == "★ Αφαίρεση").click().run()
+    next(b for b in at.button if b.label == "Αφαίρεση από αγαπημένα").click().run()
     ok(at, "unstar")
     at.radio(key="page").set_value(STARRED).run()
     assert any("Δεν έχεις αγαπημένα" in i.value for i in at.info)
@@ -394,7 +394,7 @@ def test_every_widget_on_every_page(env, tmp_path, monkeypatch):
 
     # Give Favourites / Shortlist / Detail something to act on: two starred listings and one
     # saved search. Every interaction then starts from this SAME persisted state — otherwise a
-    # click in one run (e.g. "★ Αφαίρεση") changes what the next fresh run renders and the
+    # click in one run (e.g. "Αφαίρεση από αγαπημένα") changes what the next fresh run renders and the
     # widget indices drift (spurious IndexErrors that are the crawler's fault, not the app's).
     sl.set_watch("xe:g-0", True)
     sl.set_watch("xe:g-1", True)
