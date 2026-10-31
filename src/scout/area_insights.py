@@ -554,8 +554,8 @@ def _reasons(x: AreaInsight, ref_ppm: float) -> list[str]:
         cands.append(
             (
                 WEIGHTS["stock"] * c["stock"],
-                f"{x.good_stock} διαμερίσματα έως 30 ετών, όχι ισόγεια, ζητούν λιγότερα "
-                "από τα άλλα σπίτια της ίδιας ηλικίας.",
+                f"{x.good_stock} διαμερίσματα έως 30 ετών, όχι ισόγεια, ζητούν κάτω από τη "
+                "συνηθισμένη τιμή για την ηλικία τους.",
             )
         )
     if x.cut_share > 0 and x.median_cut_pct is not None:
@@ -963,10 +963,10 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
         out.append(
             (
                 "Ζήτηση ενοικίου",
-                f"Εδώ πωλούνται {insight.n_fresh} σπίτια και νοικιάζονται μόνο {insight.rent_samples}, "
-                f"δηλαδή {_rent_ratio(insight.supply_per_rent)} για κάθε ένα που νοικιάζεται. "
-                "Όσο λιγότερα σπίτια νοικιάζονται, τόσο πιο εύκολα βρίσκεις ενοικιαστή. Το "
-                f"κρίνουμε σε σχέση με τις άλλες περιοχές: καλό κάτω από "
+                f"Εδώ για κάθε σπίτι που νοικιάζεται πωλούνται "
+                f"{_rent_ratio(insight.supply_per_rent)} ({insight.rent_samples} ενοικιάσεις, "
+                f"{insight.n_fresh} πωλήσεις). Λίγα ενοίκια σημαίνει ότι βρίσκεις ενοικιαστή "
+                "εύκολα. Το κρίνουμε σε σχέση με τις άλλες περιοχές: καλό κάτω από "
                 f"{f'{SUPPLY_LOW:g}'.replace('.', ',')} φορές το συνηθισμένο, προσοχή από "
                 f"{f'{SUPPLY_HIGH:g}'.replace('.', ',')} φορές και πάνω.",
                 v,

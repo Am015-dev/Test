@@ -170,7 +170,7 @@ def test_trend_line_prefers_six_months_then_july_and_says_when_missing():
 def test_supply_line_shows_both_counts_or_says_unknown():
     x = _insight(n_fresh=120, rent_samples=30, supply_per_rent=4.0)
     assert areas.supply_line(x) == (
-        "εδώ πωλούνται 120 σπίτια και νοικιάζονται 30, δηλαδή 4,0 προς 1"
+        "εδώ για κάθε σπίτι που νοικιάζεται πωλούνται 4,0 (30 ενοικιάσεις, 120 πωλήσεις)"
     )
     assert areas.supply_line(_insight()).startswith("δεν την ξέρουμε ακόμα")
 

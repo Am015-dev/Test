@@ -647,7 +647,7 @@ def test_liquidity_and_rent_demand_checks_follow_the_insight():
     assert demand[2] == ai.UNKNOWN  # no rent sample count in this fixture
     x.supply_per_rent, x.supply_rel, x.rent_samples = 2.5, 0.5, 10
     good = ai.investor_checks(_subject(), None, x)[3]
-    assert good[2] == ai.GOOD and "δηλαδή 2,5 για κάθε ένα που νοικιάζεται" in good[1]
+    assert good[2] == ai.GOOD and "για κάθε σπίτι που νοικιάζεται πωλούνται 2,5" in good[1]
     x.supply_rel = 2.0
     assert ai.investor_checks(_subject(), None, x)[3][2] == ai.WARN
     x.supply_rel = 1.0

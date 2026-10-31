@@ -172,8 +172,8 @@ def supply_line(x: ai.AreaInsight) -> str:
     if x.supply_per_rent is None:
         return "δεν την ξέρουμε ακόμα"
     return (
-        f"εδώ πωλούνται {x.n_fresh} σπίτια και νοικιάζονται {x.rent_samples}, δηλαδή "
-        f"{gr_num(x.supply_per_rent, 1)} προς 1"
+        f"εδώ για κάθε σπίτι που νοικιάζεται πωλούνται {gr_num(x.supply_per_rent, 1)} "
+        f"({x.rent_samples} ενοικιάσεις, {x.n_fresh} πωλήσεις)"
     )
 
 

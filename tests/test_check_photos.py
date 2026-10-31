@@ -173,9 +173,9 @@ def test_transient_page_failure_stays_in_the_queue(mem_db, monkeypatch):
 
 def test_status_line_carries_the_photo_line():
     assert picks.status_line({}).endswith("Φωτογραφίες: δεν τις έχουμε δει ακόμα")
-    assert "Φωτογραφίες: πραγματικές" in picks.status_line({"photo_kind": "photo"})
-    assert "σχέδια, όχι πραγματικές" in picks.status_line({"photo_kind": "render"})
-    assert "σχέδια, όχι πραγματικές" in picks.status_line({"photo_kind": "plan"})
+    assert "Φωτογραφίες: αληθινές" in picks.status_line({"photo_kind": "photo"})
+    assert "σχέδια, όχι αληθινές" in picks.status_line({"photo_kind": "render"})
+    assert "σχέδια, όχι αληθινές" in picks.status_line({"photo_kind": "plan"})
     assert "εργοτάξιο" in picks.status_line({"photo_kind": "site"})
 
 
