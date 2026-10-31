@@ -632,47 +632,47 @@ METHOD = """
 
 
 def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> None:
+    """The compact card (five lines, C3): everything else — the title, net yield, loan,
+    offer, the risks to check and the listing's own words — sits in «Από πού βγαίνουν».
+    Two buttons; «Εγκρίνω» / «Δεν μου κάνει» as a second row on the first ten only (and on
+    any card already approved, so it can be undone). ``has_map`` is kept for the caller: the
+    map is the «Χάρτης» toggle above the list."""
     d = p.listing
-    e = html.escape
     shown = {**d, "est_monthly_rent": p.rent, "rent_estimated": True, "listed_rent": None}
+    more = [d["title"]] if d.get("title") else []
+    more.append(f"Καθαρή απόδοση ~{picks.gr_pct(p.net)}")
+    if p.loan:
+        more.append(p.loan_line)
+    why = p.reasons.get(p.goal) if p.goal in ("safety", "growth") else None
+    if why:
+        more.append(f"{GOAL_CHIP[p.goal].capitalize()}: " + " · ".join(why))
+    more.append(
+        f"Πρώτη προσφορά ~{buyer.eur(p.offer)}"
+        + (" (ιδιώτης πωλητής)" if d.get("is_private_seller") else "")
+    )
+    more += [f"Έλεγξε: {r}" for r in p.risks]
+    if p.excerpt:
+        more.append(f"Τι λέει η αγγελία: «{p.excerpt}»")
     with st.container(border=True, key=f"pick-{d['id']}"):
-        st.markdown(f"**{i}. {e(d.get('title') or '')}**" + (" · το ενέκρινες" if approved else ""))
-        st.markdown(buyer.card_html(shown, adv), unsafe_allow_html=True)
-        lines = [f"Καθαρή απόδοση ~{picks.gr_pct(p.net)}"]
-        if p.loan:
-            lines.append(p.loan_line)
-        why = p.reasons.get(p.goal) if p.goal in ("safety", "growth") else None
-        if why:
-            lines.append(f"{GOAL_CHIP[p.goal].capitalize()}: " + " · ".join(why))
-        lines.append(
-            f"Πρώτη προσφορά ~{buyer.eur(p.offer)}"
-            + (" (ιδιώτης πωλητής)" if d.get("is_private_seller") else "")
-        )
         st.markdown(
-            '<div class="hg-card">' + "".join(f"<div>{e(x)}</div>" for x in lines) + "</div>",
+            buyer.card_html(shown, adv, compact=True, lead=f"{i}.", more=more),
             unsafe_allow_html=True,
         )
-        if p.risks:
-            st.markdown(
-                '<div class="hg-card"><b>Έλεγξε</b><ul style="margin:2px 0 0;padding-left:1.1rem">'
-                + "".join(f"<li>{e(r)}</li>" for r in p.risks)
-                + "</ul></div>",
-                unsafe_allow_html=True,
-            )
-        if p.excerpt:
-            with st.expander("Τι λέει η αγγελία"):
-                st.markdown(e(p.excerpt))
         key = shortlist.lkey(d)
+        star, toggle, args, kind = buyer._star_action(d)
         cols = st.columns(2)
-        src = SOURCES.get(d.get("source") or "xe", (d.get("source") or "").upper())
-        cols[0].link_button(f"Άνοιγμα στο {src}", d["url"], width="stretch")
-        cols[1].button(
+        cols[0].button(
             "Λεπτομέρειες",
             key=f"pick-det-{d['id']}",
             on_click=buyer.open_detail,
             args=(d["id"],),
             width="stretch",
         )
+        cols[1].button(
+            star, key=f"pick-fav-{d['id']}", on_click=toggle, args=args, type=kind, width="stretch"
+        )
+        if i > picks.PAGE and not approved:
+            return
         cols = st.columns(2)
         if approved:
             cols[0].button(
@@ -698,14 +698,6 @@ def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> No
             args=(key, "no"),
             width="stretch",
         )
-        if has_map:
-            st.button(
-                "Στον χάρτη",
-                key=f"pick-map-{d['id']}",
-                on_click=_on_map,
-                args=(d["id"],),
-                width="stretch",
-            )
 
 
 def _relax(options: list[picks.Relax], intro: str) -> None:

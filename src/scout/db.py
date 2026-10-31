@@ -67,6 +67,9 @@ _SNAPSHOT_FIELDS = (
     "predicted_price",
     "value_gap_pct",
     "image_url",
+    "listing_type",
+    "furnished",
+    "available_from",
 )
 
 # Fields only a listing's own (detail) page provides. Copied only when the incoming listing
@@ -114,9 +117,18 @@ def init_db() -> None:
             # What the listing page says + its photo count; NULL = page not read yet.
             "description": "TEXT",
             "photo_count": "INTEGER",
+            # Photo check: photo | render | plan | site | stock; NULL = not classified.
+            "photo_kind": "VARCHAR(16)",
+            "photo_checked_at": "TIMESTAMP",
+            # Rentals share the table; every legacy row is a sale. NOT NULL with a DEFAULT
+            # fills existing rows on both SQLite and Postgres in the same ALTER.
+            "listing_type": "TEXT NOT NULL DEFAULT 'sale'",
+            "furnished": "BOOLEAN",
+            "available_from": "DATE",
         },
     )
     _ensure_index(engine, "ix_listing_search_area", "listing", "search_area")
+    _ensure_index(engine, "ix_listing_type_status", "listing", "listing_type, status")
 
 
 def _ensure_columns(engine: Engine, table: str, columns: dict[str, str]) -> None:
@@ -141,7 +153,7 @@ def _ensure_columns(engine: Engine, table: str, columns: dict[str, str]) -> None
 
 
 def _ensure_index(engine: Engine, name: str, table: str, column: str) -> None:
-    """Create an index if absent (the model declares one, but ``ADD COLUMN`` on a
+    """Create an index if absent (``column`` may be a comma-separated list) (the model declares one, but ``ADD COLUMN`` on a
     pre-existing table never materializes it). ``IF NOT EXISTS`` keeps it idempotent
     and race-safe on both SQLite and Postgres."""
     try:
@@ -236,10 +248,14 @@ def mark_unseen_as_gone(
     observed_at: datetime | None = None,
     active_sources: set[str] | None = None,
     area: str | None = None,
+    listing_type: str | None = None,
 ) -> int:
     """Mark active listings not seen this run as ``gone`` and append status history.
 
     ``seen_keys`` is a set of (source, source_id).
+
+    ``listing_type`` ("sale" | "rent") scopes the pass to one kind of ad, so a run whose
+    rental search failed never retires the rentals (and vice versa); ``None`` = both.
 
     ``active_sources`` is the set of portals that actually returned data this run.
     Only listings from those portals are eligible for retirement: a portal that
@@ -257,6 +273,8 @@ def mark_unseen_as_gone(
     # collected for a different area (which it didn't scrape this run).
     if area is not None:
         query = query.where(ListingRow.search_area == area)
+    if listing_type is not None:
+        query = query.where(ListingRow.listing_type == listing_type)
     rows = session.scalars(query).all()
     transitioned = 0
     for row in rows:

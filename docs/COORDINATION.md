@@ -322,3 +322,63 @@ Shared rules: fixtures for new parsers are real captured HTML; no network in tes
 `tests/test_copy.py` green (extend its allowlist only for portal names); screenshots at
 390×844 of every new screen into `docs/qa/<ws>/`; the message to the coordinator carries the
 head SHA, the gate numbers and anything outside your files.
+
+## Round 5 — the design finish (impeccable + Apple HIG)
+
+The owner's words: «fix the app to look pretty without flaws». Round 4 made the product
+complete (buy or rent, short cards, real distances, weekly rents, photo check). Round 5 makes
+it look and feel finished, measured, not asserted. Two vendored skills carry the method:
+`.claude/skills/impeccable/` (critique → audit → craft floor → polish) and
+`.claude/skills/apple-hig-designer/` (the type roles, 8-pt spacing, 44-pt targets, grouped
+lists, semantic colour, concentric radii). The surface mode is **Operate**.
+
+### C6 — design finish (W21, `ui/theme.py`, `.streamlit/config.toml`, class hooks only elsewhere)
+
+**Scope.** Visual and interaction finish of every user-facing screen at 390×844 (primary) and
+1280×900 (secondary): Οδηγός (buy and rent flows, every step, the result, a card's expander,
+the brief and «Ρώτα με» when a key is set), Περιοχές, Αναζήτηση, Χάρτης, Αγαπημένα,
+Σύγκριση, the listing page, saved searches, the sidebar. No logic, data or ranking changes.
+UX copy may change only where the critique names a wording defect (labels, empty states,
+errors), one glossary (`docs/COORDINATION.md` «Glossary»), Greek only.
+
+**Method (in this order, each with a written artefact).**
+1. `docs/qa/design/AUDIT.md`: the impeccable critique (assessment A from screenshots and
+   source, assessment B from `docs/qa/design/measure.js`, kept apart until synthesis), the
+   ten heuristic scores, the five audit dimensions, P0–P3 issues with file and selector.
+   «Before» screenshots of flows a–h plus rent r1–r5 in `docs/qa/design/before/`.
+2. The polish, per `craft-floor.md` and `polish.md`, with the Apple lens:
+   - **Type roles** (rem, system stack): large title 1.75, title 1.3, headline 1.0625/600,
+     body 1.0, subhead .9375, footnote .8125, caption .75; line-height 1.3 headings, 1.5
+     body; tracking −0.01 to −0.02 em on titles only; `tabular-nums` on every number.
+   - **Spacing**: one 4-pt scale (4 8 12 16 20 24 32 40); tight inside a group, generous
+     between groups; more space above a heading than below it.
+   - **Touch**: every button, pill, chip, select, toggle, expander summary and link ≥ 44 px
+     tall at 390 px; 8 px minimum between adjacent targets.
+   - **Shape and depth**: cards 12–16 px radius, elevation declared once (hairline border on
+     the canvas OR a soft offset shadow, not both heavy); controls one radius family;
+     concentric nesting (inner radius + padding = outer).
+   - **Colour**: tokens only (`--hg-*`); semantic status colours for the three badges
+     (ok / warning / bad) with ≥ 4.5:1 text contrast on their tints; one accent; links and
+     focus from the accent; `:focus-visible` ring on every control; selection and caret
+     colours themed.
+   - **States**: hover, pressed (`scale(.98)` or tint), disabled, loading, empty and error
+     on every control and list; empty states name the next step.
+   - **Grouped lists** for fact rows (compare table, the six checks, the listing page facts):
+     inset separators, label left muted, value right ink, no zebra.
+   - Browser surfaces: scrollbars, selection, underline offset, number alignment.
+3. `docs/qa/design/POLISH.md`: the same measurements after, side by side with before, every
+   remaining P1 named with a reason; «after» screenshots in `docs/qa/design/after/`.
+
+**Definition of done (the coordinator re-runs `measure.js` on the merged head).**
+- `scrollWidth` = 390 on every shot; no element wider than the viewport.
+- 0 interactive elements under 44 px tall at 390 px (list any exception with its reason).
+- 0 text nodes under 4.5:1 contrast (3:1 for ≥ 24 px); 0 under 11 px.
+- Font sizes in use ≤ 8 distinct values; margins and paddings in `theme.py` on the 4-pt scale.
+- Card radius and elevation consistent across guide, search, favourites, compare, listing.
+- Heuristic total up by ≥ 6 points over AUDIT.md; audit score ≥ 16/20; no P0/P1 left open.
+- Gate green: `pytest -q` (GAUNTLET unset), ruff, black, `tests/test_copy.py`; new
+  `tests/test_theme.py` asserts the token set, the type roles and the 44-px rule in the CSS.
+- Before/after screenshots committed; the PR message carries the two score tables.
+
+**Not in scope.** Dark mode (Streamlit's theme is light; note it as a follow-up), web fonts,
+new pages, any change to what a card says.

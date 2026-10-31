@@ -208,6 +208,9 @@ def _row_to_dict(
         "excluded": row.excluded,
         "exclusion_reason": row.exclusion_reason,
         "status": row.status,
+        "listing_type": row.listing_type or "sale",
+        "furnished": row.furnished,
+        "available_from": row.available_from,
         "is_watched": row.is_watched,
         "first_seen": row.first_seen,
         "last_seen": row.last_seen,
@@ -230,6 +233,8 @@ def _row_to_dict(
     d["page_checked_at"] = row.detail_checked_at
     d["description"] = row.description
     d["photo_count"] = row.photo_count
+    d["photo_kind"] = row.photo_kind  # photo|render|plan|site|stock; None = not classified
+    d["photo_checked_at"] = row.photo_checked_at
     # ≤2 photos: typically a render, a floor plan or an agency logo, not the flat itself.
     d["few_photos"] = row.photo_count is not None and row.photo_count <= 2
     d["is_fresh"] = True  # load_listings re-derives it against the whole loaded set
@@ -356,14 +361,16 @@ def load_listings(
     include_excluded: bool = True,
     only_active: bool = True,
     collapse_relistings: bool = True,
+    kind: str = "sale",
 ) -> list[dict]:
-    """Load all listings as dicts, annotated with first_price / price_dropped / is_new.
+    """Load all SALE listings as dicts, annotated with first_price / price_dropped / is_new.
 
     ``collapse_relistings`` merges same-flat re-postings into one card (see
     ``_collapse_relistings``); the Debug page turns it off to inspect raw inventory.
+    ``kind`` is the listing type; rentals have their own loader, ``load_rent_listings``.
     """
     with session_scope() as session:
-        stmt = select(ListingRow)
+        stmt = select(ListingRow).where(ListingRow.listing_type == kind)
         if only_active:
             stmt = stmt.where(ListingRow.status == "active")
         if not include_excluded:
@@ -406,6 +413,68 @@ def load_listings(
         return out
 
 
+# Sale-only figures a rental dict carries as None (same keys as a sale dict, but a rental
+# is not an investment: no rent estimate, yield, fair value, offer or buy verdict).
+_SALE_ONLY_NONE = (
+    "est_monthly_rent",
+    "gross_yield",
+    "net_yield",
+    "predicted_price",
+    "value_gap_pct",
+    "suggested_offer",
+    "offer_discount_pct",
+    "deal_thesis",
+    "yield_on_offer",
+    "deal_grade",
+    "deal_grade_reason",
+    "rec_verdict",
+    "rec_headline",
+    "rec_play",
+    "rec_rationale",
+)
+
+
+def _rental_dict(row: ListingRow, first_price: int | None, num_cuts: int) -> dict:
+    d = _row_to_dict(row, first_price, num_cuts=num_cuts)
+    for key in _SALE_ONLY_NONE:
+        d[key] = None
+    d["value_confident"] = False
+    d["rec_risks"] = []
+    d["strategy_tags"] = []
+    # «Τιμή» of a rental is the monthly rent; €/τ.μ. is rent per m² per month.
+    d["rent_per_m2"] = round(row.price / row.area_m2, 2) if row.price and row.area_m2 else None
+    return d
+
+
+def load_rent_listings(only_active: bool = True, collapse_relistings: bool = True) -> list[dict]:
+    """Rental listings (``listing_type='rent'``) as dicts with the same keys as
+    ``load_listings`` (sale-only figures — yields, fair value, offer, verdict — are None),
+    plus ``rent_per_m2`` (€/τ.μ. per month), ``furnished`` / ``available_from`` (None =
+    the ad does not say), ``days_on_market`` / ``dom_basis`` / ``relisted_on``,
+    ``is_fresh`` and ``page_checked`` (False: no rental page is read yet). ``price`` is
+    the monthly rent."""
+    with session_scope() as session:
+        stmt = select(ListingRow).where(ListingRow.listing_type == "rent")
+        if only_active:
+            stmt = stmt.where(ListingRow.status == "active")
+        rows = session.scalars(stmt).all()
+        ids = [r.id for r in rows]
+        firsts = _first_prices(session, ids)
+        cuts = _cut_counts(session, ids)
+        cutoff = datetime.utcnow() - timedelta(hours=24)
+        out = []
+        for r in rows:
+            d = _rental_dict(r, firsts.get(r.id), cuts.get(r.id, 0))
+            d["is_new"] = r.first_seen is not None and r.first_seen >= cutoff
+            out.append(d)
+    _annotate_freshness(out)
+    if collapse_relistings:
+        out = _collapse_relistings(out)
+    # value_percentile among comparable RENTALS only (same area, ±30 % m²); yields are None.
+    annotate_relative_value(out)
+    return out
+
+
 def load_recent_price_drops(hours: int = 24) -> list[dict]:
     """Listings whose *latest* price change happened within the window and was a cut.
 
@@ -416,7 +485,11 @@ def load_recent_price_drops(hours: int = 24) -> list[dict]:
     """
     cutoff = datetime.utcnow() - timedelta(hours=hours)
     with session_scope() as session:
-        rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
+        rows = session.scalars(
+            select(ListingRow).where(
+                ListingRow.status == "active", ListingRow.listing_type == "sale"
+            )
+        ).all()
         ids = [r.id for r in rows]
         firsts = _first_prices(session, ids)
         medians = _area_median_ppm2(rows)
@@ -456,8 +529,9 @@ def load_price_history(listing_id: int) -> list[tuple[datetime, int]]:
 
 
 def load_rent_comp_rows() -> list[dict]:
-    """Every persisted rent comparable as ``{area, neighborhood, rent_per_m2, samples}``
-    (``samples`` 0 = count not recorded). Feeds ``area_insights.rank_areas``."""
+    """Every persisted rent comparable as ``{area, neighborhood, rent_per_m2, samples,
+    updated_at}`` (``samples`` 0 = count not recorded; ``rent_comps.comp_basis`` turns a
+    row into «ενοίκια έως ΗΗ/ΜΜ, N αγγελίες»). Feeds ``area_insights.rank_areas``."""
     with session_scope() as session:
         return [
             {
@@ -465,6 +539,7 @@ def load_rent_comp_rows() -> list[dict]:
                 "neighborhood": r.neighborhood,
                 "rent_per_m2": r.rent_per_m2,
                 "samples": r.samples,
+                "updated_at": r.updated_at,  # newest rental sighting the median rests on
             }
             for r in session.scalars(select(RentCompRow)).all()
         ]
@@ -515,7 +590,11 @@ def load_valuation_summary() -> dict:
     from ..valuation import fit_and_apply_by_area
 
     with session_scope() as session:
-        rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
+        rows = session.scalars(
+            select(ListingRow).where(
+                ListingRow.status == "active", ListingRow.listing_type == "sale"
+            )
+        ).all()
         listings = [_row_to_listing(r) for r in rows]
     models = fit_and_apply_by_area(listings)
     if not models:

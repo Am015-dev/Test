@@ -18,6 +18,10 @@ def _text(at) -> str:
 
 
 def _cards(at) -> list[str]:
+    return [b.key for b in at.button if b.key and b.key.startswith("pick-det-")]
+
+
+def _verdict_rows(at) -> list[str]:
     return [b.key for b in at.button if b.key and b.key.startswith("pick-no-")]
 
 
@@ -69,6 +73,10 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     ok(at, "more")
     after = _cards(at)
     assert after[: picks.PAGE] == first and len(after) == min(2 * picks.PAGE, total)
+    # two buttons per card; «Εγκρίνω» / «Δεν μου κάνει» only on the first ten (C3)
+    assert len(_verdict_rows(at)) == picks.PAGE
+    assert sum(b.key.startswith("pick-fav-") for b in at.button if b.key) == len(after)
+    assert not any(b.label in ("Στον χάρτη", "Άνοιγμα στο XE.gr") for b in at.main.button)
     # a chip reopens its question; answering it lands back on the result
     at.button_group(key="guide_chips").set_value("απόδοση").run()
     ok(at, "chip")
@@ -80,14 +88,17 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     assert "Βήμα 2 από 5" in _text(at)
 
 
-def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env):  # noqa: F811
+def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env, monkeypatch):  # noqa: F811
+    # The seed's points are exact and 300–600 m from a station, so «κοντά σε μετρό» now matches;
+    # shrink the walking limit to get the empty result this test needs for the relaxation counts.
+    monkeypatch.setattr(picks, "NEAR_RAIL_M", 0)
     at = walk(fresh(FIND), budget="guide-b200", where="rail", age="10")
     text = _text(at)
     assert (
         at.session_state["guide"]["age"] == 10
         and "νεόδμητο" in at.button_group(key="guide_chips").options
     )
-    assert "Καμία αγγελία" in text  # the seed has no station neighbourhoods
+    assert "Καμία αγγελία" in text  # no seed flat is within the (zero) walking limit
     relax = [b for b in at.button if b.key and b.key.startswith("relax-")]
     no_rail = next(b for b in relax if b.label.startswith("Χωρίς όρο σταθμού (+"))
     added = int(no_rail.label.split("(+")[1].split(",")[0].rstrip(")"))
@@ -97,7 +108,7 @@ def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env):  # noqa: F
     assert f"**{added}** αγγελίες" in _text(at)
     cards = _cards(at)
     assert cards and "Δεν έχει ελεγχθεί ακόμα" in _text(at)
-    at.button(key=cards[0]).click().run()
+    at.button(key=cards[0].replace("pick-det-", "pick-no-")).click().run()
     ok(at, "drop")
     assert cards[0] not in _cards(at)
     assert any(e.label == "Απέρριψες 1" for e in at.expander)

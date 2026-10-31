@@ -57,6 +57,7 @@ def _incomplete_xe_rows(session, limit: int) -> list[ListingRow]:
     stmt = (
         select(ListingRow)
         .where(ListingRow.source == "xe", ListingRow.status == "active")
+        .where(ListingRow.listing_type == "sale")
         .where(ListingRow.detail_checked_at.is_(None))
         .where(
             or_(
@@ -90,6 +91,7 @@ def _new_build_rows(session, limit: int) -> list[ListingRow]:
     stmt = (
         select(ListingRow)
         .where(ListingRow.source == "xe", ListingRow.status == "active")
+        .where(ListingRow.listing_type == "sale")
         .where(
             or_(
                 unchecked,
@@ -150,6 +152,7 @@ def enrich(
                 .where(
                     ListingRow.source == "xe",
                     ListingRow.status == "active",
+                    ListingRow.listing_type == "sale",
                     ListingRow.energy_class.is_not(None),
                     ListingRow.listed_date.is_not(None),
                 )

@@ -84,6 +84,8 @@ general-workflow skills — see `.claude/skills/NOTICE.md`):
 | Review diff for over-engineering — returns delete-list only | `ponytail-review` |
 | Audit whole repo for bloat — ranked delete-list | `ponytail-audit` |
 | Show deferred-shortcut ledger (`ponytail:` comments) | `ponytail-debt` |
+| Critique / audit / polish the UI so it looks finished (craft floor, measured) | `impeccable` |
+| Apple HIG lens: type roles, 8-pt spacing, 44-pt targets, grouped lists, semantic colour | `apple-hig-designer` |
 
 **MCP servers** (`.claude/mcp/`, live config `/.mcp.json`): `postgres` (read-only DB
 inspection), `playwright` (render WAF/JS portals for selector work), `fetch` (HTML pulls).

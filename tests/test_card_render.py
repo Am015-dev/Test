@@ -74,8 +74,13 @@ def test_buyer_card_has_the_five_fixed_lines_in_greek():
     html = card_html({**BUYER, "page_checked": True}, {"cmp": CMP})
     l1, l2, l3, l4, l5 = _lines(html)
     assert l1 == "245.000 € · 78 τ.μ. · 3.141 €/τ.μ."
-    assert l2 == "3ος όροφος · κτίριο 2018 · Περισσός · Σταθμός ΗΣΑΠ Περισσός (Γραμμή 1)"
-    assert l3 == "Ελέγχθηκε η περιγραφή — δεν αναφέρει κατασκευή σε εξέλιξη"
+    assert (
+        l2
+        == "3ος όροφος · κτίριο 2018 · Περισσός · Σταθμός ΗΣΑΠ Περισσός (από το όνομα της γειτονιάς)"
+    )
+    assert l3 == (
+        "Ελέγχθηκε η περιγραφή — δεν αναφέρει κατασκευή σε εξέλιξη" " · Φωτογραφίες: δεν ελέγχθηκαν"
+    )
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
     assert l5 == "Παρόμοια (12): 13 % κάτω"
 
@@ -84,7 +89,7 @@ def test_buyer_card_status_unknowns_and_photos():
     from scout.ui.buyer import card_html
 
     unchecked = card_html({**BUYER, "floor": None, "year_built": None}, {})
-    assert 'hg-st-unk">Δεν έχει ελεγχθεί ακόμα<' in unchecked
+    assert 'hg-st-unk">Δεν έχει ελεγχθεί ακόμα · Φωτογραφίες: δεν ελέγχθηκαν<' in unchecked
     assert "όροφος: δεν δηλώνεται" in unchecked and "έτος: δεν δηλώνεται" in unchecked
     assert "Λίγα παρόμοια" in unchecked
     shell = card_html(
@@ -116,3 +121,62 @@ def test_too_cheap_is_a_question_not_a_bonus():
     assert comps_text({"cmp": {**CMP, "pct": -0.45}}).endswith(
         "45 % κάτω — έλεγξε γιατί (τ.μ., κατάσταση, νομικά)"
     )
+
+
+def _visible_before_expander(html: str) -> list[str]:
+    """The card's top-level lines before «Από πού βγαίνουν» (what a phone shows unopened)."""
+    head = html.split("<details>", 1)[0]
+    return [c for c in re.findall(r'<div class="(hg-[a-z0-9]+)"', head) if c != "hg-card"]
+
+
+def test_compact_card_shows_at_most_five_lines_and_hides_the_rest_one_tap_away():
+    from scout.ui.buyer import card_html
+
+    d = {
+        **BUYER,
+        "page_checked": True,
+        "days_on_market": 233,
+        "dom_basis": "listed",
+        "is_private_seller": True,
+        "energy_class": "A+",
+        "price_dropped": True,
+        "first_price": 260_000,
+    }
+    more = ["Καθαρή απόδοση ~2,6 %", "Πρώτη προσφορά ~238.000 €"]
+    html = card_html(d, {"cmp": CMP}, compact=True, lead="1.", more=more)
+    visible = _visible_before_expander(html)
+    assert visible == ["hg-l1", "hg-l2", "hg-l3", "hg-l4", "hg-l5"]
+    l1, l2, l3, l4, l5 = _lines(html)
+    assert l1 == "1. 245.000 € · 78 τ.μ. · 3.141 €/τ.μ."
+    assert l3 == "Ελέγχθηκε η περιγραφή"  # the short glossary term; the sentence is inside
+    assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
+    assert l5 == "Παρόμοια (12): 13 % κάτω"
+    inside = html.split("<details>", 1)[1]
+    for fact in (
+        *more,
+        "233 μέρες στην αγορά",
+        "Ιδιώτης",
+        "Ενεργειακή κλάση A+",
+        "Μείωση από 260.000 €",
+        "δεν αναφέρει κατασκευή σε εξέλιξη",
+        "12 × 900 € ÷ 245.000 € = 4,4 %",
+        "διάμεσος 3.600 €/τ.μ.",
+    ):
+        assert fact in inside, fact
+    assert "hg-more" not in html
+
+
+def test_compact_card_status_and_rentals():
+    from scout.ui.buyer import card_html
+
+    shell = card_html({**BUYER, "is_unfinished": True, "page_checked": True}, {}, compact=True)
+    assert 'hg-st-bad">Υπό κατασκευή<' in shell
+    unchecked = card_html(BUYER, {}, compact=True)
+    assert 'hg-st-unk">Δεν έχει ελεγχθεί ακόμα<' in unchecked
+    rent = card_html(
+        {**BUYER, "listing_type": "rent", "price": 800, "price_per_m2": None}, {}, compact=True
+    )
+    l1, _l2, _l3, l4, _l5 = _lines(rent)
+    assert l1 == "800 €/μήνα · 78 τ.μ."
+    assert l4 == "Ενοίκιο 800 €/μήνα · 10,3 €/τ.μ."
+    assert "Μικτή απόδοση" not in rent
