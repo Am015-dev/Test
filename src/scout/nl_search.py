@@ -111,15 +111,15 @@ def describe(f: SearchFilters) -> str:
     if f.kinds:
         parts.append("τύπος: " + "/".join(KIND_LABEL[k] for k in f.kinds))
     if f.year_min:
-        parts.append(f"κτίριο από {f.year_min}")
+        parts.append(f"χτισμένο από το {f.year_min}")
     if f.include_unfinished:
         parts.append("και υπό κατασκευή")
     if f.include_undeclared and (f.floor_min is not None or f.year_min):
-        parts.append("και χωρίς δηλωμένο όροφο/έτος")
+        parts.append("και όσα δεν γράφουν όροφο ή έτος")
     if f.private_only:
-        parts.append("μόνο ιδιώτης")
+        parts.append("μόνο από ιδιώτη")
     parts += [WANT_LABEL[w] for w in f.wants]
-    return " · ".join(parts) or "τίποτα συγκεκριμένο — δείχνω τα πάντα"
+    return " · ".join(parts) or "χωρίς περιορισμούς, όλες οι αγγελίες"
 
 
 def _norm(s: str) -> str:
@@ -259,10 +259,10 @@ def match(d: dict, f: SearchFilters) -> tuple[int, list[str]] | None:
         if (lo is not None or hi is not None) and d.get(key) is not None:
             reasons.append(f"{label}: {d[key]:g}")
     if f.year_min and d.get("year_built"):
-        reasons.append(f"έτος {d['year_built']}")
+        reasons.append(f"χτισμένο το {d['year_built']}")
     if f.budget and d.get("price"):
         cash = d["price"] + (acquisition_costs(d["price"], bool(d.get("is_private_seller"))) or 0)
-        reasons.append(f"συνολικό κόστος {_gr(cash)} €")
+        reasons.append(f"με τα έξοδα αγοράς {_gr(cash)} €")
     text = _norm(f"{where} {d.get('title') or ''}")
     confirmed = [
         w
@@ -392,11 +392,13 @@ class SearchParseError(Exception):
 def parse_query(text: str, client=None) -> SearchFilters:
     text = text.strip()[:MAX_CHARS]
     if not text:
-        raise SearchParseError("Γράψε τι σπίτι ψάχνεις.")
+        raise SearchParseError("Γράψε τι σπίτι ψάχνεις, π.χ. «τριάρι στον Χολαργό έως 250.000».")
     if client is None:
         key = get_settings().anthropic_api_key
         if not key:
-            raise SearchParseError("Η αναζήτηση με ελεύθερο κείμενο δεν είναι διαθέσιμη εδώ.")
+            raise SearchParseError(
+                "Εδώ δεν γίνεται αναζήτηση με ελεύθερο κείμενο. Διάλεξε από τα φίλτρα."
+            )
         import anthropic
 
         client = anthropic.Anthropic(api_key=key)
@@ -418,4 +420,6 @@ def parse_query(text: str, client=None) -> SearchFilters:
         block = next(b for b in resp.content if b.type == "tool_use")
         return SearchFilters.model_validate(block.input)
     except Exception as e:  # API, no tool block, or invalid filters: all the same to the user
-        raise SearchParseError("Δεν κατάλαβα την αναζήτηση — δοκίμασε να τη γράψεις αλλιώς.") from e
+        raise SearchParseError(
+            "Δεν κατάλαβα τι ψάχνεις. Γράψ' το αλλιώς, με περιοχή και τιμή."
+        ) from e

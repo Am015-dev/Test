@@ -142,9 +142,9 @@ def test_describe_is_plain_greek():
         wants=["elevator"],
     )
     assert describe(f) == (
-        "περιοχή: Χολαργός · τιμή έως 180.000 € · υπνοδωμάτια: 1 · μόνο ιδιώτης · ανελκυστήρας"
+        "περιοχή: Χολαργός · τιμή έως 180.000 € · υπνοδωμάτια: 1 · μόνο από ιδιώτη · ανελκυστήρας"
     )
-    assert "τα πάντα" in describe(SearchFilters())
+    assert "όλες οι αγγελίες" in describe(SearchFilters())
 
 
 def test_area_matches_across_greek_case_endings():
@@ -266,7 +266,7 @@ def test_match_agrees_with_why_hidden():
 def test_describe_mentions_undeclared_only_with_a_floor_or_year_filter():
     from scout.nl_search import describe
 
-    assert "χωρίς δηλωμένο" not in describe(SearchFilters(include_undeclared=True))
-    assert "χωρίς δηλωμένο όροφο/έτος" in describe(
+    assert "δεν γράφουν όροφο" not in describe(SearchFilters(include_undeclared=True))
+    assert "όσα δεν γράφουν όροφο ή έτος" in describe(
         SearchFilters(floor_min=2, include_undeclared=True)
     )
