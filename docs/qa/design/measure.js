@@ -134,6 +134,14 @@ function measureInPage() {
     if (!visible(el)) continue;
     const r = el.getBoundingClientRect();
     if (el.tagName === 'INPUT' && (r.width <= 2 || r.height <= 2)) continue;
+    // a checkbox / toggle <input> wrapped by its <label>: the label is the touch target
+    const wrapLabel = el.tagName === 'INPUT' && el.closest('label');
+    if (wrapLabel) {
+      const lr = wrapLabel.getBoundingClientRect();
+      seen.add(el);
+      targets.push({ what: desc(wrapLabel) + ' (label of input)', h: Math.round(lr.height * 10) / 10, w: Math.round(lr.width), small: lr.height < 44 });
+      continue;
+    }
     // nested target inside a measured one (e.g. <p> in a button is not selected; a <button> in
     // a [role=radio] wrapper is) — keep the outermost box only
     let anc = el.parentElement, nested = false;
@@ -165,7 +173,7 @@ function measureInPage() {
     const cr = Math.round(ratio(fgc, bg) * 100) / 100;
     const need = large ? 3 : 4.5;
     fontSizes[size] = (fontSizes[size] || 0) + 1;
-    texts.push({ t: s.slice(0, 40), size, weight: cs.fontWeight, color: cs.color, bg: `rgb(${bg.slice(0, 3).map(Math.round).join(',')})`, contrast: cr, fail: cr < need, tiny: size < 11, where: desc(el).split(' «')[0] });
+    texts.push({ t: s.slice(0, 40), decorative: /^[·•|–—\-]+$/.test(s), size, weight: cs.fontWeight, color: cs.color, bg: `rgb(${bg.slice(0, 3).map(Math.round).join(',')})`, contrast: cr, fail: cr < need, tiny: size < 11, where: desc(el).split(' «')[0] });
   }
 
   // distinct design values on visible elements
@@ -230,10 +238,10 @@ const SCREENS = [
   ['a4-guide-kind', async (p) => tap(p, 'Κοντά σε μετρό/ΗΣΑΠ')],
   ['a5-guide-result', async (p) => {
     await p.getByText('Νεόδμητο (έως 10 ετών)', { exact: true }).first().click(); await settle(p);
-    await tap(p, 'Η πρότασή μου →');
+    await p.getByRole('button', { name: /^Η πρότασή μου/ }).first().click(); await settle(p, 2000);
   }],
   ['a6-guide-card-expander', async (p) => {
-    const s = p.locator('[data-testid="stMain"] [data-testid="stExpander"] summary', { hasText: /Από πού/ }).first();
+    const s = p.locator('summary', { hasText: 'Από πού βγαίνουν' }).first();
     await s.scrollIntoViewIfNeeded(); await s.click(); await settle(p, 600);
   }],
   ['c1-areas', async (p) => pill(p, 'Περιοχές')],
@@ -293,13 +301,13 @@ function summarize(all) {
     Object.keys(m.shadows).forEach((s) => allShadows.add(s));
     [...Object.keys(m.margins), ...Object.keys(m.paddings)].forEach((s) => allSpace.add(s));
     const small = m.targets.filter((t) => t.small).length;
-    rows.push(`| ${key} | ${m.scrollWidth}/${m.innerWidth} | ${m.targets.length} | ${small} | ${m.texts.length} | ${m.texts.filter((t) => t.fail).length} | ${m.texts.filter((t) => t.tiny).length} | ${Object.keys(m.fontSizes).length} | ${Object.keys(m.radii).length} | ${Object.keys(m.shadows).length} | ${m.focus.filter((f) => !f.ring).length}/${m.focus.length} |`);
+    rows.push(`| ${key} | ${m.scrollWidth}/${m.innerWidth} | ${m.targets.length} | ${small} | ${m.texts.length} | ${m.texts.filter((t) => t.fail).length} (${m.texts.filter((t) => t.fail && !t.decorative).length}) | ${m.texts.filter((t) => t.tiny).length} | ${Object.keys(m.fontSizes).length} | ${Object.keys(m.radii).length} | ${Object.keys(m.shadows).length} | ${m.focus.filter((f) => !f.ring).length}/${m.focus.length} |`);
   }
   const offScale = [...allSpace].filter((v) => { const n = parseFloat(v); return v.endsWith('px') && Math.round(n) % 4 !== 0; });
   return [
     `# measure.js — ${LABEL}`, '',
-    `Generated ${new Date().toISOString()} against ${BASE}. Per screen@width: scrollWidth/innerWidth, interactive targets, targets < 44 px tall, visible text nodes, text below WCAG AA contrast, text < 11 px, distinct font sizes, distinct border radii, distinct box-shadows, controls without a :focus-visible change / controls checked.`, '',
-    '| screen | scrollWidth | targets | < 44 px | text nodes | contrast fail | < 11 px | font sizes | radii | shadows | no focus ring |',
+    `Generated ${new Date().toISOString()} against ${BASE}. Per screen@width: scrollWidth/innerWidth, interactive targets, targets < 44 px tall, visible text nodes, text below WCAG AA contrast (in brackets: excluding decorative separators such as «·»), text < 11 px, distinct font sizes, distinct border radii, distinct box-shadows, controls without a :focus-visible change / controls checked.`, '',
+    '| screen | scrollWidth | targets | < 44 px | text nodes | contrast fail (words) | < 11 px | font sizes | radii | shadows | no focus ring |',
     '|---|---|---|---|---|---|---|---|---|---|---|',
     ...rows, '',
     `**Across all screens:** ${allSizes.size} distinct font sizes (${[...allSizes].sort((a, b) => a - b).join(', ')} px); ${allRadii.size} distinct radii; ${allShadows.size} distinct shadows; ${allSpace.size} distinct margin/padding values, ${offScale.length} off the 4-pt scale (${offScale.slice(0, 20).join(', ')}).`,
@@ -311,7 +319,9 @@ function summarize(all) {
   const browser = await chromium.launch();
   const all = { ...(await run(browser, true)), ...(await run(browser, false)) };
   await browser.close();
-  fs.writeFileSync(path.join(DIR, `measure-${LABEL}.json`), JSON.stringify(all, null, 1));
+  const out = path.join(DIR, `measure-${LABEL}.json`);
+  if (ONLY && fs.existsSync(out)) Object.assign(all, { ...JSON.parse(fs.readFileSync(out, 'utf8')), ...all });
+  fs.writeFileSync(out, JSON.stringify(all, null, 1));
   fs.writeFileSync(path.join(DIR, `measure-${LABEL}.md`), summarize(all));
   log('wrote', path.join(DIR, `measure-${LABEL}.json`));
 })();
