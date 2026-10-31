@@ -1,6 +1,7 @@
 // C13 speed measurements: time from a tap to the rerun's last DOM change. Usage:
 //   NODE_PATH=$(npm root -g) node docs/qa/speed/measure_speed.js <label> [baseUrl] [only] [runs]
 //   NODE_PATH=$(npm root -g) node docs/qa/speed/measure_speed.js <label> [baseUrl] cold-a|cold-b
+// BLOCK_BASEMAP=1 aborts the Carto basemap requests (diagnostic: app time without the internet).
 // Needs the app running (docs/qa/speed/serve.sh) on the published DB with no ANTHROPIC_API_KEY /
 // GITHUB_TOKEN. Writes docs/qa/speed/<label>.json (every sample + the median per tap).
 //
@@ -77,6 +78,9 @@ const pill = (p, label) => main(p).getByRole('radio', { name: label, exact: true
 async function freshPage(browser) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
   await ctx.addInitScript(OBSERVER);
+  // Diagnostic only (BLOCK_BASEMAP=1): drop the Carto basemap requests to see how much of a map
+  // tap is the basemap download (internet) rather than the app.
+  if (process.env.BLOCK_BASEMAP) await ctx.route(/cartocdn\.com/, (r) => r.abort());
   const page = await ctx.newPage();
   await page.goto(BASE, { waitUntil: 'domcontentloaded' });
   await page.locator('[data-testid="stMain"]').first().waitFor({ timeout: 120000 });

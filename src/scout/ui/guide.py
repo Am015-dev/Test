@@ -968,7 +968,7 @@ def _results(g: dict, listings: list[dict]) -> None:
         _dropped(dropped)
     with st.expander("Πώς υπολογίζω"):
         st.markdown(METHOD)
-    st.caption(coverage(listings))
+    st.caption(derived.memo(listings, "coverage", lambda: coverage(listings)))  # C13: per data
     if _store() is None:
         st.caption("Οι απαντήσεις κρατιούνται μόνο σε αυτή τη συνεδρία.")
 
