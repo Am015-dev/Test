@@ -36,19 +36,34 @@ safety     0.4    0.6    1.0     0.25
 growth     0.4    0.6    0.25    1.0
 =========  =====  =====  ======  ======
 
+The budget is a ceiling, not a band (C15): a strict match costs up to budget × (1 +
+``BUDGET_BAND``) and there is NO floor — a 250.000 € buyer sees the 180.000 € flat. The floor
+that was here (budget × 0,88) kept flats far under the budget out of the list; that protection
+is now a flag: ``Pick.under_budget`` is the € a flat sits under budget × (1 − ``BUDGET_BAND``)
+(0 inside the band) and such a flat carries one more «Έλεγξε» line. The «too cheap against
+comparables» signal (``too_cheap``) was never the floor's job and stays as it is: a risk line
+and −20 value points, never a filter.
+
 Never a thin list (C7). ``find(..., near=True)`` returns the strict matches first and then
 **near matches**: listings that fail exactly ONE of the buyer's answers. The loosening steps,
-smallest first: price band 12 % → 20 % → 30 % over the budget; building age one step up
+smallest first: price 12 % → 20 % → 30 % over the budget; building age one step up
 (10 → 20); station rule off; chosen areas → all areas; bedrooms off; and last, any building
-age. Every step keeps its best ``NEAR_MIN`` (3 × ``PAGE``); all near matches are then ranked
-together by the usual sort (page read, photos, ``rank_score``), the smaller loosening first
-on a tie, and sort after every strict match. Near matches are added only when the strict
-matches are fewer than ``NEAR_MIN``. Each carries ``relaxed``, the loosened answer in
-the user's words («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»).
-Then a third tier, «ευρύτερα» (``tier=2``): every remaining flat within budget × 1,30 — the
-ones that fail two or more answers and the one-answer ones past a step's cap — by the usual
-sort, with no cap; ``relaxed`` names everything it fails («ποσό +22 %, κτίριο 1985, χωρίς όρο
-σταθμού»). Every flat in the band appears exactly once, in one tier.
+age. Every step keeps its best ``NEAR_MIN``; all near matches are then ranked together by
+the usual sort (page read, photos, ``rank_score``), the smaller loosening first on a tie,
+and sort after every strict match. Near matches are added whenever the strict matches are
+fewer than ``NEAR_MIN`` (100: a list that long needs no widening). Each carries ``relaxed``,
+the loosened answer in the user's words («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού»,
+«Μαρούσι», «3 υπν.»). Then a third tier, «ευρύτερα» (``tier=2``): every remaining flat
+within budget × 1,30 — the ones that fail two or more answers and the one-answer ones past a
+step's cap — by the usual sort, with no cap; ``relaxed`` names everything it fails («ποσό
++22 %, κτίριο 1985, χωρίς όρο σταθμού»). Every flat in the band appears exactly once, in
+one tier.
+
+What each answer costs (C15): ``answer_costs`` counts, with the same strict ``find``, the
+flats for the budget alone and then after each further answer in the order the guide asks
+them (where, building age, bedrooms); ``costs_line`` writes it in one line — «Με 250 χιλ.
+βρίσκω 1.420 σπίτια· «κοντά σε μετρό» αφήνει 410, «1 υπν.» 95.» The last number is the
+strict count the list shows; ``relaxations`` counts with the same ``find``.
 
 The buyer score (``buyer_score``) on every pick is the 0–100 score of ``nl_search.advise``,
 the same number the map colour and the search advice use.
@@ -85,10 +100,10 @@ STATIONS: dict[str, str] = {
 }
 NEW_YEARS = 10  # "new" = built or renovated within this many years
 AGE_STEPS = (5, 10, 15, 20)  # the building-age limits the page offers
-BUDGET_BAND = 0.12  # ± around the stated budget
+BUDGET_BAND = 0.12  # a strict match costs at most this much over the budget; no floor (C15)
 TOP = 3
 PAGE = 10  # the «Οδηγός» shows the ranking 10 at a time
-NEAR_MIN = 3 * PAGE  # near matches are added until at least this many candidates exist
+NEAR_MIN = 100  # near matches are added while the strict list is shorter than this (C15)
 PRICE_STEPS = (0.20, 0.30)  # the price band over the budget, after BUDGET_BAND
 AGE_LOOSEN = (10, 20, None)  # building-age limits a near match may step up to
 
@@ -241,6 +256,7 @@ class Pick:
     buyer_score: int = 0  # 0–100, ``nl_search.advise`` (the score on every card)
     relaxed: str = ""  # what it is outside of, in the user's words; "" = strict
     tier: int = 0  # 0 strict · 1 near (one answer) · 2 «ευρύτερα» (two or more answers)
+    under_budget: int = 0  # € under budget × (1 − BUDGET_BAND); 0 inside the band (C15)
 
     @property
     def loan_line(self) -> str:
@@ -587,8 +603,8 @@ def find(
     memo: dict | None = None,
     near: bool = False,
 ) -> list[Pick]:
-    """The ``top`` listings for ``budget`` (± BUDGET_BAND): read pages first, then real
-    photos, then ``rank_score`` for ``goal`` (module docstring). ``max_age=None`` = any
+    """The ``top`` listings costing up to ``budget`` × (1 + BUDGET_BAND), no floor: read
+    pages first, then real photos, then ``rank_score`` for ``goal`` (module docstring). ``max_age=None`` = any
     building age; ``areas`` = area names (``area_insights.area_name``); ``bedrooms`` see
     ``_bedrooms_ok``; ``area_facts`` = area → ``AreaInsight`` for the growth part. ``memo``
     caches the per-listing work between calls that only differ in the filters.
@@ -599,7 +615,7 @@ def find(
     if "_stats" not in memo:
         memo["_stats"] = area_stats(listings)
     stats = memo["_stats"]
-    lo = budget * (1 - BUDGET_BAND)
+    floor = budget * (1 - BUDGET_BAND)  # not a filter: flats under it are flagged
     strict: list[Pick] = []
     loose: dict[tuple[str, int], list[Pick]] = {}
     wide: list[Pick] = []
@@ -608,7 +624,7 @@ def find(
             continue
         if d.get("is_unfinished") or not d.get("price") or not d.get("area_m2"):
             continue
-        if d["price"] < lo or (d.get("floor") is not None and d["floor"] < 1):
+        if d.get("floor") is not None and d["floor"] < 1:
             continue
         if checked_only and not d.get("page_checked"):
             continue
@@ -620,6 +636,9 @@ def find(
         if (p := memo[id(d)]) is None:
             continue
         p = replace(p, rank_score=score(p.parts, goal), loan=loan, goal=goal)
+        if d["price"] < floor:
+            under = int(floor - d["price"])
+            p = replace(p, under_budget=under, risks=[*p.risks, under_line(budget, d["price"])])
         if len(miss) > 1:
             label = ", ".join(x[2] for x in miss)
             wide.append(replace(p, relaxed=label, tier=2))
@@ -658,6 +677,91 @@ def find(
     return out[:top]
 
 
+UNDER_BUDGET = (
+    "{gap} κάτω από τα {budget} που είπες — δες τι παίρνεις λιγότερο (τ.μ., όροφος, "
+    "κατάσταση) πριν το προτιμήσεις."
+)
+
+
+def under_line(budget: int, price: float) -> str:
+    """The «Έλεγξε» line of a flat far under the budget (the old floor, as a flag)."""
+    return UNDER_BUDGET.format(gap=_eur(budget - price), budget=_eur(budget))
+
+
+def thousands(budget: int) -> str:
+    """250000 → «250 χιλ.»; an odd amount stays in euros."""
+    return f"{budget // 1000} χιλ." if budget >= 1000 and budget % 1000 == 0 else _eur(budget)
+
+
+def answer_labels(
+    max_age: int | None, near_rail: bool, areas: list[str] | None, bedrooms: int | None
+) -> list[tuple[str, dict]]:
+    """The answers beyond the budget, in the guide's order, each as (the user's words, the
+    ``find`` keywords that apply it). Answers not given (any age, anywhere, any bedrooms) are
+    not listed."""
+    out: list[tuple[str, dict]] = []
+    if near_rail:
+        out.append(("κοντά σε μετρό", {"near_rail": True}))
+    elif areas:
+        out.append((", ".join(areas), {"areas": list(areas)}))
+    if max_age is not None:
+        out.append(
+            ("νεόδμητο" if max_age == NEW_YEARS else f"έως {max_age} ετών", {"max_age": max_age})
+        )
+    if bedrooms is not None:
+        out.append((f"{bedrooms}{'+' if bedrooms >= 3 else ''} υπν.", {"bedrooms": bedrooms}))
+    return out
+
+
+def answer_costs(
+    listings: list[dict],
+    intel: Intel,
+    rent_rows: list[dict],
+    budget: int,
+    *,
+    max_age: int | None = NEW_YEARS,
+    near_rail: bool = True,
+    checked_only: bool = False,
+    areas: list[str] | None = None,
+    bedrooms: int | None = None,
+    goal: str = "yield",
+    area_facts: dict | None = None,
+    year: int | None = None,
+    memo: dict | None = None,
+) -> list[tuple[str, int]]:
+    """[(answer, strict matches left)] — the budget alone first («250 χιλ.»), then each
+    further answer applied on top of the previous ones, in the guide's order; the last count
+    is the strict list ``find`` shows for the same answers. Same ``find``, same dedup."""
+    memo = {} if memo is None else memo
+    base = dict(max_age=None, near_rail=False, areas=None, bedrooms=None)
+    fixed = dict(checked_only=checked_only, goal=goal, area_facts=area_facts, year=year)
+
+    def n(**kw) -> int:
+        return len(find(listings, intel, rent_rows, budget, top=10**9, memo=memo, **fixed, **kw))
+
+    out = [(thousands(budget), n(**base))]
+    for label, change in answer_labels(max_age, near_rail, areas, bedrooms):
+        base |= change
+        out.append((label, n(**base)))
+    return out
+
+
+def _count(n: int) -> str:
+    return "κανένα" if n == 0 else f"{n:,}".replace(",", ".")
+
+
+def costs_line(costs: list[tuple[str, int]]) -> str:
+    """«Με 250 χιλ. βρίσκω 1.420 σπίτια· «κοντά σε μετρό» αφήνει 410, «1 υπν.» 95.» from
+    ``answer_costs``; with the budget alone: «Με 250 χιλ. βρίσκω 1.420 σπίτια.»"""
+    (budget, total), *rest = costs
+    head = f"Με {budget} βρίσκω {_count(total)} {'σπίτι' if total == 1 else 'σπίτια'}"
+    if not rest:
+        return head + "."
+    parts = [f"«{label}» {_count(n)}" for label, n in rest]
+    parts[0] = parts[0].replace("» ", "» αφήνει ", 1)
+    return f"{head}· {', '.join(parts)}."
+
+
 @dataclass
 class Relax:
     """One rule loosened, and exactly what it adds (counted with ``find``)."""
@@ -691,9 +795,11 @@ def relaxations(
     area_facts: dict | None = None,
     year: int | None = None,
     limit: int = 4,
+    memo: dict | None = None,
 ) -> list[Relax]:
-    """Up to ``limit`` single-rule relaxations that add flats, each with its exact count."""
-    memo: dict = {}
+    """Up to ``limit`` single-rule relaxations that add flats, each with its exact count.
+    ``memo`` as in ``find`` (the per-listing work does not depend on the answers)."""
+    memo = {} if memo is None else memo
     now = {"budget": budget, "max_age": max_age, "near_rail": near_rail}
     now |= {"checked_only": checked_only, "areas": areas, "bedrooms": bedrooms}
     extra = {"goal": goal, "area_facts": area_facts}

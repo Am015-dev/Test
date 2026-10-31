@@ -752,10 +752,11 @@ def _results(r: dict, rows: list[dict]) -> None:
     exact = [p for p in every if not p.relaxed]
     near = sum(p.tier == 1 for p in every)
     wide = sum(p.tier == 2 for p in every)
-    what = f"έως {eur(budget * (1 + picks_rent.BUDGET_BAND))}/μήνα (το ποσό σου + 10 %)" + (
+    lo, hi = budget * picks_rent.RENT_FLOOR, budget * (1 + picks_rent.BUDGET_BAND)
+    what = f"{eur(lo)}–{eur(hi)}/μήνα (το ποσό σου + 10 %)" + (
         ", κοντά σε σταθμό" if where == "rail" else ""
     )
-    relax = picks_rent.relaxations(rows, budget, **rules) if len(exact) < picks.PAGE else []
+    relax = picks_rent.relaxations(rows, budget, **rules) if len(exact) < picks.NEAR_MIN else []
     if not every:
         st.markdown(f"Καμία αγγελία ενοικίασης {what}.")
         if relax:
@@ -765,6 +766,9 @@ def _results(r: dict, rows: list[dict]) -> None:
     else:
         if sentence := recommend(exact or every):
             st.markdown(sentence)
+        costs = picks_rent.answer_costs(rows, budget, **rules)
+        if len(costs) > 1:  # C15: what each answer beyond the budget costs, in one line
+            st.markdown(picks_rent.costs_line(costs))
         if near or wide:
             st.markdown(counts_line(len(exact), near, what, wide))
         else:
