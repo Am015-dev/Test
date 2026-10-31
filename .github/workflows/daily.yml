@@ -39,7 +39,10 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 200     # above the sum of the step caps so publish is never cancelled
+    timeout-minutes: 220     # above the sum of the step caps so publish is never cancelled
+    env:
+      # secrets cannot be tested in a step `if`; expose only whether the key exists
+      HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -90,6 +93,21 @@ jobs:
         run: >-
           timeout 36m python scripts/enrich_details.py --new-builds --limit 600
           --max-fetches 400 --no-rescore || true
+
+      - name: Check photos of new-build listings (real flat or render?) — best-effort
+        # Vision call on up to 3 photos per listing (scripts/check_photos.py). Runs only when
+        # the repository secret ANTHROPIC_API_KEY exists; without it the step is skipped.
+        if: ${{ env.HAS_ANTHROPIC_KEY == 'true' }}
+        timeout-minutes: 15
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SCRAPE_REQUEST_MIN_S: "4"
+          SCRAPE_REQUEST_MAX_S: "6"
+        # `timeout` ends the script before the step cap (see the page check above)
+        run: >-
+          timeout 14m python scripts/check_photos.py --limit 150 --max-minutes 12
+          --areas "$WEEKLY_AREAS" || true
 
       - name: Rescore whole panel from the DB (no network)
         if: always()

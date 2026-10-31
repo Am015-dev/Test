@@ -75,7 +75,9 @@ def test_buyer_card_has_the_five_fixed_lines_in_greek():
     l1, l2, l3, l4, l5 = _lines(html)
     assert l1 == "245.000 € · 78 τ.μ. · 3.141 €/τ.μ."
     assert l2 == "3ος όροφος · κτίριο 2018 · Περισσός · Σταθμός ΗΣΑΠ Περισσός (Γραμμή 1)"
-    assert l3 == "Ελέγχθηκε η περιγραφή — δεν αναφέρει κατασκευή σε εξέλιξη"
+    assert l3 == (
+        "Ελέγχθηκε η περιγραφή — δεν αναφέρει κατασκευή σε εξέλιξη" " · Φωτογραφίες: δεν ελέγχθηκαν"
+    )
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
     assert l5 == "Παρόμοια (12): 13 % κάτω"
 
@@ -84,7 +86,7 @@ def test_buyer_card_status_unknowns_and_photos():
     from scout.ui.buyer import card_html
 
     unchecked = card_html({**BUYER, "floor": None, "year_built": None}, {})
-    assert 'hg-st-unk">Δεν έχει ελεγχθεί ακόμα<' in unchecked
+    assert 'hg-st-unk">Δεν έχει ελεγχθεί ακόμα · Φωτογραφίες: δεν ελέγχθηκαν<' in unchecked
     assert "όροφος: δεν δηλώνεται" in unchecked and "έτος: δεν δηλώνεται" in unchecked
     assert "Λίγα παρόμοια" in unchecked
     shell = card_html(

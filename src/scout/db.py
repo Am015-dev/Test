@@ -114,6 +114,9 @@ def init_db() -> None:
             # What the listing page says + its photo count; NULL = page not read yet.
             "description": "TEXT",
             "photo_count": "INTEGER",
+            # Photo check: photo | render | plan | site | stock; NULL = not classified.
+            "photo_kind": "VARCHAR(16)",
+            "photo_checked_at": "TIMESTAMP",
         },
     )
     _ensure_index(engine, "ix_listing_search_area", "listing", "search_area")
