@@ -152,19 +152,24 @@ def test_contract_hooks_line4_and_profile_store(monkeypatch):
     import sys
     import types
 
-    m = types.ModuleType("scout.metro_line4")
-    m.line4_stations = lambda area: ["Γαλάτσι"] if area == "Γαλάτσι" else []
-    m.line4_station = lambda d: "Γαλάτσι" if "Γαλάτσι" in (d.get("neighborhood") or "") else None
-    monkeypatch.setitem(sys.modules, "scout.metro_line4", m)
+    # The real scout.metro_line4 (W12): a station counts only when the listing's own sub-area
+    # carries its name, so «Γαλάτσι (Άλσος Βεΐκου)» has one and «Νέα Ιωνία (Κέντρο)» none.
     rows = [
-        flat(1, 265_000, m2=95, hood="Γαλάτσι (Λαμπρινή)", page_checked=True),
+        flat(1, 265_000, m2=95, hood="Γαλάτσι (Άλσος Βεΐκου)", page_checked=True),
         flat(2, 265_000, m2=95, hood="Νέα Ιωνία (Κέντρο)", page_checked=True),
     ]
-    rents = [*RENTS, {"neighborhood": "Νέα Ιωνία (Κέντρο)", "rent_per_m2": 12.0, "samples": 9}]
+    rents = [
+        *RENTS,
+        {"neighborhood": "Γαλάτσι (Άλσος Βεΐκου)", "rent_per_m2": 12.0, "samples": 9},
+        {"neighborhood": "Νέα Ιωνία (Κέντρο)", "rent_per_m2": 12.0, "samples": 9},
+    ]
     got = picks.find(rows, market_intel.build(rows, YEAR), rents, 300_000, year=YEAR,
                      near_rail=False, goal="growth", top=10)  # fmt: skip
-    assert got[0].listing["id"] == 1 and "Γραμμή 4: Γαλάτσι" in got[0].reasons["growth"]
-    assert picks.line4_stations("Γαλάτσι") == ["Γαλάτσι"]
+    by_id = {p.listing["id"]: p for p in got}
+    assert "Γραμμή 4: Άλσος Βεΐκου" in by_id[1].reasons["growth"]
+    assert not any("Γραμμή 4" in r for r in by_id[2].reasons["growth"])
+    assert picks.line4_stations("Γαλάτσι") == ["Άλσος Βεΐκου", "Γαλάτσι", "Ελικώνος"]
+    assert picks.line4_stations("Νέα Ιωνία") == []
 
     class Store:
         def __init__(self):
