@@ -106,6 +106,7 @@ from scout.scoring import (  # noqa: E402
 )  # noqa: E402
 from scout.strategy_fit import STRATEGY_LABELS, strategy_label  # noqa: E402
 from scout.ui import (  # noqa: E402
+    areas,  # noqa: E402
     buyer,  # noqa: E402
     components,  # noqa: E402
     queries,  # noqa: E402
@@ -2317,6 +2318,7 @@ def page_compare(listings: list[dict]) -> None:
 # stay reachable for the owner with ?admin=1.
 NAV = {
     "🔎 Αναζήτηση": buyer.page_search,
+    "Πού να αγοράσω": areas.page_areas,
     "🗺 Χάρτης": page_map,
     "⭐ Αγαπημένα": buyer.page_watchlist,
     "🤖 Αποθηκευμένες αναζητήσεις": buyer.page_shortlist,
