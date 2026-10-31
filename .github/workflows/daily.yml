@@ -80,7 +80,11 @@ jobs:
         env:
           SCRAPE_REQUEST_MIN_S: "4"
           SCRAPE_REQUEST_MAX_S: "6"
-        run: python scripts/enrich_details.py --new-builds --limit 600 --max-fetches 450 --no-rescore
+        # `timeout` ends the script before the step cap: a step killed by the cap leaves its
+        # python running, holding the SQLite lock, and the rescore after it then fails.
+        run: >-
+          timeout 36m python scripts/enrich_details.py --new-builds --limit 600
+          --max-fetches 400 --no-rescore || true
 
       - name: Rescore whole panel from the DB (no network)
         if: always()
