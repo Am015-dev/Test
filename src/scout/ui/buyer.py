@@ -508,6 +508,8 @@ def card_html(
     rent_row = _is_rent(d)
     price = eur(d.get("price")) + ("/μήνα" if rent_row else "")
     l1 = [f'<span class="hg-price">{price}</span>']
+    if (sc := card_score(d, adv)) is not None:  # C7: the score right of the price
+        l1[0] += f' <span class="hg-st hg-st-neu hg-rating">Βαθμολογία {sc}</span>'
     if lead:
         l1[0] = f'<span class="hg-rank">{e(lead)}</span> ' + l1[0]
     if d.get("area_m2"):
@@ -534,6 +536,8 @@ def card_html(
             )
     if d.get("few_photos"):
         l3 = (l3 + f' <span class="hg-st hg-st-photo">{picks.FEW_PHOTOS}</span>').strip()
+    if adv.get("relaxed"):  # C7: a near match says which one answer it is outside of
+        l3 = (l3 + f' <span class="hg-st hg-st-neu">Έξω από: {e(adv["relaxed"])}</span>').strip()
     extras = _extras(d, adv)
     mark = ' data-compact="1"' if compact else ""
     rank = f' data-rank="{e(lead.rstrip("."))}"' if lead else ""  # theme: the first pick leads
@@ -551,6 +555,8 @@ def card_html(
         hidden = [*(more or []), *extras] + ([full] if full and full != text else [])
     elif extras:
         out += f'<div class="hg-more">{_join([e(x) for x in extras])}</div>'
+    if sline := score_line(d, adv):
+        hidden.append(sline)
     if basis or hidden:
         lines = hidden + (_basis_lines(d, adv) if basis else [])
         out += (
@@ -559,6 +565,93 @@ def card_html(
             + "</details>"
         )
     return out + "</div>"
+
+
+SCORE_PARTS = {  # strategy.yaml weights → the words a buyer reads
+    "newness": "καινούργιο ή ανακαινισμένο κτίριο",
+    "gross_yield": "μικτή απόδοση",
+    "energy_class": "ενεργειακή κλάση",
+    "undervaluation": "τιμή κάτω από την εκτιμώμενη αξία",
+    "metro_proximity": "κοντά σε σταθμό",
+    "price_drop": "πτώση τιμής",
+    "is_currently_rented": "ήδη νοικιασμένο",
+    "is_private_seller": "ιδιώτης πωλητής",
+}
+SCORE_LINE = (
+    "Βαθμολογία {n} από 100: 60 % η βαθμολογία της αγγελίας (απόδοση, κτίριο, ενεργειακή "
+    "κλάση, σταθμός, τιμή) και 40 % η τιμή έναντι παρόμοιων, μειωμένη για παλιό κτίριο."
+)
+
+
+def score_line(d: dict, adv: dict) -> str | None:
+    """The one-line basis of the card's «Βαθμολογία» (inside «Από πού βγαίνουν»)."""
+    n = card_score(d, adv)
+    if n is None:
+        return None
+    if _is_rent(d):
+        why = adv.get("score_basis")
+        return f"Βαθμολογία {n} από 100: {why}." if why else None
+    return SCORE_LINE.format(n=n)
+
+
+def score_how(d: dict, adv: dict) -> list[str]:
+    """«Πώς βγαίνει η βαθμολογία» (listing page): the parts of ``nl_search.advise`` and their
+    weights in words, with this listing's own numbers where they exist."""
+    from scout.config import load_strategy
+
+    n = card_score(d, adv)
+    w = load_strategy().weights.model_dump()
+    total = sum(v for k, v in w.items() if k in SCORE_PARTS) or 1
+    parts = ", ".join(
+        f"{SCORE_PARTS[k]} {round(v * 100 / total)}"
+        for k, v in sorted(w.items(), key=lambda x: -x[1])
+        if k in SCORE_PARTS and v
+    )
+    base = d.get("score")
+    cmp = adv.get("cmp")
+    age = nl_search.building_age(d)
+    factor = nl_search.age_factor(age)
+    out = [
+        f"Βαθμολογία {n} από 100, ίδια σε κάρτες, χάρτη και αναζήτηση.",
+        "60 % η βαθμολογία της αγγελίας"
+        + (f" ({round(base)} από 100)" if base is not None else "")
+        + f": {parts} (βάρη στα 100).",
+        "40 % η αξία αγοράς: τιμή έναντι παρόμοιων (20 % κάτω = πλήρες, έως 70), περιθώριο "
+        "διαπραγμάτευσης (έως 20) και 10 αν έπεσε η τιμή"
+        + (
+            f" · εδώ {round(abs(cmp['pct']) * 100)} % "
+            f"{'κάτω' if cmp['pct'] < 0 else 'πάνω'} από τα παρόμοια ({cmp['n']})."
+            if cmp
+            else " · εδώ λιγότερα από 5 παρόμοια: μετρά μόνο η βαθμολογία της αγγελίας."
+        ),
+        "Ηλικία κτιρίου: × 1 έως 15 ετών, × 0,95 έως 30, × 0,8 έως 40, × 0,6 έως 50, "
+        "× 0,45 πάνω από 50, × 0,9 όταν δεν δηλώνεται"
+        + (
+            f" · εδώ {age} ετών, × {gr_factor(factor)}."
+            if age is not None
+            else " · εδώ δεν δηλώνεται."
+        ),
+        "Κτίριο με φετινό έτος × 0,6 · Υπό κατασκευή × 0,25 · πάνω από 35 % κάτω από τα "
+        "παρόμοια × 0,7 (ερώτημα, όχι ευκαιρία).",
+    ]
+    return out
+
+
+def gr_factor(x: float) -> str:
+    return f"{x:g}".replace(".", ",")
+
+
+def card_score(d: dict, adv: dict) -> int | None:
+    """The card's «Βαθμολογία» (C7): ``adv["score"]`` when the caller has it, else, for a sale
+    listing, the buyer score of ``nl_search.advise`` with the comparables in ``adv["cmp"]``
+    (the same number as ``picks.buyer_score``). Rentals carry the rent-value score
+    (``picks_rent``) in ``adv`` or show none."""
+    if adv.get("score") is not None:
+        return int(adv["score"])
+    if _is_rent(d):
+        return None
+    cmp = adv.get("cmp")
+    return nl_search.advise(d, cmp["pct"] if cmp else None)["score"]
 
 
 def result_card(
@@ -607,11 +700,7 @@ def buyer_view(d: dict, intel) -> dict:
 def buyer_scores(listings: list[dict], intel=None) -> dict[int, int]:
     """The buyer score (the one on the cards) for every listing, by id."""
     intel = intel or market_intel.build(listings)
-    out = {}
-    for d in listings:
-        cmp = intel.comps(d)
-        out[d["id"]] = nl_search.advise(d, cmp["pct"] if cmp else None)["score"]
-    return out
+    return {d["id"]: picks.buyer_score(d, intel) for d in listings}
 
 
 def _star_action(d: dict) -> tuple:
@@ -1537,6 +1626,8 @@ def page_listing(listings: list[dict]) -> None:
     with st.container(border=True, key=f"card-l-{d['id']}"):
         st.markdown(card_html(d, adv, basis=False), unsafe_allow_html=True)
         st.caption(status_basis(d))
+    with st.expander("Πώς βγαίνει η βαθμολογία"):
+        st.markdown("\n".join(f"- {html.escape(x)}" for x in score_how(d, adv)))
 
     _description_section(d)
     _rent_section(d)

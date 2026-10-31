@@ -415,6 +415,9 @@ def facts_for(shown: list[picks.Pick], g: dict, area_facts: dict, intel) -> dict
                 "περιοχή_αγγελίες": x.n_fresh if x is not None else None,
                 "περιοχή_διάμεσες_μέρες": x.median_dom if x is not None else None,
                 "περιοχή_premium_νεόδμητων": x.new_premium if x is not None else None,
+                "βαθμολογία": p.buyer_score,
+                "ακριβώς_όπως_ζήτησε": not p.relaxed,
+                "χαλαρωμένος_όρος": p.relaxed or None,
             }
         )
     return {
@@ -443,6 +446,35 @@ def coverage(listings: list[dict]) -> str:
 
 
 # ---- verdicts (✓ / ✗) ----------------------------------------------------------------------
+
+
+def tier_text(near: int, wide: int) -> str:
+    """«**55** κοντινές (ένας όρος χαλαρωμένος) και **410** ευρύτερα (πιο μακριά από αυτό που ζήτησες)»."""
+    parts = []
+    if near:
+        noun = "κοντινή" if near == 1 else "κοντινές"
+        parts.append(f"**{buyer._num(near)}** {noun} (ένας όρος χαλαρωμένος)")
+    if wide:
+        noun = "ευρύτερη" if wide == 1 else "ευρύτερα"
+        parts.append(f"**{buyer._num(wide)}** {noun} (πιο μακριά από αυτό που ζήτησες)")
+    return " και ".join(parts)
+
+
+def counts_line(exact: int, near: int, what: str, checked: int, wide: int = 0) -> str:
+    """C7's result sentence with the three counts: «**2** αγγελίες … ακριβώς όπως ζήτησες,
+    **55** κοντινές (…) και **410** ευρύτερα (…)», or «Καμία ακριβώς όπως ζήτησες· …». What
+    each card is outside of is written on the card."""
+    rest = tier_text(near, wide)
+    if exact:
+        joint = ", " if near and wide else " και "
+        head = f"**{buyer._num(exact)}** {buyer._noun(exact)} {what} ακριβώς όπως ζήτησες{joint}{rest}."
+    else:
+        head = f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}."
+    return (
+        head
+        + " Σε κάθε κάρτα γράφω τι δεν ταιριάζει."
+        + f" Ελέγχθηκε η περιγραφή σε **{checked}** από όλες."
+    )
 
 
 def arrange(
@@ -622,8 +654,8 @@ def _rent_rows() -> list[dict]:
 
 
 METHOD = """
-- **Σειρά**: πρώτα όσες ελέγξαμε τη σελίδα, μετά όσες έχουν πάνω από 2 φωτογραφίες, μετά οι
-  πόντοι του στόχου σου. Ο στόχος δεν ανεβάζει ποτέ μη ελεγμένη πάνω από ελεγμένη.
+- **Σειρά**: πρώτα οι ελεγμένες με αληθινές φωτογραφίες, μετά η Βαθμολογία· ο στόχος σου
+  κρίνει τις ισοπαλίες και την πρόταση περιοχής.
 - **Πόντοι**: απόδοση = 1000 × μικτή απόδοση (4,5 % δίνει 45)· τιμή = σε σχέση με τα παρόμοια
   (−6 έως +10), +3 αν τελείωσε πριν από φέτος, +2 αν είναι 90+ μέρες στην αγορά, −20 αν είναι
   πάνω από 35 % φθηνότερο από τα παρόμοια· σιγουριά = 6 για καθένα από: ελεγμένη σελίδα,
@@ -767,10 +799,34 @@ def assistant_facts(
             "bedrooms": g.get("bedrooms"),
         }
         try:
-            return a.facts_for(every, intel, list(area_facts.values()), answers, rent_rows=rents)
+            facts = a.facts_for(every, intel, list(area_facts.values()), answers, rent_rows=rents)
         except Exception:
-            pass
+            facts = None
+        if isinstance(facts, dict):
+            return mark_near(facts, every)
     return facts_for(every, g, area_facts, intel)
+
+
+NEAR_NOTE = (
+    "Listings with exact_match=false do not match every answer of the buyer: relaxed names "
+    "the answer(s) they are outside of (one = near match, several = wider). Never call them "
+    "exact matches."
+)
+
+
+def mark_near(facts: dict, picks_: list) -> dict:
+    """C7: every listing row says whether it matches the answers exactly and, if not, the one
+    loosened answer (``relaxed``), plus its buyer score; rows are in the order of ``picks_``."""
+    rows = facts.get("listings") or []
+    for row, p in zip(rows, picks_, strict=False):
+        if isinstance(row, dict):
+            row["exact_match"] = not getattr(p, "relaxed", "")
+            row["relaxed"] = getattr(p, "relaxed", "") or None
+            if (sc := getattr(p, "buyer_score", None) or getattr(p, "score", None)) is not None:
+                row["score_0_100"] = sc
+    if any(isinstance(r, dict) and not r.get("exact_match", True) for r in rows):
+        facts["near_matches_note"] = NEAR_NOTE
+    return facts
 
 
 def _assistant_brief(facts: dict) -> None:
@@ -821,16 +877,21 @@ def _results(g: dict, listings: list[dict]) -> None:
         area_facts=area_facts,
         year=year,
     )
-    found = picks.find(listings, intel, rents, budget, loan=bool(g.get("loan")), top=10**6, **rules)
+    found = picks.find(
+        listings, intel, rents, budget, loan=bool(g.get("loan")), top=10**6, near=True, **rules
+    )
     review = _review()
     every, dropped = arrange(found, review)
+    exact = [p for p in every if not p.relaxed]
+    near = sum(p.tier == 1 for p in every)
+    wide = sum(p.tier == 2 for p in every)
     lo, hi = budget * (1 - picks.BUDGET_BAND), budget * (1 + picks.BUDGET_BAND)
     what = f"{buyer.eur(lo)}–{buyer.eur(hi)}, {age_text(g.get('age'))}" + (
         ", κοντά σε σταθμό" if where == "rail" else ""
     )
     relax = (
         picks.relaxations(listings, intel, rents, budget, **rules)
-        if len(every) < picks.PAGE
+        if len(exact) < picks.PAGE
         else []
     )
     if not every:
@@ -840,10 +901,12 @@ def _results(g: dict, listings: list[dict]) -> None:
         else:
             st.info("Ούτε με έναν όρο λιγότερο βρίσκω κάτι. Άλλαξε το ποσό.")
     else:
-        if sentence := recommend(every, area_facts, rules["goal"], budget):
+        if sentence := recommend(exact or every, area_facts, rules["goal"], budget):
             st.markdown(sentence)
         checked = sum(p.checked for p in every)
-        if len(every) == 1:
+        if near or wide:
+            st.markdown(counts_line(len(exact), near, what, checked, wide))
+        elif len(every) == 1:
             tail = (
                 "Ελέγχθηκε η περιγραφή της."
                 if checked
@@ -860,7 +923,8 @@ def _results(g: dict, listings: list[dict]) -> None:
         if relax:
             _relax(
                 relax,
-                f"Μόνο {len(every)}. Με έναν όρο λιγότερο (σε παρένθεση πόσες προστίθενται):",
+                f"Μόνο {len(exact)} ακριβώς όπως ζήτησες. Κάνε μόνιμο έναν όρο λιγότερο "
+                "(σε παρένθεση πόσες προστίθενται):",
             )
         facts = assistant_facts(every, g, area_facts, intel, rents, budget, rules["goal"])
         _assistant_brief(facts)
@@ -877,7 +941,8 @@ def _results(g: dict, listings: list[dict]) -> None:
         for i, p in enumerate(visible, start=1):
             d = p.listing
             cmp = intel.comps(d)
-            adv = {"cmp": cmp, "twins": intel.twins(d)}
+            adv = {"cmp": cmp, "twins": intel.twins(d), "score": p.buyer_score}
+            adv["relaxed"] = p.relaxed
             ok = review.get(shortlist.lkey(d)) == "ok"
             _card(i, p, ok, adv, maplist is not None)
         if len(every) > n:
@@ -888,7 +953,7 @@ def _results(g: dict, listings: list[dict]) -> None:
                     on_click=_more,
                     width="stretch",
                 )
-        st.caption(f"Βλέπεις {len(visible)} από {len(every)}.")
+        st.caption(f"Βλέπεις {buyer._num(len(visible))} από {buyer._num(len(every))}.")
         _assistant_panel(facts)
     if dropped:
         _dropped(dropped)

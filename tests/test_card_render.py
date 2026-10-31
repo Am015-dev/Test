@@ -74,7 +74,7 @@ def test_buyer_card_has_the_five_fixed_lines_in_greek():
 
     html = card_html({**BUYER, "page_checked": True}, {"cmp": CMP})
     l1, l2, l3, l4, l5 = _lines(html)
-    assert l1 == "245.000 € · 78 τ.μ. · 3.141 €/τ.μ."
+    assert re.fullmatch(r"245\.000 € Βαθμολογία \d{1,3} · 78 τ\.μ\. · 3\.141 €/τ\.μ\.", l1)
     assert (
         l2
         == "3ος όροφος · κτίριο 2018 · Περισσός · Σταθμός ΗΣΑΠ Περισσός (από το όνομα της γειτονιάς)"
@@ -107,18 +107,33 @@ def test_buyer_card_status_unknowns_and_photos():
     assert "Ενοίκιο: χωρίς εκτίμηση" in norent
 
 
-def test_buyer_card_every_number_has_its_basis_one_tap_away_and_no_score():
+def test_buyer_card_every_number_has_its_basis_one_tap_away_and_the_score():
     from scout.ui.buyer import card_html
 
     html = card_html(BUYER, {"cmp": CMP, "score": 81})
-    basis = html.split("<details>", 1)[1]
+    head, basis = html.split("<details>", 1)
     assert "12 × 900 € ÷ 245.000 € = 4,4 %" in basis  # the yield
     assert "× 78 τ.μ." in basis and "τα διπλανά στο XE.gr" in basis  # the rent
     assert "12 σπίτια (L). Ζητούν συνήθως 3.600 €/τ.μ." in basis  # the comparables
-    assert "81" not in html and "Σκορ" not in html
+    # C7: the score right of the price, its basis one tap away; never «Σκορ»
+    assert 'hg-rating">Βαθμολογία 81<' in head.split("hg-l2")[0]
+    assert "Βαθμολογία 81 από 100: 60 %" in basis and "Σκορ" not in html
     # no emoji decoration, no English, no raw keys
     assert not re.search(r"[\U0001F300-\U0001FAFF]", html)
     assert not any(w in html for w in ("N/A", "None", "rent", "yield", "score"))
+
+
+def test_near_match_chip_and_the_same_score_as_advise():
+    from scout import nl_search
+    from scout.ui.buyer import card_html
+
+    html = card_html(BUYER, {"cmp": CMP, "relaxed": "ποσό +18 %"}, compact=True)
+    l3 = html.split('class="hg-l3">')[1].split("</div>")[0]
+    assert '<span class="hg-st hg-st-neu">Έξω από: ποσό +18 %</span>' in l3
+    want = nl_search.advise(BUYER, CMP["pct"])["score"]
+    assert f">Βαθμολογία {want}<" in html
+    plain = card_html(BUYER, {"cmp": CMP}, compact=True)
+    assert "Έξω από" not in plain
 
 
 def test_too_cheap_is_a_question_not_a_bonus():
@@ -153,7 +168,7 @@ def test_compact_card_shows_at_most_five_lines_and_hides_the_rest_one_tap_away()
     visible = _visible_before_expander(html)
     assert visible == ["hg-l1", "hg-l2", "hg-l3", "hg-l4", "hg-l5"]
     l1, l2, l3, l4, l5 = _lines(html)
-    assert l1 == "1. 245.000 € · 78 τ.μ. · 3.141 €/τ.μ."
+    assert re.fullmatch(r"1\. 245\.000 € Βαθμολογία \d{1,3} · 78 τ\.μ\. · 3\.141 €/τ\.μ\.", l1)
     assert l3 == "Ελέγχθηκε η περιγραφή"  # the short glossary term; the sentence is inside
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
     assert l5 == "Παρόμοια (12): 13 % κάτω"
