@@ -9,6 +9,7 @@ on:
       - diag/**
       - scripts/smoke_sources.py
       - src/scout/collectors/**
+      - src/scout/pipeline.py
       - .github/workflows/diag-sources.yml
   workflow_dispatch:
     inputs:
