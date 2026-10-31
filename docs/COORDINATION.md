@@ -445,3 +445,26 @@ under the search box, «Αποθηκευμένες») and from the sidebar. Defi
 exactly one set of page names on screen; every page still reachable by keyboard; AppTest
 shell tests updated; copy guard and theme tests green; 1280 px before/after shots in
 `docs/qa/shell/`. No visual redesign beyond removing the duplicate control.
+
+### C10 — the voice pass: every sentence as a Greek professional says it to a 65-year-old (W25, strings only)
+
+Owner's words tonight: «the AI sloppiness is very obvious». The design is fixed (C6); what
+still reads as machine-made is the prose: statistics-speak («διάμεση», «δείγμα», «εκτίμηση από
+ζητούμενα»), stacked clauses, hedges, labels that explain the code rather than the flat.
+Rule: every user-facing sentence is rewritten as an experienced Athens estate agent would say
+it across a table to a 65-year-old buyer: one idea per sentence, the number first, the reason
+second, no jargon (say «τα άλλα σπίτια της γειτονιάς» not «τα παρόμοια», «πόσο νοικιάζονται τα
+διπλανά» not «διάμεσο ενοίκιο περιοχής», «δεν το ξέρουμε» not «άγνωστο δείγμα»), no English, no
+decoration, no apologies, no «το σύστημα». Keep every number and its basis; keep the glossary's
+nouns for the five card lines (Τιμή, €/τ.μ., Ενοίκιο (εκτίμηση), Μικτή απόδοση, Παρόμοια,
+Βαθμολογία) because the tests and the owner know them. Scope: string literals and f-strings in
+`picks.py` (lines, risks, offer_line, status_line), `area_insights.py` (why, reasons, risks,
+decision, trend, checks), `ui/areas.py`, `ui/buyer.py` (status / basis / comps sentences, empty
+states, SORT_HELP), `nl_search.py` advice text, `ui/assistant.py` RULES and BRIEF_TASK (so the
+brief speaks the same way), `ui/rent_guide.py` METHOD and checks, `ui/guide.py` METHOD and
+recommend (after C7 lands). No logic, no layout, no new widgets. Definition of done: a table in
+`docs/qa/voice/VOICE.md` with every changed sentence before → after and the screen it is on; a
+blind read by an isolated sub-agent of ten random after-sentences scoring «sounds like a
+person» ≥ 8/10; `tests/test_copy.py` green with its allowlist unchanged except removed words;
+glossary section of this file updated where a term changed; 390 px shots of the guide result,
+a listing page and an area card in `docs/qa/voice/`.
