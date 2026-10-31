@@ -297,9 +297,7 @@ def test_rank_by_value_against_the_neighbourhood_then_freshness():
     assert ids[:2] == [10_051, 10_050] and ids[-1] == 10_052 and 10_053 not in ids
     p = got[0]
     assert p.comps_n == 9 and p.comps_where == "Χαλάνδρι (Κέντρο)"  # the others in the hood
-    assert (
-        p.vs_area_pct == pytest.approx(-0.1) and p.comps_line == "Παρόμοια ενοίκια (9): 10 % κάτω"
-    )
+    assert p.vs_area_pct == pytest.approx(-0.1) and p.comps_line == "Παρόμοια ενοίκια: 10 % κάτω"
     assert [k for k, _ in p.checks] == [
         "Τιμή έναντι παρόμοιων",
         "Φρεσκάδα",
@@ -308,10 +306,10 @@ def test_rank_by_value_against_the_neighbourhood_then_freshness():
     ]
     assert dict(p.checks)["Φρεσκάδα"] == "νέα αγγελία (2 μέρες)"
     assert dict(p.checks)["Τιμή έναντι παρόμοιων"] == (
-        "9,0 έναντι 10,0 €/τ.μ., διάμεσο 9 αγγελιών (Χαλάνδρι (Κέντρο))"
+        "9,0 €/τ.μ. τον μήνα. Τα διπλανά ζητούν συνήθως 10,0 €/τ.μ. (9 αγγελίες, Χαλάνδρι (Κέντρο))"
     )
     assert picks_rent.fresh_verdict({"days_on_market": 75}) == (
-        "75 μέρες στην αγορά — ρώτα γιατί δεν έχει νοικιαστεί"
+        "75 μέρες στην αγορά. Ρώτα γιατί δεν έχει νοικιαστεί ακόμα"
     )
     assert got[-1].too_cheap and got[-1].risks[0].startswith("Πολύ κάτω από τα παρόμοια")
     # within the band but above the budget: said so
@@ -397,5 +395,7 @@ def test_rent_card_has_the_value_score_its_basis_and_the_near_chip():
     assert p.relaxed == "ποσό +15 %"
     html = buyer.card_html(p.listing, rent_guide.card_adv(p), False, compact=True)
     assert f">Βαθμολογία {p.score}<" in html.split("hg-l2")[0]
-    assert f"Βαθμολογία {p.score} από 100: τιμή έναντι παρόμοιων" in html
-    assert f"Έξω από: {p.relaxed}" in html
+    assert (
+        f"Βαθμολογία {p.score} από 100: " in html and "για την τιμή σε σχέση με τα παρόμοια" in html
+    )
+    assert f"Ξεφεύγει: {p.relaxed}" in html

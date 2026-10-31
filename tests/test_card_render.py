@@ -109,8 +109,8 @@ def test_buyer_card_every_number_has_its_basis_one_tap_away_and_the_score():
     html = card_html(BUYER, {"cmp": CMP, "score": 81})
     head, basis = html.split("<details>", 1)
     assert "12 × 900 € ÷ 245.000 € = 4,4 %" in basis  # the yield
-    assert "× 78 τ.μ." in basis and "αγγελίες ενοικίασης στο XE" in basis  # the rent
-    assert "12 αγγελίες (L), διάμεσος 3.600 €/τ.μ." in basis  # the comparables
+    assert "αυτό έχει 78 τ.μ." in basis and "τα διπλανά ζητούν συνήθως" in basis  # the rent
+    assert "Παρόμοια: 12 L. Ζητούν συνήθως 3.600 €/τ.μ." in basis  # the comparables
     # C7: the score right of the price, its basis one tap away; never «Σκορ»
     line1 = head.split('<div class="hg-l1">')[1].split("</div>")[0]
     assert line1.endswith('hg-rating">Βαθμολογία 81</span>')  # C17: last on line 1
@@ -126,11 +126,11 @@ def test_near_match_chip_and_the_same_score_as_advise():
 
     html = card_html(BUYER, {"cmp": CMP, "relaxed": "ποσό +18 %"}, compact=True)
     l3 = html.split('class="hg-l3">')[1].split("</div>")[0]
-    assert '<span class="hg-st hg-st-neu">Έξω από: ποσό +18 %</span>' in l3
+    assert '<span class="hg-st hg-st-neu">Ξεφεύγει: ποσό +18 %</span>' in l3
     want = nl_search.advise(BUYER, CMP["pct"])["score"]
     assert f">Βαθμολογία {want}<" in html
     plain = card_html(BUYER, {"cmp": CMP}, compact=True)
-    assert "Έξω από" not in plain
+    assert "Ξεφεύγει" not in plain
 
 
 def test_too_cheap_is_a_question_not_a_bonus():
@@ -182,7 +182,7 @@ def test_compact_card_shows_at_most_five_lines_and_hides_the_rest_one_tap_away()
         "Φωτογραφίες: δεν ελέγχθηκαν",
         "Σταθμός ΗΣΑΠ Περισσός: το βγάζουμε από το όνομα της γειτονιάς",
         "12 × 900 € ÷ 245.000 € = 4,4 %",
-        "διάμεσος 3.600 €/τ.μ.",
+        "Ζητούν συνήθως 3.600 €/τ.μ.",
     ):
         assert fact in inside, fact
     assert "hg-more" not in html
