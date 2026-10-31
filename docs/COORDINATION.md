@@ -419,3 +419,95 @@ match labelled; every card on every page shows the score; `tests/test_guide.py` 
 near-match order, the labels and the counts; `tests/test_copy.py` stays green; screenshots of
 the result at 390 px before and after in `docs/qa/more/`. No visual redesign (W21 owns the
 look): add classes and chips only through `buyer.card_html`'s existing slots.
+
+### C8 — trust-ordered lists everywhere (W23, `ui/buyer.py` sort helpers, `ui/maplist.py`, `nl_search` default order)
+
+The design reviewer's finding (b): «Αναζήτηση» and the map list open on unchecked flats 33–35 %
+under their comparables, the classic bait listing, while the guide already applies a trust
+ladder. Rule: every list in the app opens in the same order as the guide: page read first,
+real photos next, then the chosen sort; a flat more than 30 % under its comparables sorts after
+the rest of its tier and its card says «έλεγξε γιατί» (already in `comps_text`). The user's
+explicit sort («Σειρά») keeps working inside the tiers. Definition of done: first screen of
+Αναζήτηση with the default example and of the map list show page-read flats first on the
+published DB; a test on a seeded DB asserts the tier order and that the bait flat is not first;
+copy guard green; one 390 px before/after shot of Αναζήτηση in `docs/qa/trust/`. No change to
+the guide, the cards or the theme (W22 owns the card slots).
+
+### C9 — one navigation on desktop, saved searches reachable (W24, `ui/app.py` `main()` + sidebar, `theme.py` sidebar block only)
+
+The design reviewer's finding (a): desktop shows two navigations with different names (the
+sidebar radio and the top pills) and «Αποθηκευμένες αναζητήσεις» is sidebar-only. Rule: one
+navigation. The pills are the navigation on every width; the sidebar keeps only sign-in,
+«Ανανέωση δεδομένων» and the saved searches entry as a link-style button; the radio is removed
+(keep `session_state["page"]` as the single source of truth so cards and buttons still
+navigate). «Αποθηκευμένες αναζητήσεις» becomes reachable from «Αναζήτηση» (a secondary button
+under the search box, «Αποθηκευμένες») and from the sidebar. Definition of done: at 1280 px
+exactly one set of page names on screen; every page still reachable by keyboard; AppTest
+shell tests updated; copy guard and theme tests green; 1280 px before/after shots in
+`docs/qa/shell/`. No visual redesign beyond removing the duplicate control.
+
+### C10 — the voice pass: every sentence as a Greek professional says it to a 65-year-old (W25, strings only)
+
+Owner's words tonight: «the AI sloppiness is very obvious». The design is fixed (C6); what
+still reads as machine-made is the prose: statistics-speak («διάμεση», «δείγμα», «εκτίμηση από
+ζητούμενα»), stacked clauses, hedges, labels that explain the code rather than the flat.
+Rule: every user-facing sentence is rewritten as an experienced Athens estate agent would say
+it across a table to a 65-year-old buyer: one idea per sentence, the number first, the reason
+second, no jargon (say «τα άλλα σπίτια της γειτονιάς» not «τα παρόμοια», «πόσο νοικιάζονται τα
+διπλανά» not «διάμεσο ενοίκιο περιοχής», «δεν το ξέρουμε» not «άγνωστο δείγμα»), no English, no
+decoration, no apologies, no «το σύστημα». Keep every number and its basis; keep the glossary's
+nouns for the five card lines (Τιμή, €/τ.μ., Ενοίκιο (εκτίμηση), Μικτή απόδοση, Παρόμοια,
+Βαθμολογία) because the tests and the owner know them. Scope: string literals and f-strings in
+`picks.py` (lines, risks, offer_line, status_line), `area_insights.py` (why, reasons, risks,
+decision, trend, checks), `ui/areas.py`, `ui/buyer.py` (status / basis / comps sentences, empty
+states, SORT_HELP), `nl_search.py` advice text, `ui/assistant.py` RULES and BRIEF_TASK (so the
+brief speaks the same way), `ui/rent_guide.py` METHOD and checks, `ui/guide.py` METHOD and
+recommend (after C7 lands). No logic, no layout, no new widgets. Definition of done: a table in
+`docs/qa/voice/VOICE.md` with every changed sentence before → after and the screen it is on; a
+blind read by an isolated sub-agent of ten random after-sentences scoring «sounds like a
+person» ≥ 8/10; `tests/test_copy.py` green with its allowlist unchanged except removed words;
+glossary section of this file updated where a term changed; 390 px shots of the guide result,
+a listing page and an area card in `docs/qa/voice/`.
+
+### C11 — a photo on every card (W26, collectors' card image, `pipeline`/`models` store `image_url` already, card thumbnail after C7 merges)
+
+Only 1.780 of 26.758 active listings carry `image_url`, so cards are text-only; a buyer on a
+phone decides with their eyes. Rule: every collector takes the card's first image URL from the
+search page (XE, Golden Home, RE/MAX, Green-Acres; the fixtures in `tests/fixtures/` show the
+markup; lazy attributes such as `data-src` count), `normalize` keeps it, the upsert refreshes it
+on every sighting. The card shows one thumbnail (fixed 4:3 box, `object-fit: cover`, lazy, alt
+text «Φωτογραφία της αγγελίας», radius from the token) left of line 1 on the compact card and
+full-width on the listing page; without an image, a quiet neutral box with «Χωρίς φωτογραφία».
+Images load from the portals' CDNs only; nothing is downloaded or stored by us. Definition of
+done: fixtures prove an image URL per portal; a seeded-DB AppTest shows the thumbnail markup;
+measure.js still reports scrollWidth 390 and no layout shift (the box has fixed size); the
+weekly run fills `image_url` for the next refresh (say the expected share in the PR). The card
+markup change waits for C7 (#92) to merge; collectors and tests first.
+
+### C12 — Greek place names everywhere, no Latin leftovers (W27, `normalize.py`, `enrich.py` or a names table, `scripts/recompute_metro.py`-style repair step)
+
+240 active listings carry Latin place names («Nea Smyrni», «Kallithea», «Dafni», «Galatsi»,
+«Zografou») and one XE neighbourhood reads «Όπισθεν Renault». Rule: one Greek name per place,
+in the municipality (neighbourhood) form the rest of the data uses, mapped at normalize time
+from a committed table (transliterations → Greek, with every current Latin value in the DB
+covered) and repaired on existing rows by an idempotent offline script that runs in the weekly
+workflow before the rescore. Brand words inside a neighbourhood stay (they are XE's names) but
+Latin municipality or neighbourhood names never reach the UI. Definition of done: on the
+published DB after the repair script, 0 active rows match `[A-Za-z]` in `neighborhood` except
+documented brand words; `area_insights.area_name` resolves every repaired name to a covered
+area; tests on the table and the script; copy guard green.
+
+### C13 — speed: under 1,5 s per tap (W28, `ui/queries.py`, `market_intel.py`, caches in `ui/app.py`, `nl_search`)
+
+A tap that takes three seconds reads as broken on a phone. Rule: measure first with Playwright
+on the published DB (time from tap to the rerun's last DOM change) for: step 0 → step 1, a
+budget chip, «Η πρότασή μου», «Δείξε άλλες 10», «Λεπτομέρειες», a search, a pill change, the
+map; write the table to `docs/qa/speed/BEFORE.md`. Then remove the repeated work: build
+`market_intel` and the buyer scores once per data version and share them (cache_resource keyed
+by the data file's mtime, read-only), stop rebuilding 26.758 dicts per rerun where a cached
+list serves, keep the guide's `find` under 300 ms for the owner's answers (profile it), and do
+not change any result. Definition of done: every measured tap ≤ 1,5 s on the GitHub-runner-class
+machine you measure on, the guide result ≤ 2 s cold; `docs/qa/speed/AFTER.md` side by side;
+tests unchanged and green (results identical: assert the first ten picks before/after on the
+published DB in a test guarded by the DB's presence). Coordinate with C7: `picks.buyer_score`
+is the one score function; cache around it, do not fork it.

@@ -50,39 +50,73 @@ def _unfinished(d: dict) -> bool:
     return bool(d.get("is_unfinished"))
 
 
-def _vs_comps(pct, adv, d) -> tuple:
-    """Cheapest per m² against like-for-like listings first. Last: under construction, far
-    too cheap to believe, and listings without enough comparables to tell."""
+BAIT = 0.30  # this far under the like-for-like median: sorts after the rest of its tier
+
+
+def _bait(adv: dict) -> bool:
+    """More than 30 % under its comparables (or the model value when there are too few)."""
     cmp = adv.get("cmp")
+    gap = -cmp["pct"] if cmp else adv.get("gap")
+    return bool(adv.get("too_cheap")) or (gap is not None and gap > BAIT)
+
+
+def trust_key(d: dict, adv: dict) -> tuple:
+    """The guide's trust ladder (``picks.Pick.sort_key``), ascending: page read first, then
+    real photos (not render/plan/site/stock, more than 2), then — inside each tier — the
+    far-too-cheap last. The chosen sort decides the rest."""
     return (
-        _unfinished(d),
-        bool(adv.get("too_cheap")),
-        cmp is None,
-        cmp["pct"] if cmp else 0,
-        -pct,
-        d["price"],
+        not d.get("page_checked"),
+        (d.get("photo_kind") or "") in picks.BAD_PHOTO_KINDS,
+        bool(d.get("few_photos")),
+        _bait(adv),
     )
+
+
+def trust_order(views: list[tuple[dict, dict]], sort: str | None = None) -> list:
+    """``(listing, buyer_view)`` pairs in trust order, then by ``sort`` (default sort if None).
+    Extra items after the first two (e.g. a shortlist's reasons) ride along."""
+    rank = SORTS[sort or DEFAULT_SORT]
+    return sorted(views, key=lambda v: rank(100, v[1], v[0]))
+
+
+def _vs_comps(pct, adv, d) -> tuple:
+    """Cheapest per m² against like-for-like listings first; under construction and listings
+    without enough comparables to tell after them."""
+    cmp = adv.get("cmp")
+    return (_unfinished(d), cmp is None, cmp["pct"] if cmp else 0, -pct, d["price"])
+
+
+def _trusted(inner):
+    """Every sort runs inside the trust tiers: the user's «Σειρά» orders within each tier."""
+    return lambda pct, adv, d: (*trust_key(d, adv), *inner(pct, adv, d))
 
 
 DEFAULT_SORT = "Τιμή σε σχέση με παρόμοια"
 SORTS = {
-    DEFAULT_SORT: _vs_comps,
-    "Υψηλότερη απόδοση": lambda pct, adv, d: (
-        _unfinished(d),
-        bool(adv.get("too_cheap")),
-        -(gross_yield(d) or 0),
-        d["price"],
-    ),
-    "Χαμηλότερη τιμή": lambda pct, adv, d: (d["price"], d.get("price_per_m2") or 1e9),
-    "Χαμηλότερο €/τ.μ.": lambda pct, adv, d: (d.get("price_per_m2") or 1e9, d["price"]),
-    "Νεότερο κτίριο": lambda pct, adv, d: (-(d.get("year_built") or 0), d["price"]),
+    k: _trusted(f)
+    for k, f in {
+        DEFAULT_SORT: _vs_comps,
+        "Υψηλότερη απόδοση": lambda pct, adv, d: (
+            _unfinished(d),
+            -(gross_yield(d) or 0),
+            d["price"],
+        ),
+        "Χαμηλότερη τιμή": lambda pct, adv, d: (d["price"], d.get("price_per_m2") or 1e9),
+        "Χαμηλότερο €/τ.μ.": lambda pct, adv, d: (d.get("price_per_m2") or 1e9, d["price"]),
+        "Νεότερο κτίριο": lambda pct, adv, d: (-(d.get("year_built") or 0), d["price"]),
+    }.items()
 }
+TRUST_HELP = (
+    "Κάθε σειρά δείχνει πρώτα όσα ελέγχθηκε η περιγραφή τους, μετά όσα έχουν πραγματικές "
+    "φωτογραφίες· μέσα σε κάθε ομάδα τελευταία όσα είναι πάνω από 30 % φθηνότερα από τα "
+    "παρόμοια (θέλουν έλεγχο)."
+)
 SORT_HELP = {
     DEFAULT_SORT: "Πρώτα όσα έχουν τη χαμηλότερη τιμή ανά τ.μ. σε σχέση με παρόμοιες αγγελίες "
-    "(ίδια περιοχή, ηλικία, μέγεθος). Τελευταία όσα είναι υπό κατασκευή, πάνω από 35 % "
-    "φθηνότερα από τα παρόμοια (θέλουν έλεγχο) ή δεν έχουν αρκετά παρόμοια.",
-    "Υψηλότερη απόδοση": "Μικτή απόδοση = 12 × ενοίκιο (εκτίμηση) ÷ τιμή. Τελευταία όσα είναι "
-    "υπό κατασκευή ή ύποπτα φθηνά.",
+    "(ίδια περιοχή, ηλικία, μέγεθος)· όσα είναι υπό κατασκευή ή δεν έχουν αρκετά παρόμοια "
+    "μετά. " + TRUST_HELP,
+    "Υψηλότερη απόδοση": "Μικτή απόδοση = 12 × ενοίκιο (εκτίμηση) ÷ τιμή. Όσα είναι υπό "
+    "κατασκευή μετά.",
 }
 
 BEDROOMS = {
@@ -1291,11 +1325,11 @@ def page_shortlist(listings: list[dict]) -> None:
             )
             if not found:
                 st.write("Καμία νέα αγγελία αυτή τη στιγμή. Δες ξανά μετά την επόμενη ενημέρωση.")
-            for d, _adv, _reasons in found:
+            for d, adv in trust_order([(d, buyer_view(d, intel)) for d, _a, _r in found]):
                 key = shortlist.lkey(d)
                 result_card(
                     d,
-                    buyer_view(d, intel),
+                    adv,
                     f"m{m.id}",
                     [
                         ("Λεπτομέρειες", open_detail, (d["id"],)),
