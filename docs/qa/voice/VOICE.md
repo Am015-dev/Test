@@ -1,27 +1,35 @@
 # C10 — the voice pass
 
-Every user-facing sentence in scope, rewritten as an experienced Athens estate agent would say it to a 65-year-old buyer: one idea per sentence, the number first, the reason second, no statistics words («διάμεσος», «δείγμα», «εκτίμηση από ζητούμενα»), no English, no hedges, no «το σύστημα», no apologies. Every number and its basis is kept, and so are the glossary nouns for the five card lines.
+Every user-facing sentence in scope, rewritten as an experienced Athens estate agent would say it to a 65-year-old buyer: one idea per sentence, the number first, the reason second, no statistics words («διάμεσος», «δείγμα», «εκτίμηση από ζητούμενα»), no English, no hedges, no «το σύστημα», no apologies. Every number and its basis is kept.
 
 ## Count per file
 
 | file | changed strings |
 |---|---|
-| `src/scout/area_insights.py` | 55 |
-| `src/scout/ui/buyer.py` | 49 |
-| `src/scout/ui/areas.py` | 31 |
+| `src/scout/area_insights.py` | 56 |
+| `src/scout/ui/buyer.py` | 50 |
+| `src/scout/ui/areas.py` | 32 |
 | `src/scout/picks.py` | 20 |
-| `src/scout/picks_rent.py` | 13 |
+| `src/scout/picks_rent.py` | 16 |
 | `src/scout/ui/guide.py` | 10 |
 | `src/scout/nl_search.py` | 9 |
 | `src/scout/ui/rent_guide.py` | 8 |
 | `src/scout/ui/assistant.py` | 7 |
-| **total** | **202** |
+| `src/scout/market_intel.py` | 2 |
+| **total** | **210** |
 
-Not changed, and why:
-- `card_html` line 1–5 literals (W22): not touched. The strings that feed line 3 (`picks.CHECKED`, the photo phrase, `FEW_PHOTOS`, the «Ξεφεύγει:» chip) were reworded but kept chip-short, and the ` · Φωτογραφίες:` separator the card splits on is unchanged.
-- The comparables label «Χολαργός · 31–45 ετών · 65–90 τ.μ.» comes from `market_intel`, and the regulatory/subsidy lines come from `regulatory.py`. Both are outside scope.
-- The six check labels («Τιμή έναντι παρόμοιων», «Ρευστότητα περιοχής» …) stay as named in the round-3 spec. Their values are rewritten.
-- The informal «εσύ» register is app-wide, so it stays.
+## Coordinator decisions applied (round 5)
+- **Basis counts** moved out of the sentences:
+  - the card line now reads «Παρόμοια: 13 % κάτω», and the count is in «Από πού βγαίνουν»;
+  - the «Πού να αγοράσω» answer lost «N σπίτια προς πώληση» and the trend counts, which now sit in a new «Από πού βγαίνουν» expander (`area_insights.decision_basis`).
+  - No number was deleted.
+- **Comparables label** (`market_intel._label`, strings only) is now spoken: «διαμερίσματα 65–90 τ.μ., στον 1ο ή 2ο όροφο, σε κτίρια 31–45 ετών, στην περιοχή Χολαργός» instead of «Χολαργός · 31–45 ετών · 65–90 τ.μ. · 1ος–2ος».
+- **Headings**: «Για απόδοση: / Για ανατίμηση: / Για εύκολη μεταπώληση:» became «Αν θες απόδοση: / Αν θες να ανέβει η αξία: / Αν θες να το πουλήσεις εύκολα αργότερα:».
+- **Guide recommendation**: «Σου προτείνω: **Νέα Ιωνία**. Εκεί βγαίνει μικτή απόδοση 3,7 % και είναι εκεί 6 από τις 20 αγγελίες της λίστας.»
+- **Polite plural**: not done (coordinator: no). It is a candidate for a dedicated later pass across the whole app. Half-switching would be worse than a consistent «εσύ».
+- **Kept**: «~», «Προσφορά:», «54 %» with the space, the glossary card nouns.
+
+Also not changed: the `card_html` literals (W22); the regulatory and subsidy lines (`regulatory.py`); the six check labels from the round-3 spec (their values are rewritten).
 
 ## Blind read (isolated sub-agent, ten random after-sentences, «sounds like a person» /10)
 
@@ -31,18 +39,19 @@ Each round used a fresh agent that saw only the ten sentences, rendered from the
 |---|---|---|
 | 1 | 5,0 | first pass |
 | 2 | 5,5 | verbs for trends, no fractional houses, rent method as sentences |
-| 3 | 6,5 | counts read «149 αγγελίες τότε, 461 τώρα», no false decimals, plainer «δεν ξέρουμε» |
-| 4 | 5,1 | guide.py added after #92; this sample drew mostly method and help texts (formulas) |
+| 3 | 6,5 | counts read «149 αγγελίες τότε, 461 τώρα», no false decimals |
+| 4 | 5,1 | guide.py added after #92; the sample drew mostly method/help texts |
+| 5 | **6,3** | coordinator decisions: counts behind «Από πού βγαίνουν», spoken comparables label, «Αν θες …» headings |
 
-**The ≥ 8 bar is not met.** The four reads agree on what costs points:
-- formulas in method boxes («12 × ενοίκιο ÷ τιμή»), which the brief requires us to keep as the basis;
-- basis counts in brackets;
-- the glossary's «~» and «Προσφορά:»;
-- the Greek «54 %» spacing;
-- «Για ανατίμηση:» headings;
-- the market_intel comparables label.
+**The merge criterion (≥ 7,5, every deduction attributable to a glossary noun or a kept glyph) is NOT met.** Round 5 deductions, by cause:
 
-Spoken lines (empty states, captions, «δεν το ξέρουμε», the rent caveat) score 7–9. Closing the gap needs a coordinator decision: (a) move formulas and basis counts one tap deeper («Από πού βγαίνουν» / «Πώς βγαίνει») and keep a spoken line on top, (b) give the comparables label a spoken form in `market_intel`, (c) switch to the polite plural.
+| cause | points | sentences |
+|---|---|---|
+| glossary noun or kept glyph («~», «Προσφορά:», «Τιμή», «€/τ.μ.», «μικτή απόδοση», «Βαθμολογία», «ενεργειακή κλάση», «μέρες στην αγορά») | 8 | 1, 2, 3, 7, 8, 10 |
+| method and score explanations that print the formula or the points (the basis the brief requires) | 16 | 1, 9, 10 |
+| other wording I could still improve («Αμπελόκηποι (Μετρό Αμπελόκηποι)», «αντί για», counts in brackets on the area card, «συμβόλαια» used twice, «ελεγμένη περιγραφή», lowercase fragment start) | 13 | 4, 5, 6, 8 |
+
+Spoken lines (empty states, risks, «δεν το ξέρουμε», «Ζήτα το πιστοποιητικό») score 8–9. The method boxes and «Πώς βγαίνει η βαθμολογία» list points and formulas by design, so they cannot read as table talk unless the formula moves one more tap down behind a one-line spoken summary. That is a layout change, so it needs a coordinator decision.
 
 <details><summary>Round 1 sentences</summary>
 
@@ -104,9 +113,24 @@ Spoken lines (empty states, captions, «δεν το ξέρουμε», the rent c
 
 </details>
 
+<details><summary>Round 5 sentences</summary>
+
+1. Πρόταση περιοχής: ανάμεσα στις περιοχές της λίστας. Για απόδοση, όπου βγάζουν συνήθως τη μεγαλύτερη μικτή απόδοση. Για σιγουριά, όπου έχει τις περισσότερες αγγελίες. Για ανατίμηση, όπου μαζεύουν τους περισσότερους πόντους.
+2. Τις μέρες στην αγορά τις μετράμε από την ημερομηνία της αγγελίας, αλλιώς από τότε που την πρωτοείδαμε.
+3. 242 μέρες στην αγορά. Προσφορά: ξεκίνα από ~266.000 €
+4. Αν θες νεόδμητο κοντά σε σταθμό έως 300.000 €: Αμπελόκηποι (Μετρό Αμπελόκηποι). 81 αγγελίες, από αυτές 16 με ελεγμένη περιγραφή.
+5. Αυτά είναι όσα ζητούν οι αγγελίες, όχι συμβόλαια. Την εγγύηση, τα κοινόχρηστα και τη διάρκεια του συμβολαίου δεν τα ξέρουμε: ρώτα τον ιδιοκτήτη.
+6. τα νεόδμητα ζητούν 54 % περισσότερα: 3.667 €/τ.μ. αντί για 2.378 €/τ.μ. στα παλιά (65 και 253 αγγελίες)
+7. Δεν γράφει ενεργειακή κλάση. Ζήτα το πιστοποιητικό.
+8. Τιμή 2.745 €/τ.μ., 27 % κάτω από τα 20 παρόμοια σπίτια της γειτονιάς
+9. Το 40 % είναι η αξία αγοράς: έως 70 για την τιμή σε σχέση με τα παρόμοια (20 % κάτω τα παίρνει όλα), έως 20 για το περιθώριο διαπραγμάτευσης και 10 αν έπεσε η τιμή. Εδώ ζητά 24 % πάνω από τα παρόμοια (8).
+10. Τα βάζουμε σε σειρά με τη Βαθμολογία: έως 70 πόντοι όταν το ενοίκιο ανά τ.μ. είναι κάτω από τα παρόμοια και έως 30 όταν η αγγελία είναι καινούργια. Όταν δύο έχουν την ίδια βαθμολογία, πρώτο μπαίνει όποιο ζητά λιγότερο ανά τ.μ. από τα παρόμοια. Όσα ζητούν πάνω από 35 % λιγότερο από τα παρόμοια δεν παίρνουν πόντους για την τιμή, γιατί συχνά είναι δωμάτιο, λάθος τιμή ή αγγελία που δεν ισχύει.
+
+</details>
+
 ## Screens (390 px)
 
-- `guide-result-390.png`: guide result after #92 (recommendation, tiers, first cards)
+- `guide-result-390.png`: guide result (recommendation, tiers, first cards)
 - `listing-390.png`: a listing page («Αγγελία»)
 - `area-card-390.png`: «Πού να αγοράσω», the answer box and the first area card
 - `shots.js`: the script (`NODE_PATH=$(npm root -g) node docs/qa/voice/shots.js`, app on :8501)
@@ -144,17 +168,17 @@ Source text as written in the code; `{…}` are the values filled in at run time
 | 25 | Πού να αγοράσω (κάρτα περιοχής) | `area_insights.py` | "· ".join(parts) if parts else f"{x.n_fresh} αγγελίες, διάμεση {_num(x.median_ppm)} €/τ.μ." | "· ".join(parts) if parts else f"{x.n_fresh} αγγελίες, ζητούν συνήθως {_num(x.median_ppm)} €/τ.μ." |
 | 26 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | small = " Μικρό δείγμα." if ranked and not solid else "" | small = " Οι αγγελίες είναι ακόμα λίγες." if ranked and not solid else "" |
 | 27 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | f" ({_pct(x.gross_yield_new, 1)} στα νεόδμητα)" if x.gross_yield_new is not None else "" | f" και {_pct(x.gross_yield_new, 1)} στα νεόδμητα" if x.gross_yield_new is not None else "" |
-| 28 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | f"Για απόδοση: {x.area}, μικτή απόδοση {_pct(x.gross_yield, 1)} στα παλιά{new_y}, " f"ενοίκιο (εκτίμηση) {_rent(x.rent_ppm)} €/τ.μ. από ζητούμενα ενοίκια της περιοχής, " f"{x.n_fresh} αγγελίες πώλησης.{small}" | f"Για απόδοση: {x.area}. Μικτή απόδοση {_pct(x.gross_yield, 1)} στα παλιά{new_y}, " f"με ενοίκιο (εκτίμηση) {_rent(x.rent_ppm)} €/τ.μ. τον μήνα, όσο ζητούν στη " f"γειτονιά. {x.n_fresh} σπίτια προς πώληση.{small}" |
-| 29 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | f"Για ρευστότητα: {x.area}, {liquidity_text(x)}, " f"{x.n_fresh} αγγελίες.{small}" | f"Για εύκολη μεταπώληση: {x.area}. Η αγορά είναι {liquidity_text(x)}. " f"{x.n_fresh} σπίτια προς πώληση.{small}" |
-| 30 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | dom = f", διάμεσα {x.median_dom:.0f} μέρες στην αγορά" if x.median_dom else "" out.append( f"Για ρευστότητα: {x.area}, {x.n_fresh} αγγελίες, " f"{_pct(x.cut_share)} με μείωση τιμής{dom}.{small}" | dom = ( f" Συνήθως μένουν {x.median_dom:.0f} " f"{'μέρα' if round(x.median_dom) == 1 else 'μέρες'} στην αγορά." if x.median_dom else "" ) out.append( f"Για εύκολη μεταπώληση: {x.area}. {x.n_fresh} σπίτια προς πώληση, το " f"{_pct(x.cut_share)} έχει ήδη κατεβάσει τιμή.{dom}{small}" |
+| 28 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | f"Για απόδοση: {x.area}, μικτή απόδοση {_pct(x.gross_yield, 1)} στα παλιά{new_y}, " f"ενοίκιο (εκτίμηση) {_rent(x.rent_ppm)} €/τ.μ. από ζητούμενα ενοίκια της περιοχής, " f"{x.n_fresh} αγγελίες πώλησης.{small}" | f"Αν θες απόδοση: {x.area}. Μικτή απόδοση {_pct(x.gross_yield, 1)} στα παλιά{new_y}, " f"με ενοίκιο (εκτίμηση) {_rent(x.rent_ppm)} €/τ.μ. τον μήνα, όσο ζητούν στη " f"γειτονιά.{small}" |
+| 29 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | f"Για ρευστότητα: {x.area}, {liquidity_text(x)}, " f"{x.n_fresh} αγγελίες.{small}" | f"Αν θες να το πουλήσεις εύκολα αργότερα: {x.area}. Η αγορά είναι " f"{liquidity_text(x)}.{small}" |
+| 30 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | dom = f", διάμεσα {x.median_dom:.0f} μέρες στην αγορά" if x.median_dom else "" out.append( f"Για ρευστότητα: {x.area}, {x.n_fresh} αγγελίες, " f"{_pct(x.cut_share)} με μείωση τιμής{dom}.{small}" | dom = ( f" Συνήθως μένουν {x.median_dom:.0f} " f"{'μέρα' if round(x.median_dom) == 1 else 'μέρες'} στην αγορά." if x.median_dom else "" ) out.append( f"Αν θες να το πουλήσεις εύκολα αργότερα: {x.area}. Εκεί το " f"{_pct(x.cut_share)} έχει ήδη κατεβάσει τιμή.{dom}{small}" |
 | 31 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | f" — Γραμμή 4 υπό κατασκευή ({', '.join(x.line4)}, ορίζοντας {OPENING})" | f". Εκεί φτιάχνεται η Γραμμή 4 του μετρό ({', '.join(x.line4)}, γύρω στο {OPENING})" |
-| 32 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | out.append(f"Για ανατίμηση: {x.area}{l4}, {_signed(t[0])} €/τ.μ. {t[1]} ({t[2]}).{small}") | out.append( f"Για ανατίμηση: {x.area}{l4}. Η τιμή ανά τ.μ. " f"{'ανέβηκε' if t[0] >= 0 else 'έπεσε'} {_pct(abs(t[0]), 1)} {t[1]} " f"({t[2]}).{small}" ) |
-| 33 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | "Για ανατίμηση: δεν υπάρχει αρκετό ιστορικό τιμών " f"(χρειάζονται τουλάχιστον {MIN_MONTH} αγγελίες ανά μήνα ή {MIN_TREND} στις δύο ομάδες)." | "Για ανατίμηση: δεν ξέρουμε ακόμα πώς κινούνται οι τιμές. Θέλουμε τουλάχιστον " f"{MIN_MONTH} αγγελίες τον μήνα ή {MIN_TREND} σε κάθε περίοδο." |
-| 34 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | f"Για νεόδμητο κοντά σε σταθμό έως {b}: {near.area} ({st}), " f"{near.near_station_in_budget} αγγελίες, " f"{near.near_station_in_budget_checked} με ελεγμένη περιγραφή." | f"Για νεόδμητο κοντά σε σταθμό έως {b}: {near.area} ({st}). " f"{near.near_station_in_budget} αγγελίες, από αυτές " f"{near.near_station_in_budget_checked} με ελεγμένη περιγραφή." |
+| 32 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | out.append(f"Για ανατίμηση: {x.area}{l4}, {_signed(t[0])} €/τ.μ. {t[1]} ({t[2]}).{small}") | out.append( f"Αν θες να ανέβει η αξία: {x.area}{l4}. Η τιμή ανά τ.μ. " f"{'ανέβηκε' if t[0] >= 0 else 'έπεσε'} {_pct(abs(t[0]), 1)} {t[1]}.{small}" ) |
+| 33 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | "Για ανατίμηση: δεν υπάρχει αρκετό ιστορικό τιμών " f"(χρειάζονται τουλάχιστον {MIN_MONTH} αγγελίες ανά μήνα ή {MIN_TREND} στις δύο ομάδες)." | "Αν θες να ανέβει η αξία: δεν ξέρουμε ακόμα πώς κινούνται οι τιμές. Θέλουμε " "τουλάχιστον " f"{MIN_MONTH} αγγελίες τον μήνα ή {MIN_TREND} σε κάθε περίοδο." |
+| 34 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | f"Για νεόδμητο κοντά σε σταθμό έως {b}: {near.area} ({st}), " f"{near.near_station_in_budget} αγγελίες, " f"{near.near_station_in_budget_checked} με ελεγμένη περιγραφή." | f"Αν θες νεόδμητο κοντά σε σταθμό έως {b}: {near.area} ({st}). " f"{near.near_station_in_budget} αγγελίες, από αυτές " f"{near.near_station_in_budget_checked} με ελεγμένη περιγραφή." |
 | 35 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | out.append(f"Νεόδμητο έως {b} σε γειτονιά με σταθμό: δεν βρέθηκε αγγελία.") | out.append(f"Νεόδμητο έως {b} σε γειτονιά με σταθμό: δεν υπάρχει σήμερα καμία αγγελία.") |
 | 36 | Αγγελία (έξι έλεγχοι) | `area_insights.py` | out.append(("Τιμή έναντι παρόμοιων", f"λιγότερα από {MIN_COMPS} παρόμοια", UNKNOWN)) | out.append( ( "Τιμή έναντι παρόμοιων", f"δεν το ξέρουμε: δεν βρήκαμε αρκετά παρόμοια σπίτια (θέλουμε {MIN_COMPS})", UNKNOWN, ) ) |
 | 37 | Αγγελία (έξι έλεγχοι) | `area_insights.py` | note = " — υπερβολικά φθηνό, έλεγξε γιατί" if pct <= TOO_CHEAP else "" | note = ". Είναι πολύ φθηνό· αξίζει να μάθουμε γιατί" if pct <= TOO_CHEAP else "" |
-| 38 | Αγγελία (έξι έλεγχοι) | `area_insights.py` | f"{_num(d['price_per_m2'])} €/τ.μ. έναντι διάμεσης {_num(comps['ppm'])} " f"€/τ.μ. ({_signed(pct)}), Παρόμοια ({comps['n']}): {comps['label']}{note}", | f"Ζητά {_num(d['price_per_m2'])} €/τ.μ., {_pct(abs(pct))} " f"{'κάτω' if pct < 0 else 'πάνω'} από τα άλλα σπίτια της γειτονιάς, που ζητούν " f"συνήθως {_num(comps['ppm'])} €/τ.μ. Παρόμοια ({comps['n']}): " f"{comps['label']}{note}", |
+| 38 | Αγγελία (έξι έλεγχοι) | `area_insights.py` | f"{_num(d['price_per_m2'])} €/τ.μ. έναντι διάμεσης {_num(comps['ppm'])} " f"€/τ.μ. ({_signed(pct)}), Παρόμοια ({comps['n']}): {comps['label']}{note}", | f"Ζητά {_num(d['price_per_m2'])} €/τ.μ., {_pct(abs(pct))} " f"{'κάτω' if pct < 0 else 'πάνω'} από τα άλλα σπίτια της γειτονιάς, που ζητούν " f"συνήθως {_num(comps['ppm'])} €/τ.μ. Παρόμοια: {comps['n']} " f"{comps['label']}{note}", |
 | 39 | Αγγελία (έξι έλεγχοι) | `area_insights.py` | basis = "εκτίμηση από ζητούμενα ενοίκια περιοχής" if d.get("rent_estimated") else "αγγελία" | basis = "όσο ζητούν τα διπλανά" if d.get("rent_estimated") else "από την αγγελία" |
 | 40 | Αγγελία (έξι έλεγχοι) | `area_insights.py` | out.append(("Μικτή απόδοση", "άγνωστη — δεν υπάρχει εκτίμηση ενοικίου", UNKNOWN)) | out.append(("Μικτή απόδοση", "δεν την ξέρουμε: δεν έχουμε ενοίκιο για εδώ", UNKNOWN)) |
 | 41 | Αγγελία (έξι έλεγχοι) | `area_insights.py` | out.append(("Ρευστότητα περιοχής", "δεν αξιολογείται η περιοχή (λίγες αγγελίες)", UNKNOWN)) | out.append( ("Ρευστότητα περιοχής", "δεν το ξέρουμε: η περιοχή έχει λίγες αγγελίες", UNKNOWN) ) |
@@ -258,7 +282,7 @@ Source text as written in the code; `{…}` are the values filled in at run time
 | 139 | Αναζήτηση / Αγαπημένα (κάρτα, «Από πού βγαίνουν») | `buyer.py` | where = "στον διάμεσο" | where = "όσο και τα άλλα" |
 | 140 | Αναζήτηση / Αγαπημένα (κάρτα, «Από πού βγαίνουν») | `buyer.py` | out += " — έλεγξε γιατί (τ.μ., κατάσταση, νομικά)" | out += ". Πολύ φθηνό, έλεγξε γιατί" |
 | 141 | Αναζήτηση / Αγαπημένα (κάρτα, «Από πού βγαίνουν») | `buyer.py` | f"Παρόμοια: λιγότερες από {market_intel.MIN_COMPS} αγγελίες ίδιας περιοχής, ηλικίας και μεγέθους — " "δεν γίνεται σύγκριση." | f"Παρόμοια: βρήκαμε λιγότερα από {market_intel.MIN_COMPS} σπίτια με την ίδια περιοχή, " "ηλικία και μέγεθος, οπότε δεν μπορούμε να πούμε αν είναι ακριβό." |
-| 142 | Αναζήτηση / Αγαπημένα (κάρτα, «Από πού βγαίνουν») | `buyer.py` | f"Παρόμοια: {cmp['n']} αγγελίες ({cmp['label']}), διάμεσος " f"{eur(_r(cmp['ppm'], 10))}/τ.μ.· αυτή {eur(_r(d['price_per_m2'], 10))}/τ.μ. " "Ζητούμενες τιμές, όχι τιμές πώλησης." | f"Παρόμοια: {cmp['n']} σπίτια ({cmp['label']}). Ζητούν συνήθως " f"{eur(_r(cmp['ppm'], 10))}/τ.μ., αυτό ζητά {eur(_r(d['price_per_m2'], 10))}/τ.μ. " "Είναι τιμές αγγελιών, όχι τιμές πώλησης." |
+| 142 | Αναζήτηση / Αγαπημένα (κάρτα, «Από πού βγαίνουν») | `buyer.py` | f"Παρόμοια: {cmp['n']} αγγελίες ({cmp['label']}), διάμεσος " f"{eur(_r(cmp['ppm'], 10))}/τ.μ.· αυτή {eur(_r(d['price_per_m2'], 10))}/τ.μ. " "Ζητούμενες τιμές, όχι τιμές πώλησης." | f"Παρόμοια: {cmp['n']} {cmp['label']}. Ζητούν συνήθως " f"{eur(_r(cmp['ppm'], 10))}/τ.μ., αυτό ζητά {eur(_r(d['price_per_m2'], 10))}/τ.μ. " "Είναι τιμές αγγελιών, όχι τιμές πώλησης." |
 | 143 | Αναζήτηση / Αγαπημένα (κάρτα, «Από πού βγαίνουν») | `buyer.py` | return "Υπό κατασκευή: το λέει η ίδια η αγγελία (τίτλος ή περιγραφή στο XE)." | return "Υπό κατασκευή: το γράφει η ίδια η αγγελία στο XE.gr, στον τίτλο ή στην περιγραφή." |
 | 144 | Αναζήτηση / Αγαπημένα (κάρτα, «Από πού βγαίνουν») | `buyer.py` | f"Ελέγχθηκε η περιγραφή: διαβάσαμε τη σελίδα στο XE{on} και δεν αναφέρει κατασκευή " "σε εξέλιξη. Οι φωτογραφίες δεν ελέγχονται." | f"Ελέγχθηκε η περιγραφή: διαβάσαμε την αγγελία στο XE.gr{on} και δεν γράφει ότι " "χτίζεται ακόμα. Τις φωτογραφίες δεν τις κρίνει αυτός ο έλεγχος." |
 | 145 | Αναζήτηση / Αγαπημένα (κάρτα, «Από πού βγαίνουν») | `buyer.py` | "Δεν έχει ελεγχθεί ακόμα: δεν έχουμε διαβάσει τη σελίδα της αγγελίας — μπορεί να είναι " "υπό κατασκευή. Διάβασε την περιγραφή στο XE." | "Δεν έχει ελεγχθεί ακόμα: δεν έχουμε διαβάσει ακόμα την αγγελία, οπότε μπορεί να είναι " "υπό κατασκευή. Διάβασε την περιγραφή στο XE.gr." |
@@ -284,7 +308,7 @@ Source text as written in the code; `{…}` are the values filled in at run time
 | 165 | Αγγελία | `buyer.py` | st.caption(f"Τιμή αμετάβλητη από {history[0][0]:%d/%m/%Y} που την πρωτοείδαμε στο XE.") | st.caption( f"Η τιμή δεν έχει αλλάξει από τις {history[0][0]:%d/%m/%Y}, που την πρωτοείδαμε στο XE.gr." ) |
 | 166 | Αναζήτηση / Αγγελία (δεύτερη γνώμη), 2 σημεία | `buyer.py` | "Σχόλιο γλωσσικού μοντέλου πάνω στα ίδια δεδομένα — όχι εκτίμηση αξίας." | "Το σχόλιο το γράφει γλωσσικό μοντέλο από τα ίδια στοιχεία. Δεν είναι εκτίμηση αξίας." |
 | 167 | Οδηγός «Να νοικιάσω» (κάρτα, «Από πού βγαίνουν») | `rent_guide.py` | f"Παρόμοια ενοίκια: διάμεσο €/τ.μ. των {p.comps_n} άλλων ενεργών αγγελιών " f"ενοικίασης ({p.comps_where})." | f"Παρόμοια ενοίκια: τόσο ζητούν συνήθως ανά τ.μ. οι {p.comps_n} άλλες αγγελίες " f"ενοικίασης ({p.comps_where})." |
-| 168 | Οδηγός «Να νοικιάσω» (η πρόταση) | `rent_guide.py` | "όσο τα παρόμοια" if abs(vs) < 0.02 else f"{round(abs(vs) * 100)} % {'κάτω' if vs < 0 else 'πάνω'} από τα παρόμοια" ) return ( f"Πρόταση: **{html.escape(area)}** — {len(ps)} από τις {len(found)} αγγελίες της λίστας, " f"διάμεσο ενοίκιο {picks_rent.gr_num(med(ps, lambda p: p.rent_per_m2))} €/τ.μ., " f"διάμεσα {rel}." | "όσο και τα παρόμοια" if abs(vs) < 0.02 else f"{round(abs(vs) * 100)} % {'κάτω' if vs < 0 else 'πάνω'} από τα παρόμοια" ) return ( f"Πρόταση: **{html.escape(area)}**. Εκεί είναι {len(ps)} από τις {len(found)} αγγελίες " f"της λίστας. Ζητούν συνήθως {picks_rent.gr_num(med(ps, lambda p: p.rent_per_m2))} " f"€/τ.μ. τον μήνα, {rel}." |
+| 168 | Οδηγός «Να νοικιάσω» (η πρόταση) | `rent_guide.py` | "όσο τα παρόμοια" if abs(vs) < 0.02 else f"{round(abs(vs) * 100)} % {'κάτω' if vs < 0 else 'πάνω'} από τα παρόμοια" ) return ( f"Πρόταση: **{html.escape(area)}** — {len(ps)} από τις {len(found)} αγγελίες της λίστας, " f"διάμεσο ενοίκιο {picks_rent.gr_num(med(ps, lambda p: p.rent_per_m2))} €/τ.μ., " f"διάμεσα {rel}." | "όσο και τα παρόμοια" if abs(vs) < 0.02 else f"{round(abs(vs) * 100)} % {'κάτω' if vs < 0 else 'πάνω'} από τα παρόμοια" ) return ( f"Σου προτείνω: **{html.escape(area)}**. Εκεί είναι {len(ps)} από τις {len(found)} αγγελίες " f"της λίστας. Ζητούν συνήθως {picks_rent.gr_num(med(ps, lambda p: p.rent_per_m2))} " f"€/τ.μ. τον μήνα, {rel}." |
 | 169 | Οδηγός «Να νοικιάσω» (οδηγίες στον βοηθό) | `rent_guide.py` | return f"""Είσαι ο βοηθός ενός Έλληνα που ψάχνει ΕΝΑ σπίτι να νοικιάσει στη ΒΑ Αθήνα για να \ μείνει. Μιλάς σαν φίλος που έχει ανοιχτό το λογιστικό φύλλο: σύντομα, με αριθμούς, συγκρίνοντας. | return f"""Είσαι έμπειρος μεσίτης της Αθήνας. Κάθεσαι απέναντι από κάποιον που ψάχνει ΕΝΑ \ σπίτι να νοικιάσει στη ΒΑ Αθήνα για να μείνει. Του μιλάς απλά: μία ιδέα σε κάθε πρόταση, \ πρώτα ο αριθμός και μετά ο λόγος. |
 | 170 | Οδηγός «Να νοικιάσω» (οδηγίες στον βοηθό) | `rent_guide.py` | 4. Κανένα επίθετο αξιολόγησης, καμία φράση-γέμισμα, κανένα emoji, καμία εισαγωγή. | 4. Κανένα επίθετο αξιολόγησης, καμία φράση-γέμισμα, κανένα emoji, καμία εισαγωγή ή \ συγγνώμη, κανένα «ίσως». Καμία λέξη στατιστικής («διάμεσος», «δείγμα»): λες «ζητούν \ συνήθως», «τα διπλανά», «δεν το ξέρουμε ακόμα». |
 | 171 | Αναζήτηση / Αγαπημένα (Σειρά) | `buyer.py` | "Κάθε σειρά δείχνει πρώτα όσα ελέγχθηκε η περιγραφή τους, μετά όσα έχουν πραγματικές " "φωτογραφίες· μέσα σε κάθε ομάδα τελευταία όσα είναι πάνω από 30 % φθηνότερα από τα " "παρόμοια (θέλουν έλεγχο)." | "Σε κάθε σειρά βλέπεις πρώτα όσα έχουν ελεγμένη περιγραφή και μετά όσα έχουν " "πραγματικές φωτογραφίες. Σε κάθε ομάδα, όσα είναι πάνω από 30 % φθηνότερα από τα " "παρόμοια πάνε τελευταία, γιατί θέλουν έλεγχο." |
@@ -295,7 +319,7 @@ Source text as written in the code; `{…}` are the values filled in at run time
 | 176 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | return x.trend_pct, "από τον Ιούλιο", n_words(x.trend_early_n, x.trend_late_n) | return ( x.trend_pct, "από τον Ιούλιο", f"{x.trend_early_n} αγγελίες τότε, {x.trend_late_n} τώρα", ) |
 | 177 | Πού να αγοράσω (η απάντηση) / Οδηγός | `area_insights.py` | return x.trend_pct_6m, "σε 6 μήνες", n_words(*x.trend_6m_n) | a, b = x.trend_6m_n return x.trend_pct_6m, "σε 6 μήνες", f"{a} αγγελίες τότε, {b} τώρα" |
 | 178 | Οδηγός «Να νοικιάσω» (Πώς τα διαλέγουμε) | `rent_guide.py` | - **Σειρά**: η Βαθμολογία (έως 70 για ενοίκιο ανά τ.μ. κάτω από τα παρόμοια, έως 30 για πρόσφατη αγγελία)· στις ισοπαλίες το χαμηλότερο ενοίκιο ανά τ.μ. σε σχέση με τα παρόμοια. Όσες είναι πάνω από {round(picks_rent.TOO_CHEAP * 100)} % κάτω από τα παρόμοια δεν παίρνουν πόντους τιμής (συχνά δωμάτιο, λάθος τιμή ή αγγελία που δεν υπάρχει). - **Παρόμοια ενοίκια**: διάμεσο €/τ.μ. των άλλων ενεργών αγγελιών ενοικίασης στην ίδια γειτονιά (τουλάχιστον {picks_rent.MIN_COMPS}), αλλιώς στην ευρύτερη περιοχή. - **Ποσό**: ενοίκια έως {round(picks_rent.BUDGET_BAND * 100)} % πάνω από το ποσό σου. - **Μέρες στην αγορά**: από την ημερομηνία της αγγελίας, αλλιώς από τότε που τη βλέπουμε. - **Σταθμός**: απόσταση με τα πόδια όταν η αγγελία έχει ακριβή θέση, αλλιώς από το όνομα της γειτονιάς. - Ζητούμενα ενοίκια αγγελιών, όχι συμβόλαια. Δεν ξέρουμε εγγύηση, κοινόχρηστα και διάρκεια συμβολαίου: ρώτα τον ιδιοκτήτη. | - Τα βάζουμε σε σειρά με τη Βαθμολογία: έως 70 πόντοι όταν το ενοίκιο ανά τ.μ. είναι κάτω από τα παρόμοια και έως 30 όταν η αγγελία είναι καινούργια. Όταν δύο έχουν την ίδια βαθμολογία, πρώτο μπαίνει όποιο ζητά λιγότερο ανά τ.μ. από τα παρόμοια. Όσα ζητούν πάνω από {round(picks_rent.TOO_CHEAP * 100)} % λιγότερο από τα παρόμοια δεν παίρνουν πόντους για την τιμή, γιατί συχνά είναι δωμάτιο, λάθος τιμή ή αγγελία που δεν ισχύει. - Τα παρόμοια ενοίκια είναι οι άλλες αγγελίες ενοικίασης της ίδιας γειτονιάς. Αν η γειτονιά έχει λιγότερες από {picks_rent.MIN_COMPS}, παίρνουμε όλη την περιοχή. - Δείχνουμε ενοίκια έως {round(picks_rent.BUDGET_BAND * 100)} % πάνω από το ποσό που έβαλες. - Τις μέρες στην αγορά τις μετράμε από την ημερομηνία της αγγελίας, αλλιώς από τότε που την πρωτοείδαμε. - Για τον σταθμό γράφουμε την απόσταση με τα πόδια, όταν η αγγελία έχει ακριβή θέση. Αλλιώς τον βγάζουμε από το όνομα της γειτονιάς. - Αυτά είναι όσα ζητούν οι αγγελίες, όχι συμβόλαια. Την εγγύηση, τα κοινόχρηστα και τη διάρκεια του συμβολαίου δεν τα ξέρουμε: ρώτα τον ιδιοκτήτη. |
-| 179 | Οδηγός (η πρόταση) | `guide.py` | f"Πρόταση: **{html.escape(area)}** · μικτή απόδοση " f"{picks.gr_pct(med(ps, lambda p: p.gross))} \n" + ( "Η μόνη αγγελία της λίστας" if len(found) == 1 else f"Διάμεση στις {len(ps)} από τις {len(found)} αγγελίες της λίστας εκεί" ) | f"Πρόταση: **{html.escape(area)}**, με μικτή απόδοση " f"{picks.gr_pct(med(ps, lambda p: p.gross))}. \n" + ( "Είναι η μόνη αγγελία της λίστας" if len(found) == 1 else f"Τόση βγάζουν συνήθως οι {len(ps)} από τις {len(found)} αγγελίες της λίστας " "που είναι εκεί" ) |
+| 179 | Οδηγός (η πρόταση) | `guide.py` | f"Πρόταση: **{html.escape(area)}** · μικτή απόδοση " f"{picks.gr_pct(med(ps, lambda p: p.gross))} \n" + ( "Η μόνη αγγελία της λίστας" if len(found) == 1 else f"Διάμεση στις {len(ps)} από τις {len(found)} αγγελίες της λίστας εκεί" ) | f"Σου προτείνω: **{html.escape(area)}**. Εκεί βγαίνει μικτή απόδοση " f"{picks.gr_pct(med(ps, lambda p: p.gross))}" + ( " και είναι η μόνη αγγελία της λίστας" if len(found) == 1 else f" και είναι εκεί {len(ps)} από τις {len(found)} αγγελίες της λίστας" ) |
 | 180 | Οδηγός (η πρόταση) | `guide.py` | n = f" από {x.rent_samples} αγγελίες ενοικίασης" if x.rent_samples else "" extra.append(f"ενοίκιο περιοχής {picks.gr_num(x.rent_ppm)} €/τ.μ.{n}") | n = f" (από {x.rent_samples} αγγελίες ενοικίασης)" if x.rent_samples else "" extra.append(f"Τα διπλανά ζητούν {picks.gr_num(x.rent_ppm)} €/τ.μ. τον μήνα{n}") |
 | 181 | Οδηγός (η πρόταση) | `guide.py` | extra.append(f"{x.n_fresh} αγγελίες πώλησης στην περιοχή") if x.median_dom: extra.append(f"διάμεσα {x.median_dom:.0f} μέρες στην αγορά") | extra.append(f"Η περιοχή έχει {x.n_fresh} σπίτια προς πώληση") if x.median_dom: extra.append( f"Συνήθως μένουν {x.median_dom:.0f} " f"{'μέρα' if round(x.median_dom) == 1 else 'μέρες'} στην αγορά" ) |
 | 182 | Οδηγός (η πρόταση) | `guide.py` | extra.append(", ".join(stations[:2])) if l4 := picks.line4_stations(area): extra.append(f"Γραμμή 4: {', '.join(l4[:2])}") if x is not None and x.new_premium is not None: extra.append(f"νεόδμητα {round(x.new_premium * 100):+d} % από τα παλιά") out += " · " + " · ".join(extra) if extra else "" | extra.append("Σταθμός: " + ", ".join(stations[:2])) if l4 := picks.line4_stations(area): extra.append(f"Εκεί έρχεται η Γραμμή 4 του μετρό: {', '.join(l4[:2])}") if x is not None and x.new_premium is not None: extra.append( f"Τα νεόδμητα ζητούν {abs(round(x.new_premium * 100))} % " f"{'περισσότερα' if x.new_premium >= 0 else 'λιγότερα'} από τα παλιά" ) out += ". " + ". ".join(extra) if extra else "" |
@@ -319,3 +343,11 @@ Source text as written in the code; `{…}` are the values filled in at run time
 | 200 | Αγγελία («Πώς βγαίνει η βαθμολογία») | `buyer.py` | f" · εδώ {age} ετών, × {gr_factor(factor)}." if age is not None else " · εδώ δεν δηλώνεται." | f". Εδώ είναι {age} ετών, άρα × {gr_factor(factor)}." if age is not None else ". Εδώ δεν γράφει έτος." |
 | 201 | Αγγελία («Πώς βγαίνει η βαθμολογία») | `buyer.py` | "Κτίριο με φετινό έτος × 0,6 · Υπό κατασκευή × 0,25 · πάνω από 35 % κάτω από τα " "παρόμοια × 0,7 (ερώτημα, όχι ευκαιρία).", | "Κτίριο με φετινό έτος × 0,6. Υπό κατασκευή × 0,25. Πάνω από 35 % κάτω από τα " "παρόμοια × 0,7, γιατί είναι ερώτημα, όχι ευκαιρία.", |
 | 202 | Αγγελία (έξι έλεγχοι) | `area_insights.py` | f"Εδώ πωλούνται {insight.n_fresh} σπίτια και νοικιάζονται {insight.rent_samples}, " f"δηλαδή {_rent_ratio(insight.supply_per_rent)} προς 1. Όσο λιγότερα είναι τα " "ενοίκια στην αγορά, τόσο πιο εύκολα βρίσκεις ενοικιαστή. Θέλει προσοχή όταν η " f"αναλογία φτάνει {f'{SUPPLY_HIGH:g}'.replace('.', ',')} φορές τη συνηθισμένη " f"των περιοχών, καλό είναι κάτω από {f'{SUPPLY_LOW:g}'.replace('.', ',')}", | f"Εδώ πωλούνται {insight.n_fresh} σπίτια και νοικιάζονται μόνο {insight.rent_samples}, " f"δηλαδή {_rent_ratio(insight.supply_per_rent)} για κάθε ένα που νοικιάζεται. " "Όσο λιγότερα σπίτια νοικιάζονται, τόσο πιο εύκολα βρίσκεις ενοικιαστή. Το " f"κρίνουμε σε σχέση με τις άλλες περιοχές: καλό κάτω από " f"{f'{SUPPLY_LOW:g}'.replace('.', ',')} φορές το συνηθισμένο, προσοχή από " f"{f'{SUPPLY_HIGH:g}'.replace('.', ',')} φορές και πάνω.", |
+| 203 | Αγγελία / κάρτα (Παρόμοια: ποια σπίτια) | `market_intel.py` | parts = [m[0] + (" · μονοκατοικίες/μεζονέτες" if m[1] == "house" else ""), AGE_BANDS[a][2]] if s is not None: lo, hi = SIZE_BANDS[s] parts.append( f"έως {hi} τ.μ." if lo == 0 else f"{lo}+ τ.μ." if hi > 999 else f"{lo}–{hi} τ.μ." ) if f is not None: parts.append(FLOOR_LABEL[f]) return " · ".join(parts) | parts = ["μονοκατοικίες ή μεζονέτες" if m[1] == "house" else "διαμερίσματα"] if s is not None: lo, hi = SIZE_BANDS[s] parts[0] += ( f" έως {hi} τ.μ." if lo == 0 else f" πάνω από {lo} τ.μ." if hi > 999 else f" {lo}–{hi} τ.μ." ) if f is not None: parts.append(SPOKEN_FLOOR[f]) age = AGE_BANDS[a][2].replace("46+ ετών", "πάνω από 45 ετών") parts += [f"σε κτίρια {age}", f"στην περιοχή {m[0]}"] return ", ".join(parts) |
+| 204 | Αγγελία / κάρτα (Παρόμοια: ποια σπίτια) | `market_intel.py` | FLOOR_LABEL = ("ισόγειο/υπόγειο", "1ος–2ος", "3ος+") | FLOOR_LABEL = ("ισόγειο/υπόγειο", "1ος–2ος", "3ος+") SPOKEN_FLOOR = ("στο ισόγειο ή υπόγειο", "στον 1ο ή 2ο όροφο", "από τον 3ο όροφο και πάνω") |
+| 205 | Πού να αγοράσω («Από πού βγαίνουν» κάτω από την απάντηση, νέο) | `area_insights.py` | # ---- the six checks of a buy-to-let investor --------------------------------------------- | def decision_basis(ranked: list[AreaInsight]) -> list[str]: """The counts behind ``decision`` (moved out of the sentences, C10): one line per area.""" out = [] for x in ranked: t = exit_trend(x) rent = f", {x.rent_samples} αγγελίες ενοικίασης" if x.rent_samples else "" trend = f", τάση τιμής από {t[2]}" if t else "" out.append(f"{x.area}: {x.n_fresh} αγγελίες πώλησης{rent}{trend}.") return out # ---- the six checks of a buy-to-let investor --------------------------------------------- |
+| 206 | Πού να αγοράσω («Από πού βγαίνουν» κάτω από την απάντηση, νέο) | `areas.py` | for line in ai.decision(shown, budget): st.markdown(line) | for line in ai.decision(shown, budget): st.markdown(line) with st.expander("Από πού βγαίνουν"): st.markdown("\n".join(f"- {line}" for line in ai.decision_basis(shown))) |
+| 207 | Οδηγός / Αναζήτηση (κάρτα, γραμμή 5; το πλήθος στο «Από πού βγαίνουν») | `buyer.py` | out = f"Παρόμοια ({cmp['n']}): {where}" | out = f"Παρόμοια: {where}" |
+| 208 | Οδηγός «Να νοικιάσω» (κάρτα, γραμμή 5) | `picks_rent.py` | return f"Παρόμοια ενοίκια ({self.comps_n}): όσο τα παρόμοια" | return "Παρόμοια ενοίκια: όσο και τα άλλα" |
+| 209 | Οδηγός «Να νοικιάσω» (κάρτα, γραμμή 5) | `picks_rent.py` | return f"Παρόμοια ενοίκια ({self.comps_n}): {pct} % {side}" | return f"Παρόμοια ενοίκια: {pct} % {side}" |
+| 210 | Οδηγός «Να νοικιάσω» (κάρτα, γραμμή 5) | `picks_rent.py` | return f"Παρόμοια ενοίκια: λιγότερα από {MIN_COMPS} (δεν συγκρίνεται)" | return f"Παρόμοια ενοίκια: λιγότερα από {MIN_COMPS}, δεν συγκρίνουμε" |
