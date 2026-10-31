@@ -106,12 +106,26 @@ from scout.scoring import (  # noqa: E402
 )  # noqa: E402
 from scout.strategy_fit import STRATEGY_LABELS, strategy_label  # noqa: E402
 from scout.ui import (  # noqa: E402
+    account,  # noqa: E402
     areas,  # noqa: E402
     buyer,  # noqa: E402
     components,  # noqa: E402
-    find,  # noqa: E402
     queries,  # noqa: E402
 )
+
+# Round-3 pages land in separate PRs: use each when it exists, keep today's page otherwise.
+try:
+    from scout.ui import guide  # noqa: E402
+except ImportError:
+    guide = None
+try:
+    from scout.ui import find  # noqa: E402
+except ImportError:  # retired into the guide
+    find = None
+try:
+    from scout.ui import maplist  # noqa: E402
+except ImportError:
+    maplist = None
 from scout.ui import format as fmt  # noqa: E402
 
 sys.modules["scout"]._source_stamp = _SOURCE_STAMP
@@ -2208,7 +2222,7 @@ def page_saved_searches(listings: list[dict]) -> None:
 
 
 def _go_find() -> None:
-    st.session_state["page"] = find.TITLE
+    st.session_state["page"] = HOME
 
 
 def _compare_rows(d: dict, adv: dict) -> dict[str, str]:
@@ -2308,7 +2322,7 @@ def page_compare(listings: list[dict]) -> None:
     )
     if not pick_a or not pick_b:
         st.info("Διάλεξε δύο αγγελίες — ή άνοιξε «Βρες μου σπίτι» για να δεις τις καλύτερες.")
-        st.button("Βρες μου σπίτι", key="cmp_to_find", on_click=_go_find)
+        st.button(HOME, key="cmp_to_find", on_click=_go_find)
         return
     if pick_a == pick_b:
         st.info("Διάλεξε δύο διαφορετικές αγγελίες.")
@@ -2337,13 +2351,47 @@ def page_compare(listings: list[dict]) -> None:
         st.link_button(f"Άνοιγμα {tag} στο {d['source'].upper()} ↗", d["url"], width="stretch")
 
 
+def page_map_list(listings: list[dict]) -> None:
+    """«Χάρτης»: the map with the same ranked list under it (W9's maplist) when available."""
+    if maplist is None:
+        page_map(listings)
+        return
+    st.subheader("Χάρτης")
+    from scout import market_intel, nl_search
+    from scout.nl_search import SearchFilters
+
+    # One score everywhere, and the search page's default sort over fresh, drawable listings.
+    scores = buyer.buyer_scores(listings)
+    fresh = [
+        {**d, "score": scores[d["id"]]}
+        for d in listings
+        if d.get("is_fresh", True) and not _map_hidden(d)
+    ]
+    intel = market_intel.build(listings)
+    rank = buyer.SORTS[buyer.DEFAULT_SORT]
+
+    def _key(d: dict):
+        m = nl_search.match(d, SearchFilters())
+        return rank(m[0] if m else 0, buyer.buyer_view(d, intel), d)
+
+    maplist.render(sorted(fresh, key=_key), key="map")
+
+
+# The home page: the guided flow (W8) when present, else «Βρες μου σπίτι».
+if guide is not None:
+    HOME, _home_page = guide.TITLE, guide.page_guide
+elif find is not None:
+    HOME, _home_page = find.TITLE, find.page_find
+else:  # neither module: start on the search page
+    HOME, _home_page = "Αναζήτηση", buyer.page_search
+
 # What a buyer uses. The older rental-investor tools (yields, cap rate, Airbnb, Golden Visa)
 # stay reachable for the owner with ?admin=1.
 NAV = {
-    find.TITLE: find.page_find,
+    HOME: _home_page,
     "Πού να αγοράσω": areas.page_areas,
     "Αναζήτηση": buyer.page_search,
-    "Χάρτης": page_map,
+    "Χάρτης": page_map_list,
     "Αγαπημένα": buyer.page_watchlist,
     "Αποθηκευμένες αναζητήσεις": buyer.page_shortlist,
     "Σύγκριση": page_compare,
@@ -2363,7 +2411,7 @@ ADMIN_NAV = {  # open with ?admin=1
 # Phone navigation: one tap, short labels. Each maps to an existing NAV key (never renamed).
 # «Αποθηκευμένες αναζητήσεις» and «Αγγελία» are reached from their pages, so no pill.
 SHORT_NAV = {
-    "Βρες μου σπίτι": find.TITLE,
+    HOME: HOME,
     "Περιοχές": "Πού να αγοράσω",
     "Αναζήτηση": "Αναζήτηση",
     "Χάρτης": "Χάρτης",
@@ -2406,8 +2454,12 @@ def _refresh_data() -> None:
 def main() -> None:
     admin = bool(st.query_params.get("admin"))
     pages = {**NAV, **(ADMIN_NAV if admin else {})}
+    restore = st.session_state.pop("account_restore_page", None)
+    if restore in pages:  # just signed in: back to where this person left off
+        st.session_state["page"] = restore
     with st.sidebar:  # desktop / keyboard navigation; on a phone the pills below do the job
         st.markdown("### Σκάουτ ακινήτων")
+        account.login_ui()
         # «Αγγελία» needs a selected listing: reachable from cards only, listed only while open.
         shown = [p for p in pages if p != buyer.NAV_DETAIL or st.session_state.get("page") == p]
         page = st.radio("Σελίδα", shown, key="page", label_visibility="collapsed")
@@ -2423,6 +2475,8 @@ def main() -> None:
     )
     listings = get_listings()
     st.caption(_data_status(listings))
+    if page != buyer.NAV_DETAIL:
+        account.remember_page(page)
 
     if pages[page] in (page_opportunities, page_today):
         st.markdown(f"## {page}")

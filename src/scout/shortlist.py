@@ -2,6 +2,12 @@
 new listings for it, sends a digest, and the owner approves or rejects them in the UI.
 
 ``pick`` is pure (testable); the rest persists as one JSON file in a private GitHub Gist.
+
+Per-user data: the document's top-level ``mandates`` / ``watch`` / ``review`` are the
+"anonymous" profile (everything saved before accounts existed stays there). A signed-in
+person's data lives under ``profiles[key]["data"]`` with the same keys. Which profile the
+functions below act on is decided by ``profile_hook`` (``ui/account.py`` points it at the
+signed-in user; the daily job leaves it at "anonymous" and walks every profile itself).
 """
 
 from __future__ import annotations
@@ -9,6 +15,7 @@ from __future__ import annotations
 import copy
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .nl_search import SearchFilters, advise, match
@@ -66,6 +73,12 @@ class StorageNotConfigured(Exception):
     """No GITHUB_TOKEN: mandates can't be stored."""
 
 
+def storage_configured() -> bool:
+    import os
+
+    return bool(os.environ.get("GITHUB_TOKEN"))
+
+
 def _gh(method: str, path: str, **kw):
     import os
 
@@ -120,6 +133,36 @@ def _read_all() -> dict:
     return data
 
 
+USER_KEYS = ("mandates", "watch", "review")
+
+
+# Returns the active profile key, or None for the anonymous profile. Read on every call (not
+# cached) so a Streamlit callback sees the same user as the script run that drew the button.
+def _anonymous() -> str | None:
+    return None
+
+
+profile_hook: Callable[[], str | None] = _anonymous
+
+
+def scope(data: dict, profile: str | None) -> dict:
+    """The part of the stored document that belongs to ``profile`` (None = anonymous, i.e. the
+    top level). Creates an empty profile entry on first use; callers write ``data`` back."""
+    if profile is None:
+        part = data
+    else:
+        entry = data.setdefault("profiles", {}).setdefault(profile, {})
+        part = entry.setdefault("data", {})
+    part.setdefault("mandates", [])
+    part.setdefault("watch", [])
+    part.setdefault("review", {})
+    return part
+
+
+def _mine(data: dict) -> dict:
+    return scope(data, profile_hook())
+
+
 def _write_all(data: dict) -> None:
     global _recent
     body = {"files": {GIST_FILE: {"content": json.dumps(data, ensure_ascii=False)}}}
@@ -140,8 +183,9 @@ def _to_mandate(row: dict) -> Mandate:
 
 def save_mandate(text: str, filters: SearchFilters) -> int:
     data = _read_all()
-    new_id = max((r["id"] for r in data["mandates"]), default=0) + 1
-    data["mandates"].append(
+    mine = _mine(data)
+    new_id = max((r["id"] for r in mine["mandates"]), default=0) + 1
+    mine["mandates"].append(
         {"id": new_id, "text": text, "filters": filters.model_dump(mode="json")}
     )
     _write_all(data)
@@ -149,18 +193,20 @@ def save_mandate(text: str, filters: SearchFilters) -> int:
 
 
 def list_mandates() -> list[Mandate]:
-    return [_to_mandate(r) for r in _read_all()["mandates"]]
+    return [_to_mandate(r) for r in _mine(_read_all())["mandates"]]
 
 
 def delete_mandate(mandate_id: int) -> None:
     data = _read_all()
-    data["mandates"] = [r for r in data["mandates"] if r["id"] != mandate_id]
+    mine = _mine(data)
+    mine["mandates"] = [r for r in mine["mandates"] if r["id"] != mandate_id]
     _write_all(data)
 
 
 def _add_ids(mandate_id: int, key: str, ids: set[str]) -> None:
     data = _read_all()
-    for r in data["mandates"]:
+    mine = _mine(data)
+    for r in mine["mandates"]:
         if r["id"] == mandate_id:
             r[key] = sorted(set(r.get(key, [])) | ids)
     _write_all(data)
@@ -168,31 +214,33 @@ def _add_ids(mandate_id: int, key: str, ids: set[str]) -> None:
 
 def watch_set() -> set[str]:
     """Listing keys the owner has starred (the watchlist)."""
-    return set(_read_all()["watch"])
+    return set(_mine(_read_all())["watch"])
 
 
 def set_watch(listing_key: str, on: bool) -> None:
     data = _read_all()
-    keys = set(data["watch"])
+    mine = _mine(data)
+    keys = set(mine["watch"])
     keys.add(listing_key) if on else keys.discard(listing_key)
-    data["watch"] = sorted(keys)
+    mine["watch"] = sorted(keys)
     _write_all(data)
 
 
 def review_map() -> dict[str, str]:
     """The owner's verdict on «Βρες μου σπίτι» picks: listing key → "ok" | "no"."""
-    return dict(_read_all()["review"])
+    return dict(_mine(_read_all())["review"])
 
 
 def set_review(listing_key: str, verdict: str | None) -> None:
     """Approve ("ok"), drop ("no") or clear (None) a pick; approving also stars it."""
     data = _read_all()
+    mine = _mine(data)
     if verdict is None:
-        data["review"].pop(listing_key, None)
+        mine["review"].pop(listing_key, None)
     else:
-        data["review"][listing_key] = verdict
+        mine["review"][listing_key] = verdict
     if verdict == "ok":
-        data["watch"] = sorted(set(data["watch"]) | {listing_key})
+        mine["watch"] = sorted(set(mine["watch"]) | {listing_key})
     _write_all(data)
 
 
@@ -218,22 +266,31 @@ def digest(m: Mandate, picks: list[tuple[dict, dict, list[str]]]) -> str:
 
 
 def run_shortlists(settings=None) -> int:
-    """Daily step: for every mandate send its new top picks (never repeating one). Returns the
-    number of digests sent. Picks are marked sent only if the alert actually went out."""
+    """Daily step: for every mandate of every profile (anonymous included) send its new top
+    picks (never repeating one). Returns the number of digests sent. Picks are marked sent only
+    if the alert actually went out."""
+    global profile_hook
     from .alerts import send_alert
     from .ui.queries import load_listings
 
     try:
-        mandates = list_mandates()
+        profiles = [None, *sorted(_read_all().get("profiles", {}))]
     except StorageNotConfigured:
         return 0  # no token (e.g. the Actions runner): nothing to send
-    listings = load_listings()
+    listings = None
     sent = 0
-    for m in mandates:
-        picks = pick(m.filters, listings, m.seen)
-        if picks and send_alert(
-            digest(m, picks), subject="Holargos — shortlist", settings=settings
-        ):
-            _add_ids(m.id, "sent", {lkey(d) for d, _, _ in picks})
-            sent += 1
+    hook = profile_hook
+    try:
+        for who in profiles:
+            profile_hook = lambda who=who: who  # noqa: E731 — the daily job is single-threaded
+            for m in list_mandates():
+                listings = load_listings() if listings is None else listings
+                picks = pick(m.filters, listings, m.seen)
+                if picks and send_alert(
+                    digest(m, picks), subject="Holargos — shortlist", settings=settings
+                ):
+                    _add_ids(m.id, "sent", {lkey(d) for d, _, _ in picks})
+                    sent += 1
+    finally:
+        profile_hook = hook
     return sent

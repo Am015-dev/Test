@@ -18,6 +18,7 @@ import streamlit as st
 from scout import acquisition, advisor, market_intel, nl_search, picks, shortlist
 from scout.market_intel import municipality
 from scout.nl_search import SearchFilters
+from scout.ui import account
 
 PAGE_SIZE = 12
 MAX_ADVICE = 25  # AI second opinions per browser session — bounds API cost
@@ -163,17 +164,11 @@ SESSION_ONLY = "Τα αγαπημένα κρατιούνται μόνο σε α�
 
 
 def watch_keys() -> set[str]:
-    """Starred listing keys for this session, loaded from storage once."""
+    """Starred listing keys of the signed-in user (or the anonymous profile), loaded once."""
     if "watch" not in st.session_state:
-        keys: set[str] = set()
-        try:
-            keys = shortlist.watch_set()
-            st.session_state["watch_persisted"] = True
-        except shortlist.StorageNotConfigured:
-            st.session_state["watch_persisted"] = False
-        except Exception:  # network / auth: keep working; the favourites page says so
-            st.session_state["watch_persisted"] = False
-        st.session_state["watch"] = keys
+        store = account.storage()
+        st.session_state["watch"] = set(store.get("watch", []))
+        st.session_state["watch_persisted"] = store.persistent
     return st.session_state["watch"]
 
 
@@ -181,13 +176,8 @@ def toggle_watch(key: str) -> None:
     keys = watch_keys()
     on = key not in keys
     keys.add(key) if on else keys.discard(key)
-    if st.session_state.get("watch_persisted"):
-        try:
-            shortlist.set_watch(key, on)
-        except Exception as e:
-            _flash(
-                "error", f"Δεν αποθηκεύτηκε ({_reason(e)}) — ισχύει μέχρι να κλείσεις τη σελίδα."
-            )
+    if st.session_state.get("watch_persisted") and not account.storage().set("watch", sorted(keys)):
+        _flash("error", "Δεν αποθηκεύτηκε — ισχύει μέχρι να κλείσεις τη σελίδα.")
 
 
 def open_detail(listing_id: int) -> None:
