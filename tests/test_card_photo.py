@@ -12,7 +12,7 @@ pytest.importorskip("streamlit.testing.v1")
 from scout.ui import buyer  # noqa: E402
 from scout.ui.theme import _CSS  # noqa: E402
 
-from .test_ui_gauntlet import APP, AppTest, env, ok  # noqa: E402,F401
+from .test_ui_gauntlet import APP, AppTest, env, goto, ok  # noqa: E402,F401
 
 IMG = "https://blob.cdn.xe.gr/live/2026/10/30/b001e5f9/b001e5f9-source.jpg?width=640&height=480"
 
@@ -75,7 +75,7 @@ def _give_every_other_listing_a_photo() -> None:
 def test_search_and_listing_page_show_the_thumbnail_markup(env):  # noqa: F811
     _give_every_other_listing_a_photo()
     at = AppTest.from_file(APP, default_timeout=60).run()
-    at.pills(key="nav_pill").set_value("Αναζήτηση").run()
+    goto(at, "Αναζήτηση")
     ok(at, "search")
     cards = _cards(at)
     assert cards

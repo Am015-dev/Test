@@ -8,7 +8,7 @@
     "photosLoaded": 0,
     "noPhoto": 0,
     "clsWhilePhotosLoad": 0,
-    "clsPageSwap": 0.0527,
+    "clsPageSwap": 0.0297,
     "boxSizes": [],
     "boxesStable": true
   },
@@ -21,7 +21,20 @@
     "photosLoaded": 0,
     "noPhoto": 0,
     "clsWhilePhotosLoad": 0,
-    "clsPageSwap": 0.0301,
+    "clsPageSwap": 0.004,
+    "boxSizes": [],
+    "boxesStable": true
+  },
+  "search-marousi": {
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "cards": 12,
+    "thumbs": 0,
+    "photos": 0,
+    "photosLoaded": 0,
+    "noPhoto": 0,
+    "clsWhilePhotosLoad": 0,
+    "clsPageSwap": 0.2603,
     "boxSizes": [],
     "boxesStable": true
   },

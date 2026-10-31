@@ -8,7 +8,7 @@
     "photosLoaded": 0,
     "noPhoto": 10,
     "clsWhilePhotosLoad": 0,
-    "clsPageSwap": 0.0303,
+    "clsPageSwap": 0.0297,
     "boxSizes": [
       "96×72"
     ],
@@ -19,11 +19,26 @@
     "innerWidth": 390,
     "cards": 12,
     "thumbs": 12,
-    "photos": 3,
-    "photosLoaded": 3,
-    "noPhoto": 9,
+    "photos": 0,
+    "photosLoaded": 0,
+    "noPhoto": 12,
     "clsWhilePhotosLoad": 0,
-    "clsPageSwap": 0.0246,
+    "clsPageSwap": 0.0061,
+    "boxSizes": [
+      "96×72"
+    ],
+    "boxesStable": true
+  },
+  "search-marousi": {
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "cards": 12,
+    "thumbs": 12,
+    "photos": 1,
+    "photosLoaded": 1,
+    "noPhoto": 11,
+    "clsWhilePhotosLoad": 0,
+    "clsPageSwap": 0.2858,
     "boxSizes": [
       "96×72"
     ],

@@ -107,6 +107,12 @@ async function measure(page, name) {
   await page.locator('[data-testid="stMain"]').getByRole('radio', { name: 'Αναζήτηση', exact: true }).first().click();
   await measure(page, 'search');
 
+  // A search whose first results carry photos (Golden Home lists Μαρούσι with photos).
+  await page.evaluate(() => { window.__cls = 0; });
+  const box = page.locator('[data-testid="stMain"] input[type="text"]').first();
+  await box.fill('διαμέρισμα στο Μαρούσι'); await box.press('Enter'); await settle(page);
+  await measure(page, 'search-marousi');
+
   // The listing page (full-width photo) from the first card that has a photo, else the first.
   const nth = await page.evaluate(() => Math.max(0, [...document.querySelectorAll('.hg-card')]
     .findIndex((c) => c.querySelector('.hg-thumb img'))));
