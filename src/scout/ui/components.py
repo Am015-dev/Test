@@ -388,8 +388,8 @@ def map_legend() -> None:
         for c, label in dots
     )
     st.markdown(
-        f'<div style="font-size:0.9rem;line-height:1.7">{items}</div>'
-        '<div style="font-size:0.9rem">Μικρό και αχνό = θέση κατά προσέγγιση '
+        f'<div class="hg-legend" style="line-height:1.7">{items}</div>'
+        '<div class="hg-legend">Μικρό και αχνό = θέση κατά προσέγγιση '
         "(κέντρο περιοχής).</div>",
         unsafe_allow_html=True,
     )

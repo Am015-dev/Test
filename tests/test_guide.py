@@ -43,7 +43,8 @@ def walk(at, budget="guide-b250", goal="yield", where="best", age="any"):
     at.button_group(key="guide_age").set_value(age).run()
     at.button(key="guide-show").click().run()
     ok(at, "step 4")
-    assert "Βήμα 5 από 5" in _text(at) and "### Η πρότασή μου" in _text(at)
+    # the result has no step line (C6): «Πίσω» and the title only
+    assert "Βήμα" not in _text(at) and "### Η πρότασή μου" in _text(at)
     return at
 
 
