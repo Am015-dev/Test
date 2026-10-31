@@ -488,8 +488,8 @@ def liquidity_label(gone_60: float | None, gone_30: float | None = None) -> str 
 
 
 LIQUIDITY_THRESHOLDS = (
-    f"γρήγορη: τουλάχιστον {_pct(FAST_GONE)} των αγγελιών φεύγουν σε 60 μέρες · "
-    f"αργή: κάτω από {_pct(SLOW_GONE)} · αλλιώς μέτρια"
+    f"γρήγορη λέμε όταν σε 60 μέρες κατεβαίνει τουλάχιστον {_pct(FAST_GONE)} των αγγελιών, "
+    f"αργή όταν κατεβαίνει κάτω από {_pct(SLOW_GONE)}"
 )
 
 
@@ -502,14 +502,16 @@ def liquidity_text(x: AreaInsight) -> str:
     """«γρήγορη — 41 % έφυγαν σε 60 μέρες (210 αγγελίες), 22 % σε 30 (260 αγγελίες)» or the reason it is
     unknown. The thresholds are printed by the caller next to it (``LIQUIDITY_THRESHOLDS``)."""
     if x.liquidity is None:
-        since = f", πρώτη τακτική {x.regular_since:%d/%m}" if x.regular_since else ""
-        return f"άγνωστη — χρειάζεται ιστορικό σαρώσεων{since}"
+        since = (
+            f" Την παρακολουθούμε τακτικά από {x.regular_since:%d/%m}." if x.regular_since else ""
+        )
+        return f"δεν το ξέρουμε ακόμα.{since}"
     parts = []
     if x.gone_60 is not None:
-        parts.append(f"{_pct(x.gone_60)} έφυγαν σε 60 μέρες ({n_words(x.gone_n_60)})")
+        parts.append(f"το {_pct(x.gone_60)} από {n_words(x.gone_n_60)} κατέβηκε μέσα σε 60 μέρες")
     if x.gone_30 is not None:
-        parts.append(f"{_pct(x.gone_30)} σε 30 ({n_words(x.gone_n_30)})")
-    return f"{x.liquidity} — " + ", ".join(parts)
+        parts.append(f"το {_pct(x.gone_30)} από {x.gone_n_30} μέσα σε 30")
+    return f"{x.liquidity}: " + " και ".join(parts)
 
 
 # ---- score + text ------------------------------------------------------------------------
@@ -530,13 +532,13 @@ def _reasons(x: AreaInsight, ref_ppm: float) -> list[str]:
     cands: list[tuple[float, str]] = []
     c = x.components
     if x.gross_yield is not None:
-        n = f"{x.rent_samples} δείγματα" if x.rent_samples else "δείγματα: —"
+        n = f"{x.rent_samples} αγγελίες" if x.rent_samples else "δεν ξέρουμε από πόσες αγγελίες"
         cands.append(
             (
                 WEIGHTS["yield"] * c["yield"],
-                f"Μικτή απόδοση {_pct(x.gross_yield, 1)}: ενοίκιο (εκτίμηση) "
-                f"{f'{x.rent_ppm:.1f}'.replace('.', ',')} €/τ.μ./μήνα ({n}) έναντι "
-                f"{_num(x.median_ppm)} €/τ.μ. ζητούμενης τιμής πώλησης.",
+                f"Μικτή απόδοση {_pct(x.gross_yield, 1)}. Για ενοίκιο ζητούν "
+                f"{f'{x.rent_ppm:.1f}'.replace('.', ',')} €/τ.μ. τον μήνα ({n}), "
+                f"για αγορά {_num(x.median_ppm)} €/τ.μ.",
             )
         )
     gap = 1 - x.median_ppm / ref_ppm
@@ -544,16 +546,16 @@ def _reasons(x: AreaInsight, ref_ppm: float) -> list[str]:
         cands.append(
             (
                 WEIGHTS["affordability"] * c["affordability"],
-                f"Διάμεση ζητούμενη τιμή {_num(x.median_ppm)} €/τ.μ., {_pct(gap)} κάτω από "
-                f"τη διάμεση της ΒΑ Αθήνας ({_num(ref_ppm)} €/τ.μ.).",
+                f"Ζητούν συνήθως {_num(x.median_ppm)} €/τ.μ., {_pct(gap)} λιγότερα από "
+                f"τα βόρεια και ανατολικά προάστια ({_num(ref_ppm)} €/τ.μ.).",
             )
         )
     if x.good_stock:
         cands.append(
             (
                 WEIGHTS["stock"] * c["stock"],
-                f"{x.good_stock} διαθέσιμα διαμερίσματα έως 30 ετών, όχι ισόγεια, κάτω από "
-                "τη διάμεση τιμή της ηλικιακής τους κατηγορίας.",
+                f"{x.good_stock} διαμερίσματα έως 30 ετών, όχι ισόγεια, ζητούν κάτω από τη "
+                "συνηθισμένη τιμή για την ηλικία τους.",
             )
         )
     if x.cut_share > 0 and x.median_cut_pct is not None:
@@ -562,66 +564,63 @@ def _reasons(x: AreaInsight, ref_ppm: float) -> list[str]:
         cands.append(
             (
                 WEIGHTS["negotiability"] * c["negotiability"],
-                f"Το {_pct(x.cut_share)} των αγγελιών έχει μειώσει τιμή (διάμεση μείωση "
-                f"{_pct(x.median_cut_pct, 1)}).",
+                f"Το {_pct(x.cut_share)} των πωλητών έχει ήδη κατεβάσει την τιμή, "
+                f"συνήθως κατά {_pct(x.median_cut_pct, 1)}.",
             )
         )
     if x.trend_pct is not None and x.trend_pct >= RISING_TREND:
         cands.append(
             (
                 WEIGHTS["momentum"] * c["momentum"],
-                f"Ζητούμενη τιμή {_pct(x.trend_pct, 1)} πάνω από τον Ιούλιο "
-                f"(από {_num(x.trend_early_ppm)} σε {_num(x.trend_late_ppm)} €/τ.μ., "
-                f"{n_words(x.trend_early_n, x.trend_late_n)}).",
+                f"Οι τιμές ανέβηκαν {_pct(x.trend_pct, 1)} από τον Ιούλιο, "
+                f"από {_num(x.trend_early_ppm)} σε {_num(x.trend_late_ppm)} €/τ.μ. "
+                f"({x.trend_early_n} αγγελίες τότε, {x.trend_late_n} τώρα).",
             )
         )
     if x.value_band and x.value_band_discount and x.value_band_discount > 0:
         cands.append(
             (
                 0.05,  # informative, not scored: ranks below the scored reasons
-                f"Σε κτίρια {x.value_band} η τιμή είναι {_pct(x.value_band_discount)} "
-                "χαμηλότερη από τα νεόδμητα (έως 5 ετών).",
+                f"Σε κτίρια {x.value_band} ζητούν {_pct(x.value_band_discount)} "
+                "λιγότερα από τα νεόδμητα (έως 5 ετών).",
             )
         )
     cands.sort(key=lambda t: -t[0])
     out = [s for _, s in cands[:4]]
     if len(out) < 2:
-        out.append(
-            f"{x.n_fresh} τρέχουσες αγγελίες, διάμεση ζητούμενη τιμή "
-            f"{_num(x.median_ppm)} €/τ.μ."
-        )
+        out.append(f"{x.n_fresh} αγγελίες σήμερα. Ζητούν συνήθως " f"{_num(x.median_ppm)} €/τ.μ.")
     return out
 
 
 def _risks(x: AreaInsight) -> list[str]:
     risks = []
     if x.n_fresh < SMALL_SAMPLE:
-        risks.append(f"Μικρό δείγμα: μόνο {x.n_fresh} τρέχουσες αγγελίες.")
+        risks.append(f"Μόνο {x.n_fresh} αγγελίες σήμερα, λίγες για σίγουρο συμπέρασμα.")
     if x.trend_pct is not None and x.trend_pct <= FALLING_TREND:
         risks.append(
-            f"Πτωτικές ζητούμενες τιμές: {_pct(x.trend_pct, 1)} από τον Ιούλιο "
-            f"({n_words(x.trend_early_n, x.trend_late_n)})."
+            f"Οι τιμές έπεσαν {_pct(abs(x.trend_pct), 1)} από τον Ιούλιο "
+            f"({x.trend_early_n} αγγελίες τότε, {x.trend_late_n} τώρα)."
         )
     if x.gross_yield is None:
-        risks.append("Δεν υπάρχουν στοιχεία ενοικίων· η απόδοση δεν υπολογίστηκε.")
+        risks.append("Δεν βρήκαμε αγγελίες ενοικίασης εδώ, άρα δεν ξέρουμε την απόδοση.")
     elif x.gross_yield < LOW_YIELD:
-        risks.append(f"Χαμηλή μικτή απόδοση ({_pct(x.gross_yield, 1)}) πριν από έξοδα και φόρους.")
+        risks.append(f"Μικτή απόδοση μόνο {_pct(x.gross_yield, 1)}, πριν από έξοδα και φόρους.")
     if x.old_share is not None and x.old_share >= OLD_STOCK_SHARE:
         risks.append(
-            f"Παλαιό απόθεμα: το {_pct(x.old_share)} των αγγελιών με γνωστό έτος είναι "
-            "κτίρια άνω των 30 ετών."
+            f"Το {_pct(x.old_share)} των σπιτιών είναι σε κτίρια πάνω από 30 χρόνων "
+            "(από όσα γράφουν έτος)."
         )
     if x.trend_pct is None:
         risks.append(
-            f"Τάση τιμών μη διαθέσιμη ({n_words(x.trend_early_n, x.trend_late_n)}, "
-            f"απαιτούνται {MIN_TREND})."
+            f"Δεν ξέρουμε ακόμα αν οι τιμές ανεβαίνουν: θέλουμε {MIN_TREND} αγγελίες σε "
+            f"κάθε περίοδο και έχουμε {n_words(x.trend_early_n, x.trend_late_n)}."
         )
     if x.gross_yield is not None and x.rent_samples and x.rent_samples < FEW_RENT_SAMPLES:
-        risks.append(f"Το ενοίκιο βασίζεται σε μόνο {x.rent_samples} αγγελίες ενοικίασης.")
+        risks.append(f"Το ενοίκιο βγαίνει από μόνο {x.rent_samples} αγγελίες ενοικίασης.")
     if x.gross_yield is not None and not x.rent_samples:
-        risks.append("Ο αριθμός δειγμάτων του ενοικίου δεν έχει καταγραφεί.")
+        risks.append("Δεν ξέρουμε από πόσες αγγελίες βγαίνει το ενοίκιο.")
     if not risks:
-        risks.append("Οι τιμές είναι ζητούμενες, όχι τιμές συναλλαγής.")
+        risks.append("Αυτές είναι οι τιμές που ζητούν, όχι αυτές που κλείνουν.")
     return risks[:2]
 
 
@@ -747,20 +746,20 @@ def why(x: AreaInsight) -> str:
     if x.gross_yield is not None:
         n = f" από {x.rent_samples} αγγελίες ενοικίασης" if x.rent_samples else ""
         of = "περιοχή" if x.yield_of == 1 else "περιοχές"
-        rank = f" ({x.yield_rank}η από {x.yield_of} {of} με ενοίκιο)" if x.yield_rank else ""
+        rank = f", {x.yield_rank}η από τις {x.yield_of} {of}" if x.yield_rank else ""
         parts.append(
-            f"Μικτή απόδοση {_pct(x.gross_yield, 1)}{rank} με ενοίκιο (εκτίμηση) "
-            f"{_rent(x.rent_ppm)} €/τ.μ.{n}"
+            f"Μικτή απόδοση {_pct(x.gross_yield, 1)}{rank}. Ενοίκιο (εκτίμηση) "
+            f"{_rent(x.rent_ppm)} €/τ.μ. τον μήνα{n}."
         )
     if x.new_premium is not None:
-        word = "ακριβότερα" if x.new_premium >= 0 else "φθηνότερα"
-        parts.append(
-            f"νεόδμητα {_pct(abs(x.new_premium))} {word} από τα παλιά ({n_words(x.n_new, x.n_old)})"
-        )
+        word = "περισσότερα" if x.new_premium >= 0 else "λιγότερα"
+        parts.append(f"Για νεόδμητο ζητούν {_pct(abs(x.new_premium))} {word} από ένα παλιό.")
     if x.stations:
-        parts.append(", ".join(x.stations[:2]))
+        parts.append("Σταθμός: " + ", ".join(x.stations[:2]) + ".")
     return (
-        "· ".join(parts) if parts else f"{x.n_fresh} αγγελίες, διάμεση {_num(x.median_ppm)} €/τ.μ."
+        " ".join(parts)
+        if parts
+        else f"{x.n_fresh} αγγελίες, ζητούν συνήθως {_num(x.median_ppm)} €/τ.μ."
     )
 
 
@@ -770,18 +769,20 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
     within budget in a neighbourhood with a rail station."""
     out = []
     solid = [x for x in ranked if x.n_fresh >= SMALL_SAMPLE]
-    small = " Μικρό δείγμα." if ranked and not solid else ""
+    small = " Οι αγγελίες είναι ακόμα λίγες." if ranked and not solid else ""
     solid = solid or ranked  # nothing reaches SMALL_SAMPLE: still answer, and say so
     ys = [x for x in solid if x.gross_yield is not None]
     if ys:
         x = max(ys, key=lambda a: a.gross_yield)
         new_y = (
-            f" ({_pct(x.gross_yield_new, 1)} στα νεόδμητα)" if x.gross_yield_new is not None else ""
+            f" και {_pct(x.gross_yield_new, 1)} στα νεόδμητα"
+            if x.gross_yield_new is not None
+            else ""
         )
         out.append(
-            f"Για απόδοση: {x.area}, μικτή απόδοση {_pct(x.gross_yield, 1)} στα παλιά{new_y}, "
-            f"ενοίκιο (εκτίμηση) {_rent(x.rent_ppm)} €/τ.μ. από ζητούμενα ενοίκια της περιοχής, "
-            f"{x.n_fresh} αγγελίες πώλησης.{small}"
+            f"Αν θες απόδοση: {x.area}. Μικτή απόδοση {_pct(x.gross_yield, 1)} στα παλιά{new_y}, "
+            f"με ενοίκιο (εκτίμηση) {_rent(x.rent_ppm)} €/τ.μ. τον μήνα, όσο ζητούν στη "
+            f"γειτονιά.{small}"
         )
     ok = [x for x in solid if x.trend_pct is None or x.trend_pct > FALLING_TREND]
     if ok:
@@ -789,40 +790,61 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
         if known:
             x = max(known, key=lambda a: (a.gone_60 if a.gone_60 is not None else a.gone_30))
             out.append(
-                f"Για ρευστότητα: {x.area}, {liquidity_text(x)}, " f"{x.n_fresh} αγγελίες.{small}"
+                f"Αν θες να το πουλήσεις εύκολα αργότερα: {x.area}. Η αγορά είναι "
+                f"{liquidity_text(x)}.{small}"
             )
         else:
             x = max(ok, key=lambda a: a.n_fresh)
-            dom = f", διάμεσα {x.median_dom:.0f} μέρες στην αγορά" if x.median_dom else ""
+            dom = (
+                f" Συνήθως μένουν {x.median_dom:.0f} "
+                f"{'μέρα' if round(x.median_dom) == 1 else 'μέρες'} στην αγορά."
+                if x.median_dom
+                else ""
+            )
             out.append(
-                f"Για ρευστότητα: {x.area}, {x.n_fresh} αγγελίες, "
-                f"{_pct(x.cut_share)} με μείωση τιμής{dom}.{small}"
+                f"Αν θες να το πουλήσεις εύκολα αργότερα: {x.area}. Εκεί το "
+                f"{_pct(x.cut_share)} έχει ήδη κατεβάσει τιμή.{dom}{small}"
             )
     grow = [(t, x) for x in solid if (t := exit_trend(x)) is not None]
     if grow:
         t, x = max(grow, key=lambda p: p[0][0])
         l4 = (
-            f" — Γραμμή 4 υπό κατασκευή ({', '.join(x.line4)}, ορίζοντας {OPENING})"
+            f". Εκεί φτιάχνεται η Γραμμή 4 του μετρό ({', '.join(x.line4)}, γύρω στο {OPENING})"
             if x.line4
             else ""
         )
-        out.append(f"Για ανατίμηση: {x.area}{l4}, {_signed(t[0])} €/τ.μ. {t[1]} ({t[2]}).{small}")
+        out.append(
+            f"Αν θες να ανέβει η αξία: {x.area}{l4}. Η τιμή ανά τ.μ. "
+            f"{'ανέβηκε' if t[0] >= 0 else 'έπεσε'} {_pct(abs(t[0]), 1)} {t[1]}.{small}"
+        )
     else:
         out.append(
-            "Για ανατίμηση: δεν υπάρχει αρκετό ιστορικό τιμών "
-            f"(χρειάζονται τουλάχιστον {MIN_MONTH} αγγελίες ανά μήνα ή {MIN_TREND} στις δύο ομάδες)."
+            "Αν θες να ανέβει η αξία: δεν ξέρουμε ακόμα πώς κινούνται οι τιμές. Θέλουμε "
+            "τουλάχιστον "
+            f"{MIN_MONTH} αγγελίες τον μήνα ή {MIN_TREND} σε κάθε περίοδο."
         )
     near = max(ranked, key=lambda a: a.near_station_in_budget, default=None)
     b = f"{_num(budget)} €"
     if near is not None and near.near_station_in_budget:
         st = ", ".join(near.stations[:2])
         out.append(
-            f"Για νεόδμητο κοντά σε σταθμό έως {b}: {near.area} ({st}), "
-            f"{near.near_station_in_budget} αγγελίες, "
-            f"{near.near_station_in_budget_checked} με ελεγμένη περιγραφή."
+            f"Αν θες νεόδμητο κοντά σε σταθμό έως {b}: {near.area}, με σταθμό {st}. Εκεί "
+            f"βρήκαμε {near.near_station_in_budget} τέτοια σπίτια και τα "
+            f"{near.near_station_in_budget_checked} τα έχουμε ήδη ελέγξει."
         )
     else:
-        out.append(f"Νεόδμητο έως {b} σε γειτονιά με σταθμό: δεν βρέθηκε αγγελία.")
+        out.append(f"Νεόδμητο έως {b} σε γειτονιά με σταθμό: δεν υπάρχει σήμερα καμία αγγελία.")
+    return out
+
+
+def decision_basis(ranked: list[AreaInsight]) -> list[str]:
+    """The counts behind ``decision`` (moved out of the sentences, C10): one line per area."""
+    out = []
+    for x in ranked:
+        t = exit_trend(x)
+        rent = f", {x.rent_samples} αγγελίες ενοικίασης" if x.rent_samples else ""
+        trend = f", τάση τιμής από {t[2]}" if t else ""
+        out.append(f"{x.area}: {x.n_fresh} αγγελίες πώλησης{rent}{trend}.")
     return out
 
 
@@ -839,9 +861,14 @@ def exit_trend(x: AreaInsight) -> tuple[float, str, str] | None:
     """(change, "σε 6 μήνες" | "από τον Ιούλιο", "62 και 243 αγγελίες") — the 6-month change when both
     months have enough listings, else the July→late-October change; None when neither."""
     if x.trend_pct_6m is not None:
-        return x.trend_pct_6m, "σε 6 μήνες", n_words(*x.trend_6m_n)
+        a, b = x.trend_6m_n
+        return x.trend_pct_6m, "σε 6 μήνες", f"{a} αγγελίες τότε, {b} τώρα"
     if x.trend_pct is not None:
-        return x.trend_pct, "από τον Ιούλιο", n_words(x.trend_early_n, x.trend_late_n)
+        return (
+            x.trend_pct,
+            "από τον Ιούλιο",
+            f"{x.trend_early_n} αγγελίες τότε, {x.trend_late_n} τώρα",
+        )
     return None
 
 
@@ -861,16 +888,24 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
     # 1. price vs comparables
     comps = intel.comps(d) if intel is not None else None
     if comps is None:
-        out.append(("Τιμή έναντι παρόμοιων", f"λιγότερα από {MIN_COMPS} παρόμοια", UNKNOWN))
-    else:
-        pct = comps["pct"]
-        v = WARN if pct <= TOO_CHEAP or pct >= DEAR else GOOD if pct <= CHEAP else MID
-        note = " — υπερβολικά φθηνό, έλεγξε γιατί" if pct <= TOO_CHEAP else ""
         out.append(
             (
                 "Τιμή έναντι παρόμοιων",
-                f"{_num(d['price_per_m2'])} €/τ.μ. έναντι διάμεσης {_num(comps['ppm'])} "
-                f"€/τ.μ. ({_signed(pct)}), Παρόμοια ({comps['n']}): {comps['label']}{note}",
+                f"Δεν το ξέρουμε: βρήκαμε λιγότερα από {MIN_COMPS} παρόμοια σπίτια.",
+                UNKNOWN,
+            )
+        )
+    else:
+        pct = comps["pct"]
+        v = WARN if pct <= TOO_CHEAP or pct >= DEAR else GOOD if pct <= CHEAP else MID
+        note = ". Είναι πολύ φθηνό· αξίζει να μάθουμε γιατί" if pct <= TOO_CHEAP else ""
+        out.append(
+            (
+                "Τιμή έναντι παρόμοιων",
+                f"Ζητά {_num(d['price_per_m2'])} €/τ.μ., {_pct(abs(pct))} "
+                f"{'κάτω' if pct < 0 else 'πάνω'} από τα άλλα σπίτια της γειτονιάς, που ζητούν "
+                f"συνήθως {_num(comps['ppm'])} €/τ.μ. Παρόμοια: {comps['n']} "
+                f"{comps['label']}{note}",
                 v,
             )
         )
@@ -878,29 +913,33 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
     # 2. yield
     gy, rent_m = d.get("gross_yield"), d.get("est_monthly_rent")
     if gy and rent_m and d.get("price"):
-        basis = "εκτίμηση από ζητούμενα ενοίκια περιοχής" if d.get("rent_estimated") else "αγγελία"
+        basis = "όσο ζητούν τα διπλανά" if d.get("rent_estimated") else "από την αγγελία"
         v = GOOD if gy >= GOOD_YIELD else WARN if gy < LOW_YIELD else MID
         out.append(
             (
                 "Μικτή απόδοση",
-                f"{_pct(gy, 1)} = 12 × {_num(rent_m)} €/μήνα ({basis}) ÷ "
-                f"{_num(d['price'])} €, πριν από έξοδα και φόρους",
+                f"{_pct(gy, 1)} πριν από έξοδα και φόρους. Βγαίνει από ενοίκιο {_num(rent_m)} €/μήνα, "
+                f"{basis}: 12 × {_num(rent_m)} €/μήνα ÷ {_num(d['price'])} € τιμή.",
                 v,
             )
         )
     else:
-        out.append(("Μικτή απόδοση", "άγνωστη — δεν υπάρχει εκτίμηση ενοικίου", UNKNOWN))
+        out.append(
+            ("Μικτή απόδοση", "Δεν ξέρουμε την απόδοση: δεν έχουμε ενοίκιο για εδώ.", UNKNOWN)
+        )
 
     # 3. liquidity of the area
     if insight is None:
-        out.append(("Ρευστότητα περιοχής", "δεν αξιολογείται η περιοχή (λίγες αγγελίες)", UNKNOWN))
+        out.append(
+            ("Ρευστότητα περιοχής", "Δεν το ξέρουμε: η περιοχή έχει λίγες αγγελίες.", UNKNOWN)
+        )
     else:
         v = {"γρήγορη": GOOD, "μέτρια": MID, "αργή": WARN}.get(insight.liquidity or "", UNKNOWN)
         out.append(
             (
                 f"Ρευστότητα περιοχής ({insight.area})",
                 liquidity_text(insight)
-                + (f" · {LIQUIDITY_THRESHOLDS}" if insight.liquidity else ""),
+                + (f" ({LIQUIDITY_THRESHOLDS})" if insight.liquidity else ""),
                 v,
             )
         )
@@ -910,7 +949,7 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
         out.append(
             (
                 "Ζήτηση ενοικίου",
-                "άγνωστη — δεν έχει καταγραφεί ο αριθμός αγγελιών ενοικίασης",
+                "Δεν ξέρουμε τη ζήτηση: δεν έχουμε στοιχεία για ενοίκια εδώ.",
                 UNKNOWN,
             )
         )
@@ -924,9 +963,12 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
         out.append(
             (
                 "Ζήτηση ενοικίου",
-                f"{_rent_ratio(insight.supply_per_rent)} αγγελίες πώλησης ανά αγγελία "
-                f"ενοικίασης ({insight.n_fresh} πώλησης / {insight.rent_samples} ενοικίασης)· "
-                f"καλό έως {SUPPLY_LOW} και προσοχή από {SUPPLY_HIGH} φορές τη διάμεση των περιοχών",
+                f"Εδώ για κάθε σπίτι που νοικιάζεται πωλούνται "
+                f"{_rent_ratio(insight.supply_per_rent)} ({insight.rent_samples} ενοικιάσεις, "
+                f"{insight.n_fresh} πωλήσεις). Λίγα ενοίκια σημαίνει ότι βρίσκεις ενοικιαστή "
+                "εύκολα. Το κρίνουμε σε σχέση με τις άλλες περιοχές: καλό κάτω από "
+                f"{f'{SUPPLY_LOW:g}'.replace('.', ',')} φορές το συνηθισμένο, προσοχή από "
+                f"{f'{SUPPLY_HIGH:g}'.replace('.', ',')} φορές και πάνω.",
                 v,
             )
         )
@@ -942,25 +984,25 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
         out.append(
             (
                 "Νομικά / κανονιστικά",
-                "κανένας περιορισμός βραχυχρόνιας μίσθωσης στα δεδομένα μας "
-                "(δεν αντικαθιστά νομικό έλεγχο)",
+                "Δεν ξέρουμε κανέναν περιορισμό για βραχυχρόνια ενοικίαση εδώ. "
+                "Τον νομικό έλεγχο τον κάνει ο δικηγόρος",
                 GOOD,
             )
         )
     else:
-        out.append(("Νομικά / κανονιστικά", "άγνωστη περιοχή", UNKNOWN))
+        out.append(("Νομικά / κανονιστικά", "Δεν ξέρουμε σε ποια γειτονιά είναι.", UNKNOWN))
 
     # 6. exit: €/m² trend of the area (+ Line 4 when its sub-area is named after a station)
     t = exit_trend(insight) if insight is not None else None
     st_name = line4_station(d)
     l4 = (
-        f" · Μετρό Γραμμή 4 υπό κατασκευή: {st_name} (ορίζοντας {OPENING})"
+        f". Εδώ φτιάχνεται σταθμός της Γραμμής 4 του μετρό: {st_name}, γύρω στο {OPENING}"
         if st_name
-        else (f" · {line4_text(insight.line4)}" if insight is not None and insight.line4 else "")
+        else (f". {line4_text(insight.line4)}" if insight is not None and insight.line4 else "")
     )
     if t is None:
-        series = "δεν υπάρχει αρκετό ιστορικό" + (
-            f" ({n_words(insight.trend_early_n, insight.trend_late_n)})"
+        series = "Δεν ξέρουμε ακόμα πώς κινούνται οι τιμές" + (
+            f": έχουμε μόνο {n_words(insight.trend_early_n, insight.trend_late_n)}"
             if insight is not None
             else ""
         )
@@ -970,8 +1012,8 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
         out.append(
             (
                 "Έξοδος (τάση €/τ.μ.)",
-                f"{_signed(t[0])} {t[1]} στη διάμεση ζητούμενη €/τ.μ. της περιοχής ({t[2]})"
-                f"{l4}",
+                f"Η τιμή ανά τ.μ. στη γειτονιά {'ανέβηκε' if t[0] >= 0 else 'έπεσε'} "
+                f"{_pct(abs(t[0]), 1)} {t[1]} ({t[2]}){l4}",
                 v,
             )
         )

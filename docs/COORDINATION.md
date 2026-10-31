@@ -89,13 +89,18 @@ Trust beats cleverness. If we don't know, the UI says we don't know, in one shor
 | monthly rent estimate | Ενοίκιο (εκτίμηση) ~X €/μήνα |
 | gross yield | Μικτή απόδοση |
 | net yield | Καθαρή απόδοση |
-| comparables | Παρόμοια (N) |
+| comparables | Παρόμοια: X % κάτω/πάνω (C10: the count N moved to «Από πού βγαίνουν») |
 | under construction / off-plan | Υπό κατασκευή |
 | listing page read with the check | Ελέγχθηκε η περιγραφή |
 | not yet read | Δεν έχει ελεγχθεί ακόμα |
 | station | Σταθμός (ΗΣΑΠ/Μετρό + line) |
 | favourites | Αγαπημένα |
 | days on market | X μέρες στην αγορά |
+| median (in prose) | «ζητούν συνήθως X» — never «διάμεσος/διάμεση» (C10) |
+| sample size | «N αγγελίες» / «N αγγελίες τότε, M τώρα» — never «δείγμα» (C10) |
+| unknown value | «δεν το ξέρουμε (ακόμα)» — never «άγνωστο δείγμα»/«μη διαθέσιμη» (C10) |
+| comparables in prose | «τα άλλα σπίτια της γειτονιάς» / «τα N παρόμοια σπίτια»; which ones, spoken: «διαμερίσματα 65–90 τ.μ., στον 1ο ή 2ο όροφο, σε κτίρια 31–45 ετών, στην περιοχή Χολαργός» (C10) |
+| area rent in prose | «όσο ζητούν τα διπλανά»; the card line stays «Ενοίκιο (εκτίμηση) ~X €/μήνα» (C10) |
 
 ## Definition of done for the programme (coordinator checks)
 

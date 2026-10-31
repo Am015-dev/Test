@@ -263,7 +263,7 @@ def test_buyer_journey(env):
     # the listing page: what the listing says, rent & yield, comparables, no investor jargon
     text = " ".join(m.value for m in at.markdown)
     assert "Τι λέει η αγγελία" in text and "Ενοίκιο και απόδοση" in text
-    assert "#### Παρόμοια (" in text or "#### Λίγα παρόμοια" in text
+    assert "#### Παρόμοια: " in text or "#### Λίγα παρόμοια" in text
     assert "12 × ενοίκιο ÷ τιμή" in " ".join(c.value for c in at.caption)
     assert "Έξοδα αγοράς" in text and "Καθαρή απόδοση" in text
     assert not any(w in text for w in ("Golden Visa", "Airbnb", "DSCR", "cap rate", "GRM"))
@@ -350,8 +350,8 @@ def test_where_to_buy_cards_table_and_handoff(env):
     text = " ".join(m.value for m in at.markdown)
     cards = [m.value[5:] for m in at.markdown if m.value.startswith("#### ")]
     assert sorted(cards) == ["1. Γαλάτσι", "2. Χαλάνδρι"], cards
-    assert "42 αγγελίες ενοικίασης" in text and "δείγμα ενοικίων μη καταγεγραμμένο" in text
-    assert "Για απόδοση:" in text and "Προσοχή" in text
+    assert "42 αγγελίες ενοικίασης" in text and "δεν ξέρουμε από πόσες αγγελίες" in text
+    assert "Αν θες απόδοση:" in text and "Προσοχή" in text
     df = at.dataframe[0].value
     assert list(df["Περιοχή"]) == ["Γαλάτσι", "Χαλάνδρι"]
     assert len(df.columns) <= 4  # phone: the rest is in the card
@@ -714,8 +714,8 @@ def test_listing_metric_delta_and_position_bar():
     assert buyer.confidence({**cmp, "n": 10}) == "Μέτρια"
     bar = buyer.position_bar(2100, cmp)
     assert "2.100 €/τ.μ." in bar and "2.700–3.400 €/τ.μ." in bar
-    assert buyer.comps_text({"cmp": cmp}) == "Παρόμοια (6): 30 % κάτω"
-    assert buyer.comps_text({"cmp": {**cmp, "pct": 0.12}}) == "Παρόμοια (6): 12 % πάνω"
+    assert buyer.comps_text({"cmp": cmp}) == "Παρόμοια: 30 % κάτω"
+    assert buyer.comps_text({"cmp": {**cmp, "pct": 0.12}}) == "Παρόμοια: 12 % πάνω"
     assert buyer.comps_text({}) == "Λίγα παρόμοια για σύγκριση"
     # st.metric reads the sign from an ASCII minus: cheaper must render green/down
     assert f"{cmp['pct']:+.0%}".startswith("-")
