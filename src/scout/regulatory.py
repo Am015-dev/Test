@@ -41,11 +41,17 @@ def _norm(neighborhood: str | None) -> str | None:
 # Source rosters: cityofathens.gr municipal-community list; getproofsnap.com; lifo.gr.
 _STR_FROZEN = {
     _norm(n)
-    for n in ("Koukaki", "Exarcheia", "Kolonaki", "Pagkrati", "Neos Kosmos", "Metaxourgeio")
-}
+    for n in (
+        "Koukaki", "Exarcheia", "Kolonaki", "Pagkrati", "Neos Kosmos", "Metaxourgeio",
+        # the XE sub-area names (Greek), which is what listings carry in brackets
+        "Κουκάκι", "Εξάρχεια", "Κολωνάκι", "Παγκράτι", "Νέος Κόσμος", "Μεταξουργείο",
+    )
+}  # fmt: skip
 # In the Municipality of Athens but OUTSIDE the frozen 1/2/3 districts (6th/7th communities).
 # Legally ALLOWED today — flagged only as elevated regulatory watch (analytical, not legal).
-_STR_EXPANDING_RISK = {_norm(n) for n in ("Kypseli", "Gkyzi", "Ampelokipoi")}
+_STR_EXPANDING_RISK = {
+    _norm(n) for n in ("Kypseli", "Gkyzi", "Ampelokipoi", "Κυψέλη", "Γκύζη", "Αμπελόκηποι")
+}
 
 _STR_SOURCE = "Municipality of Athens district freeze, extended to 31 Dec 2026; Law 5170/2025"
 
@@ -200,3 +206,64 @@ def renovation_subsidy(energy_class: str | None, build_year: int | None) -> Reno
         "προσωρινά μέχρι την τελική ΚΥΑ.",
         _RENO_SOURCE,
     )
+
+
+# --- flags for the UI: short, emoji-free Greek lines ------------------------------------
+
+
+def _hood_names(d: dict) -> list[str]:
+    """Names to resolve the STR zone against: the Latin search area, then the XE sub-area in
+    brackets ('Αθήνα (Κουκάκι)' → 'Κουκάκι'), then the text before the brackets."""
+    hood = d.get("neighborhood") or ""
+    names = [d.get("search_area") or ""]
+    if "(" in hood:
+        head, tail = hood.split("(", 1)
+        names += [tail.rstrip(") ").strip(), head.strip()]
+    else:
+        names.append(hood)
+    return [n for n in names if n]
+
+
+def area_flags(area: str) -> list[str]:
+    """Short-let restriction line for an AREA name (frozen / watch zones only)."""
+    s = str_legality(area)
+    if s.status == "FROZEN":
+        return [
+            "Βραχυχρόνια μίσθωση (Airbnb): δεν εκδίδεται νέο ΑΜΑ στην περιοχή έως 31/12/2026 "
+            "και το υπάρχον διαγράφεται με την πώληση (ν. 5170/2025)"
+        ]
+    if s.status == "EXPANDING_RISK":
+        return [
+            "Βραχυχρόνια μίσθωση (Airbnb): επιτρέπεται σήμερα, αλλά η περιοχή είναι δίπλα "
+            "στο πάγωμα και αυτό μπορεί να επεκταθεί"
+        ]
+    return []
+
+
+def flags(d: dict) -> list[str]:
+    """Regulatory lines that apply to listing ``d`` — only the ones the data supports:
+
+    * short-let freeze / watch zone, resolved from the first name that matches a zone;
+    * Golden Visa eligibility (price ≥ 800.000 € and ≥ 120 τ.μ.; bans short-lets);
+    * likely «Εξοικονομώ» subsidy (energy class Γ or lower; rates provisional).
+
+    Empty list = nothing found, which is not a legal clearance."""
+    out: list[str] = []
+    for name in _hood_names(d):
+        found = area_flags(name)
+        if found:
+            out += found
+            break
+    gv = golden_visa_status(d.get("price"), d.get("area_m2"))
+    if gv.qualifies:
+        out.append(
+            "Golden Visa: επιλέξιμο (≥ 800.000 € και ≥ 120 τ.μ.)· απαγορεύεται η "
+            "βραχυχρόνια μίσθωση του ακινήτου"
+        )
+    reno = renovation_subsidy(d.get("energy_class"), d.get("year_built"))
+    if reno.candidate:
+        out.append(
+            f"Πιθανή επιδότηση «Εξοικονομώ 2026» (ενεργειακή κλάση {d.get('energy_class')}): "
+            "τα ποσοστά είναι προσωρινά"
+        )
+    return out

@@ -31,11 +31,25 @@ momentum            0.10   asking €/m² −5% → +5% July → late October
 
 A missing signal (no rent, trend n/a) scores a neutral 0.5 and is named as a risk.
 
+Investor checks (round 3; shown, NOT in the score):
+
+* ``MIN_MONTH`` — a month of the €/m² series (median first asking €/m² of the listings first
+  seen that month) counts for the 6-month trend only with 15 listings; both ends need it.
+* ``MIN_LIQ`` — liquidity (share of listings that disappeared within 30/60 days of first
+  sighting) needs 30 listings in the cohort AND regular weekly scrapes: scrape days are
+  the days on which any listing was seen; the cohort starts after the last gap longer than
+  ``GAP_MAX`` days, a disappearance only counts when the next scrape day confirms it within
+  ``GAP_MAX`` days, and a listing counts only when it is old enough to have been observed for
+  the whole window. Label: γρήγορη ≥ 35 % gone in 60 days, αργή < 15 %, else μέτρια.
+* supply per rent listing = fresh sale listings ÷ rent listings behind the area's rent median
+  (``rent_comp.samples``); unknown when the sample count was not recorded.
+
 Pure functions; no DB, no network.
 """
 
 from __future__ import annotations
 
+import bisect
 import re
 import statistics
 from collections import Counter
@@ -43,6 +57,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from .market_intel import AGE_BANDS, MIN_COMPS, _age, _usable, age_band, kind, municipality
+from .metro_line4 import OPENING, line4_station, line4_stations, line4_text
+from .regulatory import area_flags
+from .regulatory import flags as regulatory_flags
 
 # The buyer's NE-Athens search areas (``search_area`` values; mirrors WEEKLY_AREAS in
 # .github/workflows/daily.yml).
@@ -76,6 +93,13 @@ CRETE_SEARCHES = frozenset({"Irakleio"})
 EARLY_MONTH = 7
 LATE_FROM = (10, 16)
 LATE_TO = (10, 31)
+
+MIN_MONTH = 15
+TREND_MONTHS = 12
+MIN_LIQ = 30
+GAP_MAX = 14  # days between scrape days that still count as "regular" scraping
+FAST_GONE, SLOW_GONE = 0.35, 0.15  # share gone within 60 days
+SUPPLY_LOW, SUPPLY_HIGH = 0.75, 1.5  # supply per rent listing vs the median of ranked areas
 
 WEIGHTS = {
     "yield": 0.35,
@@ -137,6 +161,21 @@ class AreaInsight:
     yield_rank: int | None = None  # 1 = best gross yield among ranked areas with a rent
     yield_of: int = 0
     why: str = ""
+    # --- investor checks (round 3) ---
+    trend_series: list[tuple[str, float, int]] = field(default_factory=list)  # (YYYY-MM, €/m², n)
+    trend_pct_6m: float | None = None  # last month vs 6 months earlier, both n >= MIN_MONTH
+    trend_6m_n: tuple[int, int] = (0, 0)  # (n 6 months earlier, n last month)
+    dom_n: int = 0
+    gone_30: float | None = None
+    gone_60: float | None = None
+    gone_n_30: int = 0
+    gone_n_60: int = 0
+    liquidity: str | None = None  # γρήγορη / μέτρια / αργή, None = unknown
+    regular_since: date | None = None  # first scrape day of the current regular run
+    supply_per_rent: float | None = None
+    supply_rel: float | None = None  # supply_per_rent ÷ median over ranked areas
+    line4: list[str] = field(default_factory=list)  # Line 4 stations under construction
+    reg_flags: list[str] = field(default_factory=list)
 
 
 # ---- helpers -----------------------------------------------------------------------------
@@ -335,6 +374,7 @@ def _insight(
         cut_share=len(cuts) / len(fresh),
         median_cut_pct=_median(cuts),
         median_dom=_median(doms),
+        dom_n=len(doms),
         rent_ppm=rent_ppm,
         rent_samples=rent_n,
         gross_yield=12 * rent_ppm / median_ppm if rent_ppm else None,
@@ -352,9 +392,122 @@ def _insight(
         uc_unfinished=unfinished[0],
         uc_checked=unfinished[1],
         stations=stations,
+        line4=line4_stations(name),
+        reg_flags=area_flags(name),
         near_station_in_budget=len(near),
         near_station_in_budget_checked=sum(bool(d.get("page_checked")) for d in near),
     )
+
+
+# ---- trend series, liquidity, supply -----------------------------------------------------
+
+
+def _month_key(d: date) -> str:
+    return f"{d.year}-{d.month:02d}"
+
+
+def _months_back(end: date, k: int) -> str:
+    m = end.year * 12 + end.month - 1 - k
+    return f"{m // 12}-{m % 12 + 1:02d}"
+
+
+def price_series(everything: list[dict], end: date) -> list[tuple[str, float, int]]:
+    """Median first-asking €/m² of the listings first seen in each of the last TREND_MONTHS
+    months (month of ``end`` included), with n. Months without listings are left out."""
+    keys = {_months_back(end, k) for k in range(TREND_MONTHS)}
+    by: dict[str, list[float]] = {}
+    for d in everything:
+        fs = _day(d.get("first_seen"))
+        if fs and _month_key(fs) in keys:
+            by.setdefault(_month_key(fs), []).append(_first_ppm(d))
+    return [(k, statistics.median(v), len(v)) for k, v in sorted(by.items())]
+
+
+def trend_6m(
+    series: list[tuple[str, float, int]], end: date
+) -> tuple[float | None, tuple[int, int]]:
+    """(last month ÷ the month 6 earlier − 1, (n earlier, n last)); None unless both months
+    have MIN_MONTH listings."""
+    got = {k: (p, n) for k, p, n in series}
+    old, new = got.get(_months_back(end, 6)), got.get(_month_key(end))
+    ns = (old[1] if old else 0, new[1] if new else 0)
+    if old and new and min(ns) >= MIN_MONTH:
+        return new[0] / old[0] - 1, ns
+    return None, ns
+
+
+def scrape_context(rows: list[dict]) -> tuple[list[date], date | None]:
+    """(sorted scrape days, first day of the current regular run). A scrape day is any day a
+    listing was first or last seen; the regular run starts after the LAST gap > GAP_MAX days
+    (None when there are no dates)."""
+    days = sorted({x for d in rows for k in ("first_seen", "last_seen") if (x := _day(d.get(k)))})
+    if not days:
+        return [], None
+    start = days[0]
+    for a, b in zip(days, days[1:], strict=False):
+        if (b - a).days > GAP_MAX:
+            start = b
+    return days, start
+
+
+def liquidity_stats(
+    rows: list[dict], days: list[date], start: date | None
+) -> dict[int, tuple[float | None, int]]:
+    """{window days: (share gone within the window | None, cohort n)} for windows 30 and 60.
+
+    Cohort = listings first seen AFTER the first day of the regular run (earlier ones carry
+    an unknown real age) and at least ``window`` days before the last scrape day; a gone
+    listing counts only when the next scrape day after its ``last_seen`` is within GAP_MAX
+    days (otherwise we do not know when it went). Share is None below MIN_LIQ."""
+    out: dict[int, tuple[float | None, int]] = {30: (None, 0), 60: (None, 0)}
+    if not days or start is None:
+        return out
+    end = days[-1]
+    for w in out:
+        n = gone = 0
+        for d in rows:
+            fs, ls = _day(d.get("first_seen")), _day(d.get("last_seen"))
+            if not fs or not ls or fs <= start or (end - fs).days < w:
+                continue
+            is_gone = d.get("status") == "gone"
+            if is_gone:
+                i = bisect.bisect_right(days, ls)
+                if i >= len(days) or (days[i] - ls).days > GAP_MAX:
+                    continue
+            n += 1
+            gone += is_gone and (ls - fs).days <= w
+        out[w] = (gone / n if n >= MIN_LIQ else None, n)
+    return out
+
+
+def liquidity_label(gone_60: float | None, gone_30: float | None = None) -> str | None:
+    g = gone_60 if gone_60 is not None else gone_30
+    if g is None:
+        return None
+    return "γρήγορη" if g >= FAST_GONE else "αργή" if g < SLOW_GONE else "μέτρια"
+
+
+LIQUIDITY_THRESHOLDS = (
+    f"γρήγορη: ≥ {_pct(FAST_GONE)} των αγγελιών φεύγουν σε 60 μέρες · "
+    f"αργή: < {_pct(SLOW_GONE)} · αλλιώς μέτρια"
+)
+
+
+def liquidity_text(x: AreaInsight) -> str:
+    """«γρήγορη — 41 % έφυγαν σε 60 μέρες (n=210), 22 % σε 30 (n=260)» or the reason it is
+    unknown. The thresholds are printed by the caller next to it (``LIQUIDITY_THRESHOLDS``)."""
+    if x.liquidity is None:
+        since = f" (τακτικές σαρώσεις από {x.regular_since:%d/%m})" if x.regular_since else ""
+        return (
+            f"άγνωστη — δεν υπάρχει αρκετό ιστορικό{since}· χρειάζονται ≥ {MIN_LIQ} αγγελίες "
+            f"που πρωτοεμφανίστηκαν πριν από 30/60 μέρες (n={x.gone_n_30}/{x.gone_n_60})"
+        )
+    parts = []
+    if x.gone_60 is not None:
+        parts.append(f"{_pct(x.gone_60)} έφυγαν σε 60 μέρες (n={x.gone_n_60})")
+    if x.gone_30 is not None:
+        parts.append(f"{_pct(x.gone_30)} σε 30 (n={x.gone_n_30})")
+    return f"{x.liquidity} — " + ", ".join(parts)
 
 
 # ---- score + text ------------------------------------------------------------------------
@@ -480,11 +633,28 @@ def area_insights(
     areas: tuple[str, ...] | list[str] | None = None,
     year: int | None = None,
     budget: int = DEFAULT_BUDGET,
+    lifecycle: list[dict] | None = None,
 ) -> tuple[list[AreaInsight], float | None]:
     """Metrics per area with at least MIN_FRESH fresh usable listings, plus the reference
     (median fresh €/m² over all eligible input). ``areas`` filters by ``search_area``.
-    Flats only, floor 1 or above (``_upper_flat``)."""
+    Flats only, floor 1 or above (``_upper_flat``).
+
+    ``lifecycle`` = listings of EVERY status (active and gone) with ``status``,
+    ``first_seen``, ``last_seen``; liquidity needs it (default: ``listings``, which the UI
+    loads active-only, so liquidity is then unknown)."""
     year = year or date.today().year
+    life_all = listings if lifecycle is None else lifecycle
+    days, regular_start = scrape_context(life_all)
+    seen = [x for d in listings if (x := _day(d.get("last_seen")))]
+    end = max(seen) if seen else date.today()
+    life_by_area: dict[str, list[dict]] = {}
+    for d in life_all:
+        if (
+            _upper_flat(d)
+            and (areas is None or d.get("search_area") in areas)
+            and _eligible({**d, "is_unfinished": False})
+        ):
+            life_by_area.setdefault(area_name(d.get("neighborhood")), []).append(d)
     scope = [
         d for d in listings if _upper_flat(d) and (areas is None or d.get("search_area") in areas)
     ]
@@ -514,11 +684,23 @@ def area_insights(
     for name, rows in sorted(grouped.items()):
         fresh = [d for d in rows if d.get("is_fresh", True)]
         if len(fresh) >= MIN_FRESH:
-            out.append(
-                _insight(
-                    name, fresh, rows, rents.get(name), year, tuple(unf.get(name, (0, 0))), budget
-                )
+            x = _insight(
+                name, fresh, rows, rents.get(name), year, tuple(unf.get(name, (0, 0))), budget
             )
+            x.trend_series = price_series(rows, end)
+            x.trend_pct_6m, x.trend_6m_n = trend_6m(x.trend_series, end)
+            stats = liquidity_stats(life_by_area.get(name, []), days, regular_start)
+            (x.gone_30, x.gone_n_30), (x.gone_60, x.gone_n_60) = stats[30], stats[60]
+            x.liquidity = liquidity_label(x.gone_60, x.gone_30)
+            x.regular_since = regular_start
+            if x.rent_samples:
+                x.supply_per_rent = x.n_fresh / x.rent_samples
+            out.append(x)
+    ratios = [x.supply_per_rent for x in out if x.supply_per_rent]
+    if ratios:
+        mid = statistics.median(ratios)
+        for x in out:
+            x.supply_rel = x.supply_per_rent / mid if x.supply_per_rent else None
     return out, ref
 
 
@@ -529,9 +711,12 @@ def rank_areas(
     areas: tuple[str, ...] | list[str] | None = None,
     year: int | None = None,
     budget: int = DEFAULT_BUDGET,
+    lifecycle: list[dict] | None = None,
 ) -> list[AreaInsight]:
     """Areas ranked for a buy-to-let private buyer, best first (see module docstring)."""
-    insights, ref = area_insights(listings, rent_rows, areas=areas, year=year, budget=budget)
+    insights, ref = area_insights(
+        listings, rent_rows, areas=areas, year=year, budget=budget, lifecycle=lifecycle
+    )
     by_yield = sorted(
         (x for x in insights if x.gross_yield is not None), key=lambda x: -x.gross_yield
     )
@@ -596,11 +781,32 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
         )
     ok = [x for x in solid if x.trend_pct is None or x.trend_pct > FALLING_TREND]
     if ok:
-        x = max(ok, key=lambda a: a.n_fresh)
-        dom = f", διάμεσα {x.median_dom:.0f} μέρες στην αγορά" if x.median_dom else ""
+        known = [a for a in ok if a.gone_60 is not None or a.gone_30 is not None]
+        if known:
+            x = max(known, key=lambda a: (a.gone_60 if a.gone_60 is not None else a.gone_30))
+            out.append(
+                f"Για ρευστότητα: {x.area}, {liquidity_text(x)}, " f"{x.n_fresh} αγγελίες.{small}"
+            )
+        else:
+            x = max(ok, key=lambda a: a.n_fresh)
+            dom = f", διάμεσα {x.median_dom:.0f} μέρες στην αγορά" if x.median_dom else ""
+            out.append(
+                f"Για ρευστότητα: {x.area}, {x.n_fresh} αγγελίες, "
+                f"{_pct(x.cut_share)} με μείωση τιμής{dom}.{small}"
+            )
+    grow = [(t, x) for x in solid if (t := exit_trend(x)) is not None]
+    if grow:
+        t, x = max(grow, key=lambda p: p[0][0])
+        l4 = (
+            f" — Γραμμή 4 υπό κατασκευή ({', '.join(x.line4)}, ορίζοντας {OPENING})"
+            if x.line4
+            else ""
+        )
+        out.append(f"Για ανατίμηση: {x.area}{l4}, {_signed(t[0])} €/τ.μ. {t[1]} (n={t[2]}).{small}")
+    else:
         out.append(
-            f"Για ρευστότητα: {x.area}, {x.n_fresh} αγγελίες, "
-            f"{_pct(x.cut_share)} με μείωση τιμής{dom}.{small}"
+            "Για ανατίμηση: δεν υπάρχει αρκετό ιστορικό τιμών "
+            f"(χρειάζονται ≥ {MIN_MONTH} αγγελίες ανά μήνα ή ≥ {MIN_TREND} στις δύο ομάδες)."
         )
     near = max(ranked, key=lambda a: a.near_station_in_budget, default=None)
     b = f"{_num(budget)} €"
@@ -614,3 +820,153 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
     else:
         out.append(f"Νεόδμητο έως {b} σε γειτονιά με σταθμό: δεν βρέθηκε αγγελία.")
     return out
+
+
+# ---- the six checks of a buy-to-let investor ---------------------------------------------
+
+GOOD, MID, WARN, UNKNOWN = "καλό", "μέτριο", "προσοχή", "άγνωστο"
+GOOD_YIELD = 0.05  # gross; below LOW_YIELD (4 %) is a warning
+TOO_CHEAP = -0.35  # market_intel: > 35 % under the comps median is a warning, never a bonus
+CHEAP, DEAR = -0.05, 0.05
+EXIT_UP, EXIT_DOWN = 0.02, -0.02
+
+
+def exit_trend(x: AreaInsight) -> tuple[float, str, str] | None:
+    """(change, "σε 6 μήνες" | "από τον Ιούλιο", "n=a/b") — the 6-month change when both
+    months have enough listings, else the July→late-October change; None when neither."""
+    if x.trend_pct_6m is not None:
+        return x.trend_pct_6m, "σε 6 μήνες", f"{x.trend_6m_n[0]}/{x.trend_6m_n[1]}"
+    if x.trend_pct is not None:
+        return x.trend_pct, "από τον Ιούλιο", f"{x.trend_early_n}/{x.trend_late_n}"
+    return None
+
+
+def _signed(x: float, digits: int = 1) -> str:
+    s = _pct(abs(x), digits)
+    return f"+{s}" if x > 0 else f"−{s}" if x < 0 else s
+
+
+def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[str, str, str]]:
+    """Six labelled checks for one listing: (label, value with number and basis, verdict).
+
+    verdict ∈ {καλό, μέτριο, προσοχή, άγνωστο}. ``intel`` = ``market_intel.Intel`` (or None),
+    ``insight`` = the listing's area (or None). Nothing is guessed: a check without its data
+    says «άγνωστο» and why."""
+    out = []
+
+    # 1. price vs comparables
+    comps = intel.comps(d) if intel is not None else None
+    if comps is None:
+        out.append(("Τιμή vs παρόμοια", f"δεν υπάρχουν ≥ {MIN_COMPS} παρόμοια", UNKNOWN))
+    else:
+        pct = comps["pct"]
+        v = WARN if pct <= TOO_CHEAP or pct >= DEAR else GOOD if pct <= CHEAP else MID
+        note = " — υπερβολικά φθηνό, έλεγξε γιατί" if pct <= TOO_CHEAP else ""
+        out.append(
+            (
+                "Τιμή vs παρόμοια",
+                f"{_num(d['price_per_m2'])} €/τ.μ. έναντι διάμεσης {_num(comps['ppm'])} "
+                f"€/τ.μ. ({_signed(pct)}), Παρόμοια ({comps['n']}): {comps['label']}{note}",
+                v,
+            )
+        )
+
+    # 2. yield
+    gy, rent_m = d.get("gross_yield"), d.get("est_monthly_rent")
+    if gy and rent_m and d.get("price"):
+        basis = "εκτίμηση από ζητούμενα ενοίκια περιοχής" if d.get("rent_estimated") else "αγγελία"
+        v = GOOD if gy >= GOOD_YIELD else WARN if gy < LOW_YIELD else MID
+        out.append(
+            (
+                "Απόδοση",
+                f"Μικτή {_pct(gy, 1)} = 12 × {_num(rent_m)} €/μήνα ({basis}) ÷ "
+                f"{_num(d['price'])} €, πριν από έξοδα και φόρους",
+                v,
+            )
+        )
+    else:
+        out.append(("Απόδοση", "δεν υπάρχει εκτίμηση ενοικίου", UNKNOWN))
+
+    # 3. liquidity of the area
+    if insight is None:
+        out.append(("Ρευστότητα περιοχής", "δεν αξιολογείται η περιοχή (λίγες αγγελίες)", UNKNOWN))
+    else:
+        v = {"γρήγορη": GOOD, "μέτρια": MID, "αργή": WARN}.get(insight.liquidity or "", UNKNOWN)
+        out.append(
+            (
+                f"Ρευστότητα περιοχής ({insight.area})",
+                liquidity_text(insight)
+                + (f" · {LIQUIDITY_THRESHOLDS}" if insight.liquidity else ""),
+                v,
+            )
+        )
+
+    # 4. rental demand
+    if insight is None or insight.supply_per_rent is None:
+        out.append(
+            ("Ζήτηση ενοικίου", "δεν έχουμε αριθμό αγγελιών ενοικίασης για την περιοχή", UNKNOWN)
+        )
+    else:
+        rel = insight.supply_rel
+        v = (
+            UNKNOWN
+            if rel is None
+            else GOOD if rel <= SUPPLY_LOW else WARN if rel >= SUPPLY_HIGH else MID
+        )
+        out.append(
+            (
+                "Ζήτηση ενοικίου",
+                f"{_rent_ratio(insight.supply_per_rent)} αγγελίες πώλησης ανά αγγελία "
+                f"ενοικίασης ({insight.n_fresh} πώλησης / {insight.rent_samples} ενοικίασης)· "
+                f"καλό ≤ {SUPPLY_LOW} και προσοχή ≥ {SUPPLY_HIGH} φορές τη διάμεση των περιοχών",
+                v,
+            )
+        )
+
+    # 5. legal / regulatory
+    reg = regulatory_flags(d)
+    if reg:
+        short_let = any(r.startswith("Βραχυχρόνια") for r in reg)
+        frozen = any("δεν εκδίδεται" in r for r in reg)
+        v = WARN if frozen else MID if short_let else GOOD
+        out.append(("Νομικά / κανονιστικά", "· ".join(reg), v))
+    elif d.get("neighborhood"):
+        out.append(
+            (
+                "Νομικά / κανονιστικά",
+                "κανένας περιορισμός βραχυχρόνιας μίσθωσης στα δεδομένα μας "
+                "(δεν αντικαθιστά νομικό έλεγχο)",
+                GOOD,
+            )
+        )
+    else:
+        out.append(("Νομικά / κανονιστικά", "άγνωστη περιοχή", UNKNOWN))
+
+    # 6. exit: €/m² trend of the area (+ Line 4 when its sub-area is named after a station)
+    t = exit_trend(insight) if insight is not None else None
+    st_name = line4_station(d)
+    l4 = (
+        f" · Μετρό Γραμμή 4 υπό κατασκευή: {st_name} (ορίζοντας {OPENING})"
+        if st_name
+        else (f" · {line4_text(insight.line4)}" if insight is not None and insight.line4 else "")
+    )
+    if t is None:
+        series = "δεν υπάρχει αρκετό ιστορικό" + (
+            f" (n={insight.trend_early_n}/{insight.trend_late_n})" if insight is not None else ""
+        )
+        out.append(("Έξοδος (τάση €/τ.μ.)", series + l4, UNKNOWN))
+    else:
+        v = GOOD if t[0] >= EXIT_UP else WARN if t[0] <= EXIT_DOWN else MID
+        out.append(
+            (
+                "Έξοδος (τάση €/τ.μ.)",
+                f"{_signed(t[0])} {t[1]} στη διάμεση ζητούμενη €/τ.μ. της περιοχής (n={t[2]})"
+                f"{l4}",
+                v,
+            )
+        )
+    return out
+
+
+def _rent_ratio(x: float) -> str:
+    return f"{x:.1f}".replace(".", ",")
