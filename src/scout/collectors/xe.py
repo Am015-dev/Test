@@ -41,6 +41,7 @@ from ..config import Strategy, get_settings
 from .base import RAW_HTML_DIR, USER_AGENT, Collector
 from .parse_helpers import (
     _strip_accents,
+    clean_description,
     parse_float,
     parse_floor,
     parse_int,
@@ -239,6 +240,36 @@ def parse_listed_date(html: str) -> datetime | None:
         return datetime.fromisoformat(raw.replace("Z", "+00:00")).replace(tzinfo=None)
     except ValueError:
         return None
+
+
+# The listing's own photos are the JSON-LD ``image`` list (``.../<uuid>-source.jpg?...``,
+# one file per photo, often repeated per format). XE's escaped ``"image_count"`` values are
+# NOT used: on real pages the first ones belong to the embedded "similar listings" (checked
+# on 12 live pages, Oct 2026 — e.g. 25 declared vs 2 own photos), so they only overstate.
+_SOURCE_IMG_RE = re.compile(r"/([0-9a-f-]{36})-source\.(?:jpe?g|webp|png)", re.IGNORECASE)
+
+
+def parse_photo_count(html: str) -> int | None:
+    """Distinct photo files in the listing's own JSON-LD ``RealEstateListing.image`` list.
+
+    0 when the listing lists no photos; None when the page has no listing data at all."""
+    listed: set[str] = set()
+    has_listing = False
+    for block in _LD_JSON_RE.findall(html):
+        try:
+            data = json.loads(block)
+        except (ValueError, TypeError):
+            continue
+        for node in data if isinstance(data, list) else [data]:
+            if not isinstance(node, dict) or node.get("@type") != "RealEstateListing":
+                continue
+            has_listing = True
+            images = node.get("image") or []
+            for url in [images] if isinstance(images, str) else images:
+                found = _SOURCE_IMG_RE.search(url) if isinstance(url, str) else None
+                if found:
+                    listed.add(found.group(1).lower())
+    return len(listed) if has_listing else None
 
 
 def parse_detail_coordinates(html: str) -> tuple[float | None, float | None]:
@@ -609,8 +640,12 @@ class XeCollector(Collector):
             raw["area_m2"] = detail["area_m2"]
         if unfinished_on_detail(html, detail):
             raw["is_unfinished"] = True
+        photos = parse_photo_count(html)
+        if photos is not None:
+            raw["photo_count"] = photos
         desc = detail.get("description")
         if desc:
+            raw["description"] = clean_description(desc)
             rented, listed_rent = parse_rent(desc)
             if rented:
                 raw["is_currently_rented"] = True

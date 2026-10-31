@@ -145,3 +145,15 @@ def source_id_from_url(url: str | None) -> str | None:
         return None
     clean = url.split("?", 1)[0].split("#", 1)[0]
     return clean.rstrip("/").split("/")[-1] or None
+
+
+DESCRIPTION_MAX_CHARS = 1500
+
+
+def clean_description(text: str | None, limit: int = DESCRIPTION_MAX_CHARS) -> str | None:
+    """A listing's own description as stored for display: whitespace collapsed to single
+    spaces, cut to ``limit`` characters. None for missing/blank text."""
+    if not text:
+        return None
+    collapsed = " ".join(text.split())
+    return collapsed[:limit] or None

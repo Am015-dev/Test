@@ -6,7 +6,7 @@ location. Quality-first scoring and the hedonic model both depend on those, so t
 script re-visits detail pages for the rows that are missing them and back-fills:
 
     energy_class, year_built, bedrooms, heating, exact lat/lng, listed_date,
-    and description-derived rented/private/rent.
+    description-derived rented/private/rent, the description itself and the photo count.
 
 XE rate-limits per IP, but DETAIL pages tolerate a steady ~5 s cadence cleanly (measured:
 25/25 fetched with zero 403s at 4-7 s spacing) — the earlier blocks came from fetching too
@@ -29,13 +29,14 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import case, or_, select
 
-from scout.collectors.parse_helpers import parse_private_seller, parse_rent
+from scout.collectors.parse_helpers import clean_description, parse_private_seller, parse_rent
 from scout.collectors.xe import (
     UNFINISHED_CHECK_SINCE,
     XeCollector,
     parse_detail_coordinates,
     parse_detail_jsonld,
     parse_listed_date,
+    parse_photo_count,
     unfinished_on_detail,
 )
 from scout.config import get_settings, load_strategy
@@ -77,21 +78,30 @@ def _new_build_rows(session, limit: int) -> list[ListingRow]:
 
     Their results-page cards say "νεόδμητο 2025" whether the flat is finished or still a
     shell sold off-plan; only the listing's own page says "Υπό κατασκευή" / "παράδοση
-    2027". These are exactly the flats a buyer is recommended, so they are checked first."""
+    2027". These are exactly the flats a buyer is recommended, so they are checked first.
+    Pages already checked but read before the photo count was stored follow, so the
+    recommended flats also get their description + photo count."""
     year = datetime.utcnow().year
     recent = datetime.utcnow() - timedelta(days=14)
+    unchecked = or_(
+        ListingRow.detail_checked_at.is_(None),
+        ListingRow.detail_checked_at < UNFINISHED_CHECK_SINCE,
+    )
     stmt = (
         select(ListingRow)
         .where(ListingRow.source == "xe", ListingRow.status == "active")
         .where(
             or_(
-                ListingRow.detail_checked_at.is_(None),
-                ListingRow.detail_checked_at < UNFINISHED_CHECK_SINCE,
+                unchecked,
+                # read with the check before photos/description were stored: re-read once
+                ListingRow.photo_count.is_(None),
             ),
             ListingRow.excluded.is_(False),
         )
         .where(ListingRow.last_seen >= recent, ListingRow.year_built >= year - 10)
         .order_by(
+            # the under-construction check outranks the photo/description backfill
+            case((unchecked, 0), else_=1),
             case((or_(*(ListingRow.neighborhood.contains(k) for k in STATIONS)), 0), else_=1),
             ListingRow.price_per_m2,
         )
@@ -111,7 +121,15 @@ def enrich(
     collector = XeCollector(load_strategy())
     session_http = collector._new_session()
 
-    filled = {"energy_class": 0, "year_built": 0, "listed_date": 0, "coords": 0, "unfinished": 0}
+    filled = {
+        "energy_class": 0,
+        "year_built": 0,
+        "listed_date": 0,
+        "coords": 0,
+        "unfinished": 0,
+        "description": 0,
+        "photo_count": 0,
+    }
     processed = 0
     fetched = 0
     # Circuit-breaker: XE redirects removed ads AND (when it has bot-flagged the IP) live
@@ -240,8 +258,16 @@ def enrich(
                 # the metro signal + map treat it precisely (a card-only row is "approx").
                 row.location_precision = "exact"
                 filled["coords"] += 1
+            # What the page says and how many photos it has — refreshed on every read so
+            # the UI shows the page as it is now (a None never blanks a stored value).
+            photos = parse_photo_count(html)
+            if photos is not None:
+                row.photo_count = photos
+                filled["photo_count"] += 1
             desc = detail.get("description")
             if desc:
+                row.description = clean_description(desc)
+                filled["description"] += 1
                 rented, rent = parse_rent(desc)
                 if rented:
                     row.is_currently_rented = True
