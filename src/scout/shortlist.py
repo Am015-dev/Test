@@ -116,6 +116,7 @@ def _read_all() -> dict:
         data = {"mandates": data}
     data.setdefault("mandates", [])
     data.setdefault("watch", [])
+    data.setdefault("review", {})
     return data
 
 
@@ -175,6 +176,23 @@ def set_watch(listing_key: str, on: bool) -> None:
     keys = set(data["watch"])
     keys.add(listing_key) if on else keys.discard(listing_key)
     data["watch"] = sorted(keys)
+    _write_all(data)
+
+
+def review_map() -> dict[str, str]:
+    """The owner's verdict on «Βρες μου σπίτι» picks: listing key → "ok" | "no"."""
+    return dict(_read_all()["review"])
+
+
+def set_review(listing_key: str, verdict: str | None) -> None:
+    """Approve ("ok"), drop ("no") or clear (None) a pick; approving also stars it."""
+    data = _read_all()
+    if verdict is None:
+        data["review"].pop(listing_key, None)
+    else:
+        data["review"][listing_key] = verdict
+    if verdict == "ok":
+        data["watch"] = sorted(set(data["watch"]) | {listing_key})
     _write_all(data)
 
 

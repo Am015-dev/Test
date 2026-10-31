@@ -30,6 +30,8 @@ def page(facts: str = "") -> str:
         ("", {"description": "H κατασκευή ξεκίνησε το 2025 με ενεργειακή κλάση Α"}),
         ("", {"description": "Κοντα στον ΗΣΑΠ. Αποπερατωση σε 1,5 χρονο"}),
         ("", {"description": "Η ολοκλήρωση της κατασκευής αναμένεται τον Απρίλιο του 2027."}),
+        ("", {"description": "Οι φωτογραφίες είναι ενδεικτικές απεικονίσεις του έργου."}),
+        ("", {"description": "Δείτε τα φωτορεαλιστικά σχέδια της πολυκατοικίας."}),
     ],
 )
 def test_still_being_built(facts, detail):
@@ -48,3 +50,13 @@ def test_still_being_built(facts, detail):
 def test_finished(facts, detail):
     # the filter bar's "Υπό κατασκευή" option on every page must not count
     assert not unfinished_on_detail(page(facts), detail, TODAY)
+
+
+def test_pages_read_before_the_check_existed_do_not_count_as_checked():
+    from datetime import datetime
+
+    from scout.collectors.xe import checked_for_unfinished
+
+    assert not checked_for_unfinished(None)
+    assert not checked_for_unfinished(datetime(2026, 7, 16))  # opened, but not checked
+    assert checked_for_unfinished(datetime(2026, 10, 31, 13))

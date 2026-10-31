@@ -147,6 +147,20 @@ _DELIVERY_RE = re.compile(
     r"(?:παραδοση|ολοκληρωση|αποπερατωση|διαθεσιμο\s+απο)[^.]{0,60}?(?:20)?(\d{2})\b"
 )
 _BUILDING_NOW_RE = re.compile(r"κατασκευη\s+(?:του\s+)?ξεκινησε|κατασκευαζεται|αποπερατωση\s+σε")
+# Listing pages checked before this date were opened without the under-construction check
+# (unfinished_on_detail): they don't count as checked, and are checked again.
+UNFINISHED_CHECK_SINCE = datetime(2026, 10, 31)
+
+
+def checked_for_unfinished(detail_checked_at: datetime | None) -> bool:
+    """Was the listing page read with the under-construction check?"""
+    return bool(detail_checked_at and detail_checked_at >= UNFINISHED_CHECK_SINCE)
+
+
+# Agents selling off-plan say the photos are illustrations / 3D renders.
+_RENDER_RE = re.compile(
+    r"ενδεικτικ\w*\s+(?:φωτογραφ|απεικον|εικον)|φωτορεαλιστικ|3d\s+(?:απεικον|σχεδ)|\brenders?\b"
+)
 _AVAILABLE_RE = re.compile(r"Διαθέσιμο από:\s*(\d{1,2})/(\d{1,2})/(\d{4})")
 
 
@@ -164,7 +178,7 @@ def unfinished_on_detail(html: str, detail: dict, today: date | None = None) -> 
     if m and date(int(m.group(3)), int(m.group(2)), int(m.group(1))) > today:
         return True
     desc = _strip_accents(detail.get("description") or "").lower()
-    if is_unfinished_text(desc) or _BUILDING_NOW_RE.search(desc):
+    if is_unfinished_text(desc) or _BUILDING_NOW_RE.search(desc) or _RENDER_RE.search(desc):
         return True
     for m in _DELIVERY_RE.finditer(desc):
         year = 2000 + int(m.group(1))

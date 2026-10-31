@@ -10,7 +10,7 @@ import statistics
 
 import streamlit as st
 
-from scout import market_intel, picks
+from scout import market_intel, picks, shortlist
 from scout.ui import buyer
 
 TITLE = "Βρες μου σπίτι"
@@ -23,12 +23,59 @@ def _rent_rows() -> list[dict]:
     return queries.load_rent_comp_rows()
 
 
-def _card(i: int, p: picks.Pick) -> None:
+def arrange(
+    found: list[picks.Pick], review: dict[str, str]
+) -> tuple[list[picks.Pick], list[picks.Pick]]:
+    """(shown, dropped): approved picks first, then the ranking; dropped ones leave the list
+    so the next best move up."""
+
+    def v(p: picks.Pick) -> str | None:
+        return review.get(shortlist.lkey(p.listing))
+
+    shown = sorted((p for p in found if v(p) != "no"), key=lambda p: v(p) != "ok")
+    return shown, [p for p in found if v(p) == "no"]
+
+
+def _review() -> dict[str, str]:
+    """The owner's verdicts (listing key → "ok" | "no"), loaded from storage once a session."""
+    if "pick_review" not in st.session_state:
+        verdicts: dict[str, str] = {}
+        try:
+            verdicts = shortlist.review_map()
+            st.session_state["review_persisted"] = True
+        except shortlist.StorageNotConfigured:
+            st.session_state["review_persisted"] = False
+        except Exception as e:  # network / auth: keep working, say so once
+            st.session_state["review_persisted"] = False
+            buyer._flash("error", f"Οι επιλογές σου δεν φορτώθηκαν ({buyer._reason(e)}).")
+        st.session_state["pick_review"] = verdicts
+    return st.session_state["pick_review"]
+
+
+def set_verdict(key: str, verdict: str | None) -> None:
+    review = _review()
+    if verdict is None:
+        review.pop(key, None)
+    else:
+        review[key] = verdict
+    if verdict == "ok":
+        buyer.watch_keys().add(key)
+    if st.session_state.get("review_persisted"):
+        try:
+            shortlist.set_review(key, verdict)
+        except Exception as e:
+            buyer._flash(
+                "error",
+                f"Δεν αποθηκεύτηκε ({buyer._reason(e)}) — ισχύει μέχρι να κλείσεις τη σελίδα.",
+            )
+
+
+def _card(i: int, p: picks.Pick, approved: bool) -> None:
     d = p.listing
     e = html.escape
     with st.container(border=True, key=f"pick-{d['id']}"):
         st.markdown(
-            f"### {i}. {buyer.eur(d['price'])}\n"
+            f"### {i}. {buyer.eur(d['price'])}" + (" · ✓ το ενέκρινες" if approved else "") + "\n"
             f"**{e(d.get('title') or '')}** · {e(d.get('neighborhood') or '')}"
         )
         c = st.columns(3)
@@ -42,7 +89,8 @@ def _card(i: int, p: picks.Pick) -> None:
         st.markdown("**Γιατί αυτό**\n" + "\n".join(f"- {e(w)}" for w in p.why))
         if p.risks:
             st.markdown("**Έλεγξε**\n" + "\n".join(f"- {e(r)}" for r in p.risks))
-        cols = st.columns(3)
+        key = shortlist.lkey(d)
+        cols = st.columns(2)
         cols[0].link_button("Άνοιγμα στο XE ↗", d["url"], width="stretch")
         cols[1].button(
             "Λεπτομέρειες",
@@ -51,10 +99,51 @@ def _card(i: int, p: picks.Pick) -> None:
             args=(d["id"],),
             width="stretch",
         )
-        label, cb, args, kind = buyer._star_action(d)
-        cols[2].button(
-            label, key=f"pick-star-{d['id']}", on_click=cb, args=args, type=kind, width="stretch"
+        cols = st.columns(2)
+        if approved:
+            cols[0].button(
+                "↺ Αναίρεση έγκρισης",
+                key=f"pick-undo-{d['id']}",
+                on_click=set_verdict,
+                args=(key, None),
+                width="stretch",
+            )
+        else:
+            cols[0].button(
+                "✓ Εγκρίνω",
+                key=f"pick-ok-{d['id']}",
+                on_click=set_verdict,
+                args=(key, "ok"),
+                type="primary",
+                width="stretch",
+                help="Το κρατάω — μπαίνει πρώτο και στα αγαπημένα.",
+            )
+        cols[1].button(
+            "✗ Δεν μου κάνει",
+            key=f"pick-no-{d['id']}",
+            on_click=set_verdict,
+            args=(key, "no"),
+            width="stretch",
+            help="Φεύγει από τη λίστα και εμφανίζεται το επόμενο.",
         )
+
+
+def _dropped(rows: list[picks.Pick]) -> None:
+    with st.expander(f"Απέρριψες {len(rows)}"):
+        for p in rows:
+            d = p.listing
+            c = st.columns([3, 1])
+            c[0].markdown(
+                f"[{buyer.eur(d['price'])} · {d.get('area_m2') or '?'} τ.μ. · "
+                f"{html.escape(d.get('neighborhood') or '')}]({d['url']})"
+            )
+            c[1].button(
+                "Επαναφορά",
+                key=f"pick-back-{d['id']}",
+                on_click=set_verdict,
+                args=(shortlist.lkey(d), None),
+                width="stretch",
+            )
 
 
 def page_find(listings: list[dict]) -> None:
@@ -72,11 +161,15 @@ def page_find(listings: list[dict]) -> None:
         near_rail = c[1].toggle("Δίπλα σε σταθμό μετρό/ΗΣΑΠ", True, key="find_rail")
     intel = market_intel.build(listings)
     rents = _rent_rows()
-    every = picks.find(
+    found = picks.find(
         listings, intel, rents, int(budget), new_only=new_only, near_rail=near_rail, top=10_000
     )
+    review = _review()
+    every, dropped = arrange(found, review)
     lo, hi = budget * (1 - picks.BUDGET_BAND), budget * (1 + picks.BUDGET_BAND)
     if not every:
+        if dropped:
+            _dropped(dropped)
         st.info(
             "Δεν βρήκα αγγελίες με αυτά τα κριτήρια. Δοκίμασε μεγαλύτερο προϋπολογισμό ή "
             "βγάλε έναν όρο (νεόδμητο / σταθμός)."
@@ -88,7 +181,9 @@ def page_find(listings: list[dict]) -> None:
         + (", νεόδμητες" if new_only else "")
         + (", δίπλα σε σταθμό" if near_rail else "")
         + f", η διάμεση μικτή απόδοση είναι **{picks.gr_pct(statistics.median(gross))}**. "
-        "Αυτές είναι οι 3 με την καλύτερη απόδοση και τιμή:"
+        "Αυτές είναι οι 3 με την καλύτερη απόδοση και τιμή. Άνοιξε την αγγελία και δες τις "
+        "φωτογραφίες: αν είναι μόνο renders ή σχέδια, ή δείχνουν γυμνούς τοίχους και σκαλωσιές, "
+        "πάτα «Δεν μου κάνει» και έρχεται το επόμενο."
     )
     checked = sum(p.checked for p in every)
     if checked < len(every):
@@ -96,8 +191,11 @@ def page_find(listings: list[dict]) -> None:
             f"Ελεγμένες σελίδες αγγελιών: {checked} από {len(every)}. Πρώτα δείχνω όσες "
             "επιβεβαιώθηκε ότι είναι έτοιμες (όχι υπό κατασκευή)."
         )
-    for i, p in enumerate(every[: picks.TOP], start=1):
-        _card(i, p)
+    ok = {shortlist.lkey(p.listing) for p in every if review.get(shortlist.lkey(p.listing)) == "ok"}
+    for i, p in enumerate(every[: max(picks.TOP, len(ok))], start=1):
+        _card(i, p, shortlist.lkey(p.listing) in ok)
+    if dropped:
+        _dropped(dropped)
     if near_rail or new_only:
         loose = picks.find(listings, intel, rents, int(budget), new_only=False, near_rail=False)
         if loose and loose[0].gross > every[0].gross + 0.005:

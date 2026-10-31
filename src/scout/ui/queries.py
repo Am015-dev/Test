@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
+from ..collectors.xe import checked_for_unfinished
 from ..consistency import consistency_flags as _consistency_flags
 from ..data_quality import listing_confidence
 from ..data_quality_guards import clean_future_years, data_quality_flags
@@ -207,7 +208,8 @@ def _row_to_dict(
     d["year_built"], d["renovated_year"] = clean_future_years(row.year_built, row.renovated_year)
     d["building_age"] = _building_age(d["year_built"], d["renovated_year"])
     d["is_unfinished"] = bool(row.is_unfinished)
-    d["page_checked"] = row.detail_checked_at is not None
+    # only pages read with the under-construction check count as checked
+    d["page_checked"] = checked_for_unfinished(row.detail_checked_at)
     d["is_fresh"] = True  # load_listings re-derives it against the whole loaded set
     d["strategy_tags"] = _strategy_tags(d)
     rec = _recommend(d)
