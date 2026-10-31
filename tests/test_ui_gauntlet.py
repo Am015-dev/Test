@@ -12,6 +12,7 @@ store and the Claude parser are replaced by in-memory fakes, and no network is t
 from __future__ import annotations
 
 import os
+import re
 from datetime import date
 from pathlib import Path
 
@@ -228,7 +229,7 @@ def test_buyer_journey(env):
     # an example search runs and shows what was understood
     at.button(key="ex0").click().run()
     ok(at, "example")
-    assert any("Αναζήτηση για:" in m.value for m in at.markdown)
+    assert "Χολαργός" in at.expander[0].label  # the filter panel's label says what is applied
     # the AI second opinion is optional: only on request, then its verdicts are on the cards
     assert not any("Δεύτερη γνώμη (AI)**" in m.value for m in at.markdown)
     at.button(key="advice_again").click().run()
@@ -293,8 +294,8 @@ def test_search_filter_editor_sort_and_clear(env):
     at.button(key="ex0").click().run()
     ver = at.session_state["f_ver"]
     calls = at.session_state["advice_calls"] if "advice_calls" in at.session_state else 0
-    at.selectbox(key=f"fe_age_{ver}").set_value("Οποιαδήποτε").run()
-    at.selectbox(key=f"fe_floor_{ver}").set_value("Οποιοσδήποτε").run()
+    at.number_input(key=f"fe_year_{ver}").set_value(0).run()
+    at.number_input(key=f"fe_floor_{ver}").set_value(0).run()
     at.number_input(key=f"fe_pmax_{ver}").set_value(200_000).run()
     ok(at, "price filter")
     at.selectbox(key="sort").set_value("Χαμηλότερη τιμή").run()
@@ -471,21 +472,19 @@ def test_floor_and_age_filters_are_on_screen_without_a_search(env):
         return int(re.search(r"<b>([\d.]+)</b>", m).group(1).replace(".", ""))
 
     def years():
-        return [
-            int(y) for m in at.markdown for y in re.findall(r"κατασκευή <b>(\d{4})</b>", m.value)
-        ]
+        return [int(y) for m in at.markdown for y in re.findall(r"κτίριο (\d{4})", m.value)]
 
-    assert at.selectbox(key="fe_age_0").value == "Έως 40 ετών"
-    assert at.selectbox(key="fe_floor_0").value == "Από 1ο"
+    assert at.number_input(key="fe_year_0").value == date.today().year - 40
+    assert at.number_input(key="fe_floor_0").value == 1
     strict = count()
-    assert all(y >= date.today().year - 40 for y in years())
-    at.selectbox(key="fe_age_0").set_value("Οποιαδήποτε").run()
-    at.selectbox(key="fe_floor_0").set_value("Οποιοσδήποτε").run()
+    assert years() and all(y >= date.today().year - 40 for y in years())
+    at.number_input(key="fe_year_0").set_value(0).run()
+    at.number_input(key="fe_floor_0").set_value(0).run()
     ok(at, "loosen")
     assert count() > strict
-    at.selectbox(key="fe_age_0").set_value("Έως 10 ετών").run()
+    at.number_input(key="fe_year_0").set_value(date.today().year - 10).run()
     ok(at, "new builds")
-    assert all(y >= date.today().year - 10 for y in years())
+    assert years() and all(y >= date.today().year - 10 for y in years())
 
 
 def test_type_and_must_have_filters_accept_any_selection(env):
@@ -549,9 +548,8 @@ def test_one_score_on_map_and_cards(env):
 def test_yield_line_on_cards(env):
     at = fresh(SEARCH)
     cards = _cards(at)
-    assert cards and all(
-        "Ενοίκιο (εκτίμηση) ~" in c and "/μήνα · Μικτή απόδοση " in c for c in cards
-    )
+    text = [re.sub(r"<[^>]+>", "", c) for c in cards]
+    assert text and all("Ενοίκιο (εκτίμηση) ~" in c and "/μήνα · Μικτή απόδοση " in c for c in text)
     assert any("~900 €/μήνα" in c for c in cards)
     assert "Υψηλότερη απόδοση" in at.selectbox(key="sort").options
     assert "Καλύτερη αντιστοιχία" not in at.selectbox(key="sort").options
@@ -569,14 +567,14 @@ def test_unfinished_listing_is_labelled_and_ranks_low(env):
     cards = _cards(at)
     assert f'hg-st-bad">{buyer.UNFINISHED_NOTE}<' in cards[0]
     # in the suggested order it goes to the bottom
-    at.selectbox(key="sort").set_value("Προτεινόμενη").run()
+    at.selectbox(key="sort").set_value(buyer.DEFAULT_SORT).run()
     assert not any("hg-st-bad" in c for c in _cards(at))  # not among the first page
     listings, _ = _buyer_scores()
     from scout import market_intel
 
     intel = market_intel.build(listings)
     hits = [((100, []), d, buyer.buyer_view(d, intel)) for d in listings if not d["excluded"]]
-    hits.sort(key=lambda h: buyer.SORTS["Προτεινόμενη"](h[0][0], h[2], h[1]))
+    hits.sort(key=lambda h: buyer.SORTS[buyer.DEFAULT_SORT](h[0][0], h[2], h[1]))
     assert hits[-1][1]["is_unfinished"]
     hits.sort(key=lambda h: buyer.SORTS["Υψηλότερη απόδοση"](h[0][0], h[2], h[1]))
     assert hits[-1][1]["is_unfinished"]
@@ -592,7 +590,7 @@ def test_show_all_button_relaxes_floor_and_age(env):
         return int(re.search(r"<b>([\d.]+)</b>", m).group(1).replace(".", ""))
 
     before = count()
-    note = next(c.value for c in at.caption if c.value.startswith("Κρύβονται"))
+    note = next(m.value for m in at.markdown if 'class="hg-count"' in m.value)
     assert "ισόγεια/υπόγεια" in note and f"κτίριο πριν το {date.today().year - 40}" in note
     btn = at.button(key="show_all_btn")
     back = int(re.search(r"\(\+([\d.]+)\)", btn.label).group(1).replace(".", ""))
@@ -600,9 +598,9 @@ def test_show_all_button_relaxes_floor_and_age(env):
     ok(at, "show all")
     assert count() == before + back
     ver = at.session_state["f_ver"] if "f_ver" in at.session_state else 0
-    assert at.selectbox(key=f"fe_floor_{ver}").value == "Οποιοσδήποτε"
-    assert at.selectbox(key=f"fe_age_{ver}").value == "Οποιαδήποτε"
-    note = " ".join(c.value for c in at.caption if c.value.startswith("Κρύβ"))
+    assert at.number_input(key=f"fe_floor_{ver}").value == 0
+    assert at.number_input(key=f"fe_year_{ver}").value == 0
+    note = next(m.value for m in at.markdown if 'class="hg-count"' in m.value)
     assert "ισόγεια" not in note and "κτίριο πριν" not in note
     # clearing brings the defaults back
     at.button(key="ex0").click().run()
@@ -659,8 +657,8 @@ def test_no_developer_text_without_keys(env, monkeypatch):
     at.text_input(key="q_text").set_value("δυάρι στον Χολαργό έως 200.000")
     next(b for b in at.button if b.label == "Αναζήτηση").click().run()
     ok(at, "local parse")
-    chips = next(m.value for m in at.markdown if "Αναζήτηση για:" in m.value)
-    assert "Χολαργός" in chips and "200.000" in chips
+    label = at.expander[0].label
+    assert "Χολαργός" in label and "200.000" in label
     assert at.session_state["nl_filters"].bedrooms_min == 1
 
 
@@ -685,7 +683,7 @@ def test_card_shows_build_year_and_renovation_apart():
     card = buyer.card_html(d, {})
     assert "κτίριο 1975, ανακαίνιση 2021" in card
     assert "έτος: δεν δηλώνεται" in buyer.card_html({**d, "year_built": None}, {})
-    assert buyer.DEFAULT_AGE == 40 and buyer.AGES["Έως 40 ετών"] == buyer.DEFAULT_AGE
+    assert buyer.DEFAULT_AGE == 40 and buyer.DEFAULT_FLOOR == 1
 
 
 def test_listing_metric_delta_and_position_bar():

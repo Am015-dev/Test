@@ -22,7 +22,7 @@ KIND_WORDS: dict[str, tuple[str, ...]] = {
     "house": ("μονοκατοικια", "house", "βιλα", "villa"),
 }
 KIND_LABEL = {"apartment": "διαμέρισμα", "maisonette": "μεζονέτα", "house": "μονοκατοικία"}
-NOT_A_HOME = ("πολυκατοικια", "συγκροτημα", "αερα", "οικοπεδο", "κτιριο", "μπλοκ")
+NOT_A_HOME = ("πολυκατοικια", "συγκρ", "αερα", "οικοπεδο", "κτιριο", "μπλοκ")
 
 # The listing dict has no feature columns, so wants are matched on title/location text.
 WANT_WORDS: dict[str, tuple[str, ...]] = {
@@ -214,7 +214,8 @@ def why_hidden(d: dict, f: SearchFilters) -> str | None:
         or (f.bedrooms_max is not None and beds > f.bedrooms_max)
     ):
         return "bedrooms"
-    if f.kinds and not any(title.startswith(w) for k in f.kinds for w in KIND_WORDS[k]):
+    # An unstated kind (no title) is not proof of a house: it never excludes.
+    if title and f.kinds and not any(title.startswith(w) for k in f.kinds for w in KIND_WORDS[k]):
         return "kind"
     if f.private_only and d.get("is_private_seller") is False:
         return "private"

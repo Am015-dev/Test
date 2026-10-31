@@ -30,6 +30,7 @@ from scout.nl_search import NOT_A_HOME, SearchFilters, _norm
 
 from .test_ui_gauntlet import APP, SEARCH, env  # noqa: F401  (env is a fixture)
 
+FLAT_WORDS = ("διαμερισμα", "apartment", "studio", "γκαρσονιερα", "loft", "flat")
 AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
 LIVE = Path(os.environ.get("LIVE_DB", Path(__file__).resolve().parents[1] / "data/listings.db"))
 YEAR, FLOOR = 2015, 2
@@ -42,7 +43,10 @@ ALL = 1_000_000  # render every card
 def _is_home(d: dict) -> bool:
     if d.get("is_suspect") or d.get("is_unfinished"):
         return False
-    if _norm(d.get("title") or "").startswith(NOT_A_HOME):
+    title = _norm(d.get("title") or "")
+    if title.startswith(NOT_A_HOME):
+        return False
+    if title and not title.startswith(FLAT_WORDS):  # houses only when asked for
         return False
     low = d.get("floor") is not None and d["floor"] < 1
     return not d.get("excluded") or low  # only the thesis' ground-floor rule is left to filters
@@ -90,17 +94,17 @@ def _n(s: str) -> int:
 
 
 def _hidden(at) -> tuple[int, dict[str, int], int]:
-    """(N in "Κρύβονται N", {label: n}, n without declared floor/year)."""
-    total, groups, undeclared = 0, {}, 0
-    for c in at.caption:
-        if m := re.match(r"Κρύβ(?:ονται|εται) ([\d.]+) αγγελ\w+: (.*)\.$", c.value):
-            total = _n(m.group(1))
-            for part in m.group(2).split(" · "):
-                num, label = part.split(" ", 1)
-                groups[label] = _n(num)
-        if m := re.match(r"([\d.]+) αγγελ\w+ χωρίς δηλωμένο όροφο/έτος", c.value):
-            undeclared = _n(m.group(1))
-    return total, groups, undeclared
+    """(N in "Κρύβονται N", {label: n}, n without declared floor/year) — the one result line."""
+    line = next(m.value for m in at.markdown if 'class="hg-count"' in m.value)
+    m = re.search(r"Κρύβ(?:ονται|εται) ([\d.]+): (.*)</small>", line)
+    if not m:
+        return 0, {}, 0
+    groups = {}
+    for part in m.group(2).split(" · "):
+        num, label = part.split(" ", 1)
+        groups[label] = _n(num)
+    undeclared = groups.pop("χωρίς όροφο/έτος", 0)
+    return _n(m.group(1)) - undeclared, groups, undeclared
 
 
 def _check_card(card: str, price_max: int, year_min: int) -> None:
@@ -172,9 +176,10 @@ def _prove(
         groups=groups,
     )
 
-    # 4. «Δείξε και αυτές» brings back exactly the undeclared ones, each saying so on its card
+    # 4. «Και αγγελίες χωρίς δηλωμένο όροφο/έτος» brings back exactly the undeclared ones,
+    #    each saying so on its card
     if n_undeclared:
-        at.button(key="undecl_btn").click()
+        at.checkbox(key=f"fe_undecl_{_ver(at)}").check()
         _run(at)
         assert _count(at) == shown + n_undeclared
         extra = [
@@ -216,9 +221,9 @@ def _both_ways(at_factory, listings, report_prefix: str, reports: dict) -> None:
         SearchFilters(areas=areas, price_max=price_max, year_min=YEAR, floor_min=FLOOR),
     )
     ver = at.session_state["f_ver"]
-    assert at.selectbox(key=f"fe_age_{ver}").value == f"Κτίριο από {YEAR}"
-    assert at.selectbox(key=f"fe_floor_{ver}").value == f"Από {FLOOR}ο"
-    assert any(f"κτίριο από {YEAR}" in m.value for m in at.markdown)  # the summary chips say so
+    assert at.number_input(key=f"fe_year_{ver}").value == YEAR
+    assert at.number_input(key=f"fe_floor_{ver}").value == FLOOR
+    assert f"κτίριο από {YEAR}" in at.expander[0].label  # the filter panel says what applies
     reports[f"{report_prefix}/search"] = rep = {"areas": areas, "price_max": price_max}
     _prove(at, listings, areas, price_max, YEAR, rep)
 
@@ -227,10 +232,10 @@ def _both_ways(at_factory, listings, report_prefix: str, reports: dict) -> None:
     ver = _ver(at)
     at.multiselect(key=f"fe_areas_{ver}").set_value(areas)
     at.number_input(key=f"fe_pmax_{ver}").set_value(price_max)
-    at.selectbox(key=f"fe_floor_{ver}").set_value(f"Από {FLOOR}ο")
-    at.selectbox(key=f"fe_age_{ver}").set_value("Έως 10 ετών")  # presets are relative to today
+    at.number_input(key=f"fe_floor_{ver}").set_value(FLOOR)
+    year_min = date.today().year - 10  # a different year than (a), typed in by hand
+    at.number_input(key=f"fe_year_{ver}").set_value(year_min)
     _run(at)
-    year_min = date.today().year - 10
     reports[f"{report_prefix}/widgets"] = rep = {"areas": areas, "price_max": price_max}
     _prove(at, listings, areas, price_max, year_min, rep)
 
