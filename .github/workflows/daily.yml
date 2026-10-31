@@ -74,7 +74,8 @@ jobs:
 
       - name: Check new-build listing pages (under construction?) — best-effort
         # Cards say "νεόδμητο 2025" even for shells sold off-plan; only the listing page says
-        # "Υπό κατασκευή" / "παράδοση 2027". ~5 s a page; each listing is checked once.
+        # "Υπό κατασκευή" / "παράδοση 2027". ~5 s a page; each listing is checked once (pages
+        # checked before photo count + description were stored are re-read once, after).
         timeout-minutes: 40
         continue-on-error: true
         env:
