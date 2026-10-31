@@ -200,6 +200,10 @@ class ListingRow(Base):
     # See Listing.description / photo_count. Added by forward migration on old DBs.
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     photo_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Photo check (scripts/check_photos.py): majority of photo/render/plan/site/stock over up
+    # to three images; NULL kind + a checked_at = looked at, not classifiable (< 3 images).
+    photo_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    photo_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Latest computed score (denormalized for fast UI reads).
     score: Mapped[float] = mapped_column(Float, default=0.0)

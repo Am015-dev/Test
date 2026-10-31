@@ -84,14 +84,17 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     assert "Βήμα 2 από 5" in _text(at)
 
 
-def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env):  # noqa: F811
+def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env, monkeypatch):  # noqa: F811
+    # The seed's points are exact and 300–600 m from a station, so «κοντά σε μετρό» now matches;
+    # shrink the walking limit to get the empty result this test needs for the relaxation counts.
+    monkeypatch.setattr(picks, "NEAR_RAIL_M", 0)
     at = walk(fresh(FIND), budget="guide-b200", where="rail", age="10")
     text = _text(at)
     assert (
         at.session_state["guide"]["age"] == 10
         and "νεόδμητο" in at.button_group(key="guide_chips").options
     )
-    assert "Καμία αγγελία" in text  # the seed has no station neighbourhoods
+    assert "Καμία αγγελία" in text  # no seed flat is within the (zero) walking limit
     relax = [b for b in at.button if b.key and b.key.startswith("relax-")]
     no_rail = next(b for b in relax if b.label.startswith("Χωρίς όρο σταθμού (+"))
     added = int(no_rail.label.split("(+")[1].split(",")[0].rstrip(")"))

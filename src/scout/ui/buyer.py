@@ -374,14 +374,6 @@ def short_status(d: dict) -> tuple[str, str]:
     return "unk", "Δεν έχει ελεγχθεί ακόμα"
 
 
-def _station_text(d: dict) -> str:
-    """The station words for line 2 (W19's ``picks.station_text`` once it exists)."""
-    if fn := getattr(picks, "station_text", None):
-        return fn(d) or ""
-    stn = picks.station(d)
-    return f"Σταθμός {stn}" if stn else ""
-
-
 def _rent_line(d: dict) -> str:
     """Line 4: rent + gross yield, or (a rental) the rent and its €/τ.μ."""
     if not _is_rent(d):
@@ -463,8 +455,8 @@ def card_html(
     l2 = [_floor(floor) if floor is not None else "όροφος: δεν δηλώνεται", _year_text(d)]
     if d.get("neighborhood"):
         l2.append(e(d["neighborhood"]))
-    if stn := _station_text(d):
-        l2.append(e(stn))
+    if stn := picks.station_text(d):
+        l2.append(f"Σταθμός {e(stn)}")
     tone, text = short_status(d) if compact else status(d)
     l3 = f'<span class="hg-st hg-st-{tone}">{text}</span>'
     if d.get("few_photos"):

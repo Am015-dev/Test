@@ -1,0 +1,774 @@
+{
+ "source": "Wikidata (CC0) coordinates and Greek labels of Athens Metro Line 1/2/3 and Proastiakos stations, Greek names are the Wikidata Greek labels normalised to the nominative by hand (not checked against the operators' own lists)",
+ "source_url": "https://query.wikidata.org/ (instance of metro station / railway station, Attica bounding box 23.55–23.90 E, 37.88–38.10 N); each row carries its Wikidata item id",
+ "retrieved": "2026-10-31",
+ "notes": "Lines 1–3 as open on the retrieval date (Line 2 extension to Ilion and Line 4 are not open and not listed; metro_line4.py covers Line 4). Proastiakos stops are those inside or beside the covered municipalities; stops that share a complex with a metro station (Πειραιάς, Νερατζιώτισσα, Δουκίσσης Πλακεντίας, Αθήνα) are listed once as the metro station. mode: metro = Μετρό (Γραμμές 2, 3), isap = ΗΣΑΠ (Γραμμή 1 μόνο; οι σταθμοί που εξυπηρετούν και Γραμμή 2 ή 3 είναι metro), rail = Προαστιακός. legacy = the Latin name older database rows still hold.",
+ "stations": [
+  {
+   "name": "Πειραιάς",
+   "mode": "metro",
+   "lines": [
+    1,
+    3
+   ],
+   "lat": 37.94802,
+   "lng": 23.64355,
+   "wikidata": "Q2712145",
+   "legacy": "Piraeus"
+  },
+  {
+   "name": "Φάληρο",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 37.94496,
+   "lng": 23.66529,
+   "wikidata": "Q1992168"
+  },
+  {
+   "name": "Μοσχάτο",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 37.95525,
+   "lng": 23.68047,
+   "wikidata": "Q2454553"
+  },
+  {
+   "name": "Καλλιθέα",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 37.96039,
+   "lng": 23.69701,
+   "wikidata": "Q2455017"
+  },
+  {
+   "name": "Ταύρος - Ελευθέριος Βενιζέλος",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 37.96236,
+   "lng": 23.70333,
+   "wikidata": "Q2630757"
+  },
+  {
+   "name": "Πετράλωνα",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 37.96845,
+   "lng": 23.70912,
+   "wikidata": "Q2455076"
+  },
+  {
+   "name": "Θησείο",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 37.97675,
+   "lng": 23.72013,
+   "wikidata": "Q2454959"
+  },
+  {
+   "name": "Μοναστηράκι",
+   "mode": "metro",
+   "lines": [
+    1,
+    3
+   ],
+   "lat": 37.97599,
+   "lng": 23.72539,
+   "wikidata": "Q428990"
+  },
+  {
+   "name": "Ομόνοια",
+   "mode": "metro",
+   "lines": [
+    1,
+    2
+   ],
+   "lat": 37.98403,
+   "lng": 23.72797,
+   "wikidata": "Q2630496"
+  },
+  {
+   "name": "Βικτώρια",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 37.99296,
+   "lng": 23.73019,
+   "wikidata": "Q786830"
+  },
+  {
+   "name": "Αττική",
+   "mode": "metro",
+   "lines": [
+    1,
+    2
+   ],
+   "lat": 37.9995,
+   "lng": 23.7228,
+   "wikidata": "Q2454978",
+   "legacy": "Attiki"
+  },
+  {
+   "name": "Άγιος Νικόλαος",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.00682,
+   "lng": 23.72763,
+   "wikidata": "Q3034196"
+  },
+  {
+   "name": "Κάτω Πατήσια",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.0115,
+   "lng": 23.72856,
+   "wikidata": "Q3034255"
+  },
+  {
+   "name": "Άγιος Ελευθέριος",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.0198,
+   "lng": 23.73163,
+   "wikidata": "Q3034315"
+  },
+  {
+   "name": "Άνω Πατήσια",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.02374,
+   "lng": 23.73599,
+   "wikidata": "Q1993587"
+  },
+  {
+   "name": "Περισσός",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.03278,
+   "lng": 23.7447,
+   "wikidata": "Q1993594"
+  },
+  {
+   "name": "Πευκάκια",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.03704,
+   "lng": 23.75012,
+   "wikidata": "Q585055"
+  },
+  {
+   "name": "Νέα Ιωνία",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.04143,
+   "lng": 23.75483,
+   "wikidata": "Q1993580"
+  },
+  {
+   "name": "Ηράκλειο",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.0462,
+   "lng": 23.766,
+   "wikidata": "Q2455059"
+  },
+  {
+   "name": "Ειρήνη",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.04328,
+   "lng": 23.78331,
+   "wikidata": "Q1993573"
+  },
+  {
+   "name": "Νερατζιώτισσα",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.04512,
+   "lng": 23.79294,
+   "wikidata": "Q2455067"
+  },
+  {
+   "name": "Μαρούσι",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.05622,
+   "lng": 23.80492,
+   "wikidata": "Q1993554"
+  },
+  {
+   "name": "ΚΑΤ",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.06596,
+   "lng": 23.80402,
+   "wikidata": "Q2454540"
+  },
+  {
+   "name": "Κηφισιά",
+   "mode": "isap",
+   "lines": [
+    1
+   ],
+   "lat": 38.07323,
+   "lng": 23.80816,
+   "wikidata": "Q2454953"
+  },
+  {
+   "name": "Ανθούπολη",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 38.01694,
+   "lng": 23.69167,
+   "wikidata": "Q4773821",
+   "legacy": "Anthoupoli"
+  },
+  {
+   "name": "Περιστέρι",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 38.01295,
+   "lng": 23.69576,
+   "wikidata": "Q7168797",
+   "legacy": "Peristeri"
+  },
+  {
+   "name": "Άγιος Αντώνιος",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 38.0062,
+   "lng": 23.69956,
+   "wikidata": "Q3556461",
+   "legacy": "Agios Antonios"
+  },
+  {
+   "name": "Σεπόλια",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 38.00268,
+   "lng": 23.71354,
+   "wikidata": "Q7451941",
+   "legacy": "Sepolia"
+  },
+  {
+   "name": "Σταθμός Λαρίσης",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.99214,
+   "lng": 23.7212,
+   "wikidata": "Q3096936",
+   "legacy": "Larissa Station"
+  },
+  {
+   "name": "Μεταξουργείο",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.98677,
+   "lng": 23.72071,
+   "wikidata": "Q6823324"
+  },
+  {
+   "name": "Πανεπιστήμιο",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.98024,
+   "lng": 23.73298,
+   "wikidata": "Q7130848"
+  },
+  {
+   "name": "Σύνταγμα",
+   "mode": "metro",
+   "lines": [
+    2,
+    3
+   ],
+   "lat": 37.97499,
+   "lng": 23.73556,
+   "wikidata": "Q3511631",
+   "legacy": "Syntagma"
+  },
+  {
+   "name": "Ακρόπολη",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.96867,
+   "lng": 23.72941,
+   "wikidata": "Q2829149",
+   "legacy": "Akropoli"
+  },
+  {
+   "name": "Συγγρού - Φιξ",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.9646,
+   "lng": 23.7268,
+   "wikidata": "Q12004572",
+   "legacy": "Syngrou-Fix"
+  },
+  {
+   "name": "Νέος Κόσμος",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.95761,
+   "lng": 23.72833,
+   "wikidata": "Q12884780",
+   "legacy": "Neos Kosmos"
+  },
+  {
+   "name": "Άγιος Ιωάννης",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.95646,
+   "lng": 23.73416,
+   "wikidata": "Q14943016",
+   "legacy": "Agios Ioannis"
+  },
+  {
+   "name": "Δάφνη",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.94916,
+   "lng": 23.73725,
+   "wikidata": "Q5208360",
+   "legacy": "Dafni"
+  },
+  {
+   "name": "Άγιος Δημήτριος",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.94136,
+   "lng": 23.74076,
+   "wikidata": "Q12884767",
+   "legacy": "Agios Dimitrios"
+  },
+  {
+   "name": "Ηλιούπολη",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.92964,
+   "lng": 23.7445,
+   "wikidata": "Q14943026",
+   "legacy": "Ilioupoli"
+  },
+  {
+   "name": "Άλιμος",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.91827,
+   "lng": 23.74437,
+   "wikidata": "Q14943019",
+   "legacy": "Alimos"
+  },
+  {
+   "name": "Αργυρούπολη",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.90305,
+   "lng": 23.74592,
+   "wikidata": "Q14943022",
+   "legacy": "Argyroupoli"
+  },
+  {
+   "name": "Ελληνικό",
+   "mode": "metro",
+   "lines": [
+    2
+   ],
+   "lat": 37.89263,
+   "lng": 23.74744,
+   "wikidata": "Q14943025",
+   "legacy": "Elliniko"
+  },
+  {
+   "name": "Δημοτικό Θέατρο",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.94291,
+   "lng": 23.64735,
+   "wikidata": "Q5277775",
+   "legacy": "Dimotiko Theatro"
+  },
+  {
+   "name": "Μανιάτικα",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.95954,
+   "lng": 23.63978,
+   "wikidata": "Q16891621",
+   "legacy": "Maniatika"
+  },
+  {
+   "name": "Νίκαια",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.96574,
+   "lng": 23.64755,
+   "wikidata": "Q20552790",
+   "legacy": "Nikaia"
+  },
+  {
+   "name": "Κορυδαλλός",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.97705,
+   "lng": 23.6504,
+   "wikidata": "Q6432823",
+   "legacy": "Korydallos"
+  },
+  {
+   "name": "Αγία Βαρβάρα",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.98971,
+   "lng": 23.65932,
+   "wikidata": "Q4692515"
+  },
+  {
+   "name": "Αγία Μαρίνα",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.99686,
+   "lng": 23.66713,
+   "wikidata": "Q4692503",
+   "legacy": "Agia Marina"
+  },
+  {
+   "name": "Αιγάλεω",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.99144,
+   "lng": 23.68182,
+   "wikidata": "Q10275720",
+   "legacy": "Aigaleo"
+  },
+  {
+   "name": "Ελαιώνας",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.98772,
+   "lng": 23.69337,
+   "wikidata": "Q5359232",
+   "legacy": "Eleonas"
+  },
+  {
+   "name": "Κεραμεικός",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.97867,
+   "lng": 23.71116,
+   "wikidata": "Q6393546",
+   "legacy": "Kerameikos"
+  },
+  {
+   "name": "Ευαγγελισμός",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.9759,
+   "lng": 23.74656,
+   "wikidata": "Q5415827",
+   "legacy": "Evangelismos"
+  },
+  {
+   "name": "Μέγαρο Μουσικής",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.97903,
+   "lng": 23.75301,
+   "wikidata": "Q6808839",
+   "legacy": "Megaro Moussikis"
+  },
+  {
+   "name": "Αμπελόκηποι",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.98722,
+   "lng": 23.7575,
+   "wikidata": "Q4741199",
+   "legacy": "Ambelokipi"
+  },
+  {
+   "name": "Πανόρμου",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.99303,
+   "lng": 23.76353,
+   "wikidata": "Q7131533",
+   "legacy": "Panormou"
+  },
+  {
+   "name": "Κατεχάκη",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.99345,
+   "lng": 23.77697,
+   "wikidata": "Q6375908",
+   "legacy": "Katehaki"
+  },
+  {
+   "name": "Εθνική Άμυνα",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 37.99947,
+   "lng": 23.78481,
+   "wikidata": "Q5404327",
+   "legacy": "Ethniki Amyna"
+  },
+  {
+   "name": "Χολαργός",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 38.00491,
+   "lng": 23.79471,
+   "wikidata": "Q12884797",
+   "legacy": "Holargos"
+  },
+  {
+   "name": "Νομισματοκοπείο",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 38.0091,
+   "lng": 23.80577,
+   "wikidata": "Q7048632",
+   "legacy": "Nomismatokopio"
+  },
+  {
+   "name": "Αγία Παρασκευή",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 38.01722,
+   "lng": 23.8125,
+   "wikidata": "Q4692510",
+   "legacy": "Agia Paraskevi"
+  },
+  {
+   "name": "Χαλάνδρι",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 38.02175,
+   "lng": 23.82118,
+   "wikidata": "Q12884792",
+   "legacy": "Chalandri"
+  },
+  {
+   "name": "Δουκίσσης Πλακεντίας",
+   "mode": "metro",
+   "lines": [
+    3
+   ],
+   "lat": 38.02396,
+   "lng": 23.83254,
+   "wikidata": "Q5302218",
+   "legacy": "Doukissis Plakentias"
+  },
+  {
+   "name": "Λεύκα",
+   "mode": "rail",
+   "lines": [],
+   "lat": 37.9554,
+   "lng": 23.654,
+   "wikidata": "Q12884446"
+  },
+  {
+   "name": "Άγιος Ιωάννης Ρέντης",
+   "mode": "rail",
+   "lines": [],
+   "lat": 37.96246,
+   "lng": 23.66851,
+   "wikidata": "Q12884415"
+  },
+  {
+   "name": "Ταύρος",
+   "mode": "rail",
+   "lines": [],
+   "lat": 37.96884,
+   "lng": 23.6936,
+   "wikidata": "Q15116601"
+  },
+  {
+   "name": "Ρουφ",
+   "mode": "rail",
+   "lines": [],
+   "lat": 37.9738,
+   "lng": 23.7041,
+   "wikidata": "Q14365997"
+  },
+  {
+   "name": "Λιόσια",
+   "mode": "rail",
+   "lines": [],
+   "lat": 38.0103,
+   "lng": 23.72062,
+   "wikidata": "Q12884449"
+  },
+  {
+   "name": "Άγιοι Ανάργυροι",
+   "mode": "rail",
+   "lines": [],
+   "lat": 38.02186,
+   "lng": 23.71843,
+   "wikidata": "Q15116518"
+  },
+  {
+   "name": "Πύργος Βασιλίσσης",
+   "mode": "rail",
+   "lines": [],
+   "lat": 38.0396,
+   "lng": 23.7274,
+   "wikidata": "Q16330274"
+  },
+  {
+   "name": "Καμάτερο",
+   "mode": "rail",
+   "lines": [],
+   "lat": 38.06167,
+   "lng": 23.7144,
+   "wikidata": "Q96095224"
+  },
+  {
+   "name": "Μεταμόρφωση",
+   "mode": "rail",
+   "lines": [],
+   "lat": 38.06008,
+   "lng": 23.75629,
+   "wikidata": "Q12884456"
+  },
+  {
+   "name": "Ηράκλειο",
+   "mode": "rail",
+   "lines": [],
+   "lat": 38.05716,
+   "lng": 23.77135,
+   "wikidata": "Q12884439"
+  },
+  {
+   "name": "Χαλάνδρι",
+   "mode": "rail",
+   "lines": [],
+   "lat": 38.02026,
+   "lng": 23.79428,
+   "wikidata": "Q16328384"
+  },
+  {
+   "name": "Κηφισίας",
+   "mode": "rail",
+   "lines": [],
+   "lat": 38.04194,
+   "lng": 23.80333,
+   "wikidata": "Q6405881"
+  },
+  {
+   "name": "Πεντέλη",
+   "mode": "rail",
+   "lines": [],
+   "lat": 38.03343,
+   "lng": 23.82205,
+   "wikidata": "Q12884465"
+  }
+ ]
+}

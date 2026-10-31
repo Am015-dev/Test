@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import html
 
+from . import picks
 from .finance import acquisition_costs
 from .metrics import investor_metrics
 from .ui.format import euro, euro_per_m2, pct
@@ -48,13 +49,8 @@ def _year(d: dict) -> str:
 
 
 def _metro(d: dict) -> str:
-    name = d.get("nearest_metro")
-    dist = d.get("metro_distance_m")
-    if name and dist:
-        return f"{_esc(name)} ({int(dist)} m)"
-    if name:
-        return _esc(name)
-    return "—"
+    text = picks.station_text(d)
+    return _esc(text) if text else "—"
 
 
 def _rows_html(pairs: list[tuple[str, str]]) -> str:

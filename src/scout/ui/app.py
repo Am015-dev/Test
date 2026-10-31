@@ -2245,8 +2245,6 @@ def _compare_rows(d: dict) -> dict[str, str]:
 
     rent = d.get("listed_rent") or d.get("est_monthly_rent")
     gy = buyer.gross_yield(d)
-    station = getattr(picks, "station_text", None)
-    stn = station(d) if station else (picks.station(d) or "")
     return {
         "Τιμή": fmt.euro(d["price"]),
         "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")) if d.get("price_per_m2") else UNKNOWN,
@@ -2255,8 +2253,8 @@ def _compare_rows(d: dict) -> dict[str, str]:
         "Έτος": str(d["year_built"]) if d.get("year_built") else UNKNOWN,
         "Ενοίκιο (εκτίμηση)": f"~{fmt.euro(round(rent, -1))}/μήνα" if rent else UNKNOWN,
         "Μικτή απόδοση": buyer.pct1(gy) if gy else UNKNOWN,
-        # no station in the neighbourhood name is not «unknown»: we just cannot tell
-        "Σταθμός": stn.removeprefix("Σταθμός ") or "δεν προκύπτει",
+        # no station from the point or the neighbourhood name is not «unknown»: we cannot tell
+        "Σταθμός": picks.station_text(d) or "δεν προκύπτει",
     }
 
 

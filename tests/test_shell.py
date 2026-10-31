@@ -117,7 +117,7 @@ def test_compare_is_a_three_column_facts_table_for_two_flats(env):  # noqa: F811
         "Σταθμός",
     ]
     assert len(fields) <= 8  # C3: at most eight rows, one value per cell
-    for r in rows[2:]:
+    for r in rows[2:-1]:  # «Μετρό Χολαργός · 360 μ.» (the station row) is one value
         assert all(" · " not in c for c in r.split("|")[2:4]), r
     # then the two compact cards, two buttons each
     assert sum(1 for b in at.button if b.label == "Λεπτομέρειες") == 2
