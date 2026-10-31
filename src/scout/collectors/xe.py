@@ -158,9 +158,11 @@ def checked_for_unfinished(detail_checked_at: datetime | None) -> bool:
     return bool(detail_checked_at and detail_checked_at >= UNFINISHED_CHECK_SINCE)
 
 
-# Agents selling off-plan say the photos are illustrations / 3D renders.
+# Agents selling off-plan say the photos are illustrations / 3D renders, or stock photos
+# "for presentation purposes" (seen stamped on the images themselves and in the text).
 _RENDER_RE = re.compile(
     r"ενδεικτικ\w*\s+(?:φωτογραφ|απεικον|εικον)|φωτορεαλιστικ|3d\s+(?:απεικον|σχεδ)|\brenders?\b"
+    r"|παρομοι\w*\s+φωτογραφ|για\s+λογους\s+παρουσιασης"
 )
 _AVAILABLE_RE = re.compile(r"Διαθέσιμο από:\s*(\d{1,2})/(\d{1,2})/(\d{4})")
 
