@@ -1,5 +1,5 @@
 """C11: one photo per card — a fixed 4:3 thumbnail left of line 1, full width on the listing
-page, and a quiet «Χωρίς φωτογραφία» box when there is none."""
+page, and no box at all when there is none."""
 
 from __future__ import annotations
 
@@ -27,9 +27,9 @@ def test_photo_box_with_and_without_a_photo():
     assert "hg-thumb-empty" not in with_photo.split("onerror")[0]
 
     for d in ({}, {"image_url": None}, {"image_url": "javascript:alert(1)"}):
-        empty = buyer.photo_html(d)
-        assert "<img" not in empty
-        assert 'class="hg-thumb hg-thumb-empty"' in empty and "Χωρίς φωτογραφία" in empty
+        assert (
+            buyer.photo_html(d) == ""
+        )  # no photo: no box (a grey box on every card reads as broken)
 
     assert buyer.photo_html({"image_url": IMG}, hero=True).startswith(
         '<figure class="hg-thumb hg-thumb-hero">'
@@ -79,16 +79,16 @@ def test_search_and_listing_page_show_the_thumbnail_markup(env):  # noqa: F811
     ok(at, "search")
     cards = _cards(at)
     assert cards
-    assert all('<figure class="hg-thumb' in c for c in cards)
     photos = [c for c in cards if "<img " in c]
     assert photos
     for c in photos:
         assert re.search(
             r'<img src="https://[^"]+" loading="lazy" alt="Φωτογραφία της αγγελίας"', c
         )
-    assert any("hg-thumb-empty" in c and "Χωρίς φωτογραφία" in c for c in cards)
+    assert any("hg-thumb" not in c for c in cards)  # a card without a photo has no box
 
-    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+    idx = next(i for i, c in enumerate(cards) if "<img " in c)  # a card that has a photo
+    [b for b in at.button if b.label == "Λεπτομέρειες"][idx].click().run()
     ok(at, "listing page")
     assert at.session_state["page"] == "Αγγελία"
     assert any("hg-thumb hg-thumb-hero" in c for c in _cards(at))
