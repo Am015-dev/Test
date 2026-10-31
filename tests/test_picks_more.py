@@ -22,8 +22,11 @@ BUDGET = 300_000
 
 
 def flat(i, price, hood="Νέα Ιωνία (Περισσός)", year=2024, m2=80, **kw):
+    # The stored rent estimate, as the pipeline writes it: the neighbourhood's €/m² × m².
+    ppm = next((r["rent_per_m2"] for r in RENTS if r["neighborhood"] == hood), 12.0)
     return {
         "id": i,
+        "est_monthly_rent": round(ppm * m2),
         "url": f"https://x/{i}",
         "title": f"Διαμέρισμα {m2} τ.μ.",
         "price": price,
