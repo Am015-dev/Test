@@ -379,7 +379,7 @@ def _reasons(x: AreaInsight, ref_ppm: float) -> list[str]:
         cands.append(
             (
                 WEIGHTS["yield"] * c["yield"],
-                f"Μικτή απόδοση {_pct(x.gross_yield, 1)}: ζητούμενο ενοίκιο "
+                f"Μικτή απόδοση {_pct(x.gross_yield, 1)}: ενοίκιο (εκτίμηση) "
                 f"{f'{x.rent_ppm:.1f}'.replace('.', ',')} €/τ.μ./μήνα ({n}) έναντι "
                 f"{_num(x.median_ppm)} €/τ.μ. ζητούμενης τιμής πώλησης.",
             )
@@ -561,7 +561,8 @@ def why(x: AreaInsight) -> str:
         n = f" από {x.rent_samples} αγγελίες ενοικίασης" if x.rent_samples else ""
         rank = f" ({x.yield_rank}η από {x.yield_of})" if x.yield_rank else ""
         parts.append(
-            f"Απόδοση {_pct(x.gross_yield, 1)}{rank} με ενοίκιο {_rent(x.rent_ppm)} €/τ.μ.{n}"
+            f"Μικτή απόδοση {_pct(x.gross_yield, 1)}{rank} με ενοίκιο (εκτίμηση) "
+            f"{_rent(x.rent_ppm)} €/τ.μ.{n}"
         )
     if x.new_premium is not None:
         word = "ακριβότερα" if x.new_premium >= 0 else "φθηνότερα"
@@ -590,8 +591,8 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
             f" ({_pct(x.gross_yield_new, 1)} στα νεόδμητα)" if x.gross_yield_new is not None else ""
         )
         out.append(
-            f"Για απόδοση: {x.area}, μικτή {_pct(x.gross_yield, 1)} στα παλιά{new_y}, "
-            f"ενοίκιο {_rent(x.rent_ppm)} €/τ.μ. από ζητούμενα ενοίκια της περιοχής, "
+            f"Για απόδοση: {x.area}, μικτή απόδοση {_pct(x.gross_yield, 1)} στα παλιά{new_y}, "
+            f"ενοίκιο (εκτίμηση) {_rent(x.rent_ppm)} €/τ.μ. από ζητούμενα ενοίκια της περιοχής, "
             f"{x.n_fresh} αγγελίες πώλησης.{small}"
         )
     ok = [x for x in solid if x.trend_pct is None or x.trend_pct > FALLING_TREND]

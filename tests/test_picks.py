@@ -69,7 +69,7 @@ def test_checked_pages_rank_first_and_unchecked_are_flagged():
     assert [p.listing["id"] for p in got] == [2, 1]
     assert got[0].checked and not got[1].checked
     assert got[0].status.startswith("Ελέγχθηκε η περιγραφή")
-    assert got[1].status == "Δεν έχει ελεγχθεί ακόμα η σελίδα της αγγελίας"
+    assert got[1].status == "Δεν έχει ελεγχθεί ακόμα"
 
 
 def test_approved_go_first_and_dropped_leave_so_the_next_moves_up():
@@ -127,7 +127,7 @@ def test_few_photos_rank_below_real_photos_and_carry_the_risk_line():
     ]
     got = run(rows, top=10)
     assert [p.listing["id"] for p in got][-1] == 1
-    assert got[-1].risks[0] == "≤2 φωτογραφίες — συχνά μόνο render ή λογότυπο"
+    assert got[-1].risks[0] == "Το πολύ 2 φωτογραφίες — συχνά μόνο ψηφιακή απεικόνιση ή λογότυπο"
     assert not any("φωτογραφ" in r for p in got[:2] for r in p.risks)
     # ...but a checked page still beats an unchecked one with real photos
     rows[0]["page_checked"] = True
@@ -158,7 +158,7 @@ def test_relaxations_count_exactly_what_find_would_add():
     by = {r.label: r for r in got}
     assert list(by) == ["Έως 15 ετών", "Προϋπολογισμός +10 %", "Χωρίς όρο σταθμού"]
     assert (by["Έως 15 ετών"].added, by["Έως 15 ετών"].added_checked) == (2, 1)
-    assert by["Έως 15 ετών"].text == "Έως 15 ετών (+2, 1 ελεγμένες)"
+    assert by["Έως 15 ετών"].text == "Έως 15 ετών (+2, 1 με ελεγμένη περιγραφή)"
     assert by["Προϋπολογισμός +10 %"].changes == {"budget": 330_000}
     for r in got:  # the count is find() with that one rule changed, minus what qualifies now
         kw = {"max_age": 10, "near_rail": True, "budget": 300_000, **r.changes}
@@ -166,11 +166,13 @@ def test_relaxations_count_exactly_what_find_would_add():
         wider = picks.find(rows, intel, RENTS, budget, year=YEAR, top=99, **kw)
         assert r.added == len({p.listing["id"] for p in wider} - {1})
     only = picks.relaxations(rows, intel, RENTS, 300_000, year=YEAR, checked_only=True)
-    assert "Μόνο ελεγμένες: όχι" not in {r.label for r in only}  # flat 1 is checked: adds 0
+    assert "Χωρίς όρο ελεγμένης περιγραφής" not in {
+        r.label for r in only
+    }  # flat 1 is checked: adds 0
     rows[0]["page_checked"] = False
     only = picks.relaxations(rows, intel, RENTS, 300_000, year=YEAR, checked_only=True)
-    assert next(r for r in only if r.label == "Μόνο ελεγμένες: όχι").text == (
-        "Μόνο ελεγμένες: όχι (+1)"
+    assert next(r for r in only if r.label == "Χωρίς όρο ελεγμένης περιγραφής").text == (
+        "Χωρίς όρο ελεγμένης περιγραφής (+1)"
     )
 
 
@@ -188,7 +190,7 @@ def test_find_page_relaxation_tap_and_drop(env):  # noqa: F811 — the gauntlet'
     assert at.toggle(key="find_rail").value is False
     text = " ".join(m.value for m in at.markdown)
     assert f"**{added}** αγγελίες" in text  # the tapped count is what the page now finds
-    assert "Δεν έχει ελεγχθεί ακόμα η σελίδα της αγγελίας" in text  # status on every card
+    assert "Δεν έχει ελεγχθεί ακόμα" in text  # status on every card
     assert not at.metric  # no cramped metric rows on a phone
     assert any(e.label == "Πώς υπολογίζω" for e in at.expander)
     first = next(b for b in at.button if b.key and b.key.startswith("pick-no-"))

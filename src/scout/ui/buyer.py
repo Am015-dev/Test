@@ -25,25 +25,11 @@ ADVICE_TONE = {"Αξίζει": "good", "Με επιφύλαξη": "warn", "Απ�
 MAX_SEARCHES = 30  # AI-parsed searches per browser session — bounds API cost
 NAV_DETAIL = "Αγγελία"  # label of the listing-detail page (cards link to it)
 NAV_SEARCH = "Αναζήτηση"  # label of the search page (the listing page links back to it)
-AI_LABEL = "Δεύτερη γνώμη (AI)"
+AI_LABEL = "Δεύτερη γνώμη από τεχνητή νοημοσύνη"
 
-# One scale for every score on screen (cards, map colours and legend): see components.
-SCORE_GOOD, SCORE_MID = 50, 30
-SCORE_LEGEND = (
-    f"Σκορ 0–100: ζητούμενη τιμή σε σχέση με παρόμοια, ηλικία κτιρίου, απόδοση ενοικίου, "
-    f"μετρό, ενεργειακή κλάση. {SCORE_GOOD}+ καλό · {SCORE_MID}–{SCORE_GOOD - 1} μέτριο · "
-    f"κάτω από {SCORE_MID} αδύναμο."
-)
-SCORE_HELP = (
-    "Σκορ = 60% βασικό σκορ (απόδοση ενοικίου, ενεργειακή κλάση, μετρό, μείωση τιμής, "
-    "ιδιώτης) + 40% τιμή σε σχέση με παρόμοια (20% φθηνότερο = πλήρεις μονάδες). "
-    "Μετά × ηλικία κτιρίου (έως 15 ετών ×1, 16–30 ×0,95, 31–40 ×0,8, 41–50 ×0,6, πάνω από 50 "
-    "×0,45, άγνωστη ×0,9). Υπό παράδοση ×0,6, ημιτελές ×0,25. "
-    "▲ βοηθά · ▼ ρίχνει · ≈ ουδέτερο · ? άγνωστο."
-)
 CONF_HELP = (
-    "Αξιοπιστία σύγκρισης: Υψηλή = 12+ παρόμοια και το μεσαίο 50% των τιμών τους απέχει έως "
-    "25% του διάμεσου· Χαμηλή = λιγότερα από 8 παρόμοια ή εύρος πάνω από 45%· αλλιώς Μέτρια. "
+    "Αξιοπιστία σύγκρισης: Υψηλή = 12+ παρόμοια και το μεσαίο 50 % των τιμών τους απέχει έως "
+    "25 % του διάμεσου· Χαμηλή = λιγότερα από 8 παρόμοια ή εύρος πάνω από 45 %· αλλιώς Μέτρια. "
     "Παρόμοια = ίδια περιοχή, ηλικία κτιρίου και (όπου γίνεται) μέγεθος και όροφος."
 )
 UNFINISHED_NOTE = "Υπό κατασκευή"
@@ -358,7 +344,7 @@ DOM_BASIS = {"listed": "από την ημερομηνία αγγελίας", "s
 def dom_text(d: dict) -> str:
     """'109 μέρες στην αγορά (από την ημερομηνία αγγελίας)' — the basis when we know it."""
     basis = DOM_BASIS.get(d.get("dom_basis") or "")
-    return f"{d['days_on_market']} μέρες στην αγορά" + (f" ({basis})" if basis else "")
+    return f"{_days(d['days_on_market'])} στην αγορά" + (f" ({basis})" if basis else "")
 
 
 def _year_text(d: dict) -> str:
@@ -407,7 +393,10 @@ def card_html(d: dict, adv: dict, basis: bool = True) -> str:
     if twins := adv.get("twins"):
         low = twins[0]["price"]
         cheaper = f", η φθηνότερη {eur(low)}" if d.get("price") and low < d["price"] else ""
-        extras.append(f"Ίδιο σπίτι σε {len(twins)} ακόμα αγγελίες{cheaper}")
+        extras.append(
+            f"Ίδιο σπίτι σε {len(twins)} ακόμα {'αγγελία' if len(twins) == 1 else 'αγγελίες'}"
+            f"{cheaper}"
+        )
     if d.get("energy_class"):
         extras.append(f"Ενεργειακή κλάση {e(str(d['energy_class']).strip())}")
     out = (
@@ -690,6 +679,11 @@ def _num(n: int) -> str:
     return f"{n:,}".replace(",", ".")
 
 
+def _days(n: int) -> str:
+    """'1 μέρα' / '109 μέρες'."""
+    return f"{n} {'μέρα' if n == 1 else 'μέρες'}"
+
+
 def _editor_defaults(f: SearchFilters, ver: int, options: list[str]) -> None:
     """Pre-fill every filter widget once per search (``ver``) through session state, so the
     page can read the current filters before drawing them and buttons can set them."""
@@ -815,7 +809,8 @@ def _filter_editor(f: SearchFilters, pool: list[dict], stale: int = 0) -> Search
             )
             if stale:
                 st.checkbox(
-                    f"Και {_num(stale)} παλαιότερες αγγελίες (μπορεί να έχουν ήδη πουληθεί)",
+                    f"Και {_num(stale)} παλαιότερ{'η αγγελία' if stale == 1 else 'ες αγγελίες'} "
+                    "(μπορεί να έχουν ήδη πουληθεί)",
                     key="include_stale",
                 )
     return _current(f, ver)
@@ -872,7 +867,7 @@ def page_search(listings: list[dict]) -> None:
                 "Τι ψάχνεις;",
                 key="q_text",
                 max_chars=nl_search.MAX_CHARS,
-                placeholder="π.χ. δυάρι στον Χολαργό έως 180.000€, από 60 τ.μ., με ανελκυστήρα",
+                placeholder="π.χ. δυάρι στον Χολαργό έως 180.000 €, από 60 τ.μ., με ανελκυστήρα",
                 label_visibility="collapsed",
             )
             submitted = c2.form_submit_button("Αναζήτηση", type="primary", width="stretch")
@@ -1112,7 +1107,7 @@ def page_watchlist(listings: list[dict]) -> None:
     if not st.session_state.get("watch_persisted"):
         st.caption(SESSION_ONLY)
     if not starred:
-        st.info("Δεν έχεις αγαπημένα ακόμα. Πάτα «☆ Αγαπημένο» σε μια αγγελία.")
+        st.info("Δεν έχεις αγαπημένα ακόμα. Πάτα «Αγαπημένο» σε μια αγγελία.")
         return
     intel = market_intel.build(listings)
     views = [(d, buyer_view(d, intel)) for d in starred]
@@ -1139,7 +1134,7 @@ def _listing_lines(rows: list[dict]) -> None:
         if d.get("year_built"):
             parts.append(str(d["year_built"]))
         text = " · ".join(parts).replace("[", "(").replace("]", ")")
-        lines.append(f"- [{text} ↗]({d['url']})" if d.get("url") else f"- {text}")
+        lines.append(f"- [{text}]({d['url']})" if d.get("url") else f"- {text}")
     st.markdown("\n".join(lines))
 
 
@@ -1165,7 +1160,7 @@ def position_bar(ppm: float, cmp: dict) -> str:
         f'<div class="hg-pos-med" style="left:{x(cmp["ppm"])}"></div>'
         f'<div class="hg-pos-dot" style="left:{x(ppm)}"></div></div>'
         '<div class="hg-pos-legend">'
-        f'<span><i class="hg-pos-k-band"></i>μεσαίο 50% παρόμοιων: {eur(_r(cmp["p25"], 10))[:-2]}–'
+        f'<span><i class="hg-pos-k-band"></i>μεσαίο 50 % των παρόμοιων: {eur(_r(cmp["p25"], 10))[:-2]}–'
         f'{eur(_r(cmp["p75"], 10))}/τ.μ.</span>'
         f'<span><i class="hg-pos-k-med"></i>διάμεσος {eur(_r(cmp["ppm"], 10))}/τ.μ.</span>'
         f'<span><i class="hg-pos-k-dot"></i>αυτό {eur(_r(ppm, 10))}/τ.μ.</span>'
@@ -1184,7 +1179,7 @@ def _comparison_section(d: dict, adv: dict) -> None:
         f"{comps_basis(d, adv)} Αξιοπιστία σύγκρισης: {confidence(cmp)}.",
         help=CONF_HELP,
     )
-    with st.expander(f"Τα {cmp['n']} παρόμοια"):
+    with st.expander(f"Δες τα παρόμοια ({cmp['n']})"):
         _listing_lines(cmp["rows"])
 
 
@@ -1228,10 +1223,10 @@ def _rent_section(d: dict) -> None:
         st.markdown("**Καθαρή απόδοση** — άλλαξε τις παραδοχές")
         r1 = st.columns(2)
         rent_in = r1[0].number_input(
-            "Ενοίκιο €/μήνα", 0, 20_000, _r(rent, 10), 10, key=f"nc_rent_{lid}"
+            "Ενοίκιο (€/μήνα)", 0, 20_000, _r(rent, 10), 10, key=f"nc_rent_{lid}"
         )
         common = r1[1].number_input(
-            "Κοινόχρηστα που πληρώνεις εσύ €/μήνα",
+            "Κοινόχρηστα που πληρώνεις εσύ (€/μήνα)",
             0,
             2_000,
             0,
@@ -1241,7 +1236,7 @@ def _rent_section(d: dict) -> None:
         )
         r2 = st.columns(2)
         enfia = r2[0].number_input(
-            "ΕΝΦΙΑ €/έτος",
+            "ΕΝΦΙΑ (€/έτος)",
             0,
             20_000,
             _r(4 * (area or 0), 10),
@@ -1252,20 +1247,22 @@ def _rent_section(d: dict) -> None:
         vacant = r2[1].number_input("Μήνες κενό ανά έτος", 0, 12, 1, 1, key=f"nc_vac_{lid}")
         r3 = st.columns(2)
         tax = r3[0].number_input(
-            "Φόρος ενοικίου %",
+            "Φόρος ενοικίου (%)",
             0,
             60,
             15,
             1,
             key=f"nc_tax_{lid}",
-            help="15% έως 12.000 €/έτος, 35% για 12.001–35.000 €, 45% πάνω από 35.000 €.",
+            help="15 % έως 12.000 €/έτος, 35 % για 12.001–35.000 €, 45 % πάνω από 35.000 €.",
         )
-        upkeep = r3[1].number_input("Συντήρηση % του ενοικίου", 0, 50, 8, 1, key=f"nc_upkeep_{lid}")
+        upkeep = r3[1].number_input(
+            "Συντήρηση (% του ενοικίου)", 0, 50, 8, 1, key=f"nc_upkeep_{lid}"
+        )
         income = rent_in * (12 - vacant)
         net = income * (1 - tax / 100 - upkeep / 100) - common * 12 - enfia
         total = price + acq["total_fees"]
         st.markdown(
-            f"Καθαρό ετήσιο ≈ **{eur(_r(net, 100))}** · Καθαρή απόδοση ≈ **{pct1(net / total)}** "
+            f"Καθαρό ετήσιο ~**{eur(_r(net, 100))}** · Καθαρή απόδοση ~**{pct1(net / total)}** "
             f"στο συνολικό κόστος αγοράς {eur(_r(total, 100))}"
         )
         st.caption(
@@ -1280,7 +1277,7 @@ def _rent_section(d: dict) -> None:
         ("Μεσίτης ~2,48 %" if not private else "Μεσίτης (ιδιώτης: 0)", acq["agent"]),
     ]
     st.markdown(
-        f"**Έξοδα αγοράς ≈ {eur(_r(acq['total_fees'], 100))}** "
+        f"**Έξοδα αγοράς ~{eur(_r(acq['total_fees'], 100))}** "
         f"({pct1(acq['fees_pct_of_price'])} της τιμής): "
         + " · ".join(f"{name} {eur(_r(v, 10))}" for name, v in lines)
     )
@@ -1325,7 +1322,7 @@ def page_listing(listings: list[dict]) -> None:
         st.info("Άνοιξε μια αγγελία με «Λεπτομέρειες» από την Αναζήτηση ή τα Αγαπημένα.")
         return
     labels = {
-        f"{eur(d['price'])} · {_m2(d['area_m2']) if d.get('area_m2') else '?'} τ.μ. · "
+        f"{eur(d['price'])} · {_m2(d['area_m2']) if d.get('area_m2') else '—'} τ.μ. · "
         f"{d.get('neighborhood') or ''}": d["id"]
         for d in options
     }
@@ -1342,7 +1339,10 @@ def page_listing(listings: list[dict]) -> None:
     _comparison_section(d, adv)
 
     if twins := adv.get("twins"):
-        st.markdown(f"#### Το ίδιο σπίτι σε {len(twins)} ακόμα αγγελίες")
+        st.markdown(
+            f"#### Το ίδιο σπίτι σε {len(twins)} ακόμα "
+            f"{'αγγελία' if len(twins) == 1 else 'αγγελίες'}"
+        )
         st.caption(
             "Ίδια περιοχή, τ.μ., όροφος και έτος, τιμή έως 10 % διαφορά — πιθανότατα το ίδιο "
             "διαμέρισμα από άλλο μεσίτη. Η χαμηλότερη τιμή είναι το σημείο εκκίνησης."

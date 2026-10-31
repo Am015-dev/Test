@@ -424,7 +424,7 @@ def results_map(
         pts = sorted(pts, key=lambda d: d.get("score") or 0, reverse=True)[:_MAP_MAX_POINTS]
         st.caption(
             f"Εμφανίζονται οι πρώτες {fmt._gr_int(_MAP_MAX_POINTS)} — "
-            "φίλτραρε περιοχή ή τιμή για να δεις όλες."
+            "περιόρισε την περιοχή ή την τιμή για να δεις όλες."
         )
     import pandas as pd
     import pydeck as pdk

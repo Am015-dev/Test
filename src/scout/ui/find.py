@@ -18,6 +18,7 @@ from scout import market_intel, picks, shortlist
 from scout.ui import buyer
 
 TITLE = "Βρες μου σπίτι"
+SESSION_ONLY = "Οι επιλογές σου κρατιούνται μόνο σε αυτή τη συνεδρία."
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -49,9 +50,8 @@ def _review() -> dict[str, str]:
             st.session_state["review_persisted"] = True
         except shortlist.StorageNotConfigured:
             st.session_state["review_persisted"] = False
-        except Exception as e:  # network / auth: keep working, say so once
+        except Exception:  # network / auth: keep working; the find page says so, once
             st.session_state["review_persisted"] = False
-            buyer._flash("error", f"Οι επιλογές σου δεν φορτώθηκαν ({buyer._reason(e)}).")
         st.session_state["pick_review"] = verdicts
     return st.session_state["pick_review"]
 
@@ -67,11 +67,8 @@ def set_verdict(key: str, verdict: str | None) -> None:
     if st.session_state.get("review_persisted"):
         try:
             shortlist.set_review(key, verdict)
-        except Exception as e:
-            buyer._flash(
-                "error",
-                f"Δεν αποθηκεύτηκε ({buyer._reason(e)}) — ισχύει μέχρι να κλείσεις τη σελίδα.",
-            )
+        except Exception:
+            st.session_state["review_unsaved"] = True  # the find page says so, once
 
 
 # On a phone Streamlit stacks columns, which turns a card's 2×2 buttons into four full-width
@@ -110,7 +107,7 @@ def _card(i: int, p: picks.Pick, approved: bool) -> None:
         cols = st.columns(2)
         if approved:
             cols[0].button(
-                "↺ Αναίρεση έγκρισης",
+                "Αναίρεση έγκρισης",
                 key=f"pick-undo-{d['id']}",
                 on_click=set_verdict,
                 args=(key, None),
@@ -199,13 +196,14 @@ METHOD = """
   ευκαιρία.
 - **Προσφορά**: ζητούμενη τιμή −3 %, −3 % ακόμα αν είναι 90+ μέρες στην αγορά, −2 % αν
   πουλάει ιδιώτης. Αφετηρία διαπραγμάτευσης, όχι εκτίμηση αξίας.
-- **Σταθμός**: τα XE δεν δίνουν διεύθυνση· η γειτονιά της αγγελίας είναι η περιοχή ενός
-  σταθμού. Επιβεβαίωσε τη διεύθυνση.
+- **Σταθμός**: η XE.gr δεν δίνει ακριβή διεύθυνση· η γειτονιά της αγγελίας είναι η περιοχή
+  ενός σταθμού. Επιβεβαίωσε τη διεύθυνση.
 - **Ελέγχθηκε η περιγραφή**: διαβάσαμε τη σελίδα της αγγελίας· δεν δηλώνει «Υπό κατασκευή»,
   διαθεσιμότητα σε μελλοντική ημερομηνία ή παράδοση σε επόμενο έτος, και η περιγραφή δεν γράφει
   «ημιτελές», «υπό κατασκευή», «σκελετός». Οι φωτογραφίες δεν ελέγχονται αυτόματα· σημειώνω
-  μόνο όσες αγγελίες έχουν έως 2. Όσες δεν έχουν ελεγχθεί ακόμα μπαίνουν μετά τις ελεγμένες.
-- **Σειρά**: ελεγμένες πρώτα, μετά όσες έχουν περισσότερες από 2 φωτογραφίες, μετά η
+  μόνο όσες αγγελίες έχουν έως 2 φωτογραφίες. Όσες δεν έχουν ελεγχθεί ακόμα μπαίνουν μετά από
+  όσες έχουν ελεγχθεί.
+- **Σειρά**: πρώτα όσες έχουν ελεγχθεί, μετά όσες έχουν περισσότερες από 2 φωτογραφίες, μετά η
   μικτή απόδοση και η τιμή σε σχέση με τα παρόμοια.
 - Τιμές: ζητούμενες τιμές XE.gr, όχι τιμές πώλησης.
 """
@@ -213,32 +211,38 @@ METHOD = """
 
 def page_find(listings: list[dict]) -> None:
     st.markdown(f"## {TITLE}")
-    st.caption("Πες τον προϋπολογισμό σου. Βρίσκω τα 3 καλύτερα για αγορά προς ενοικίαση.")
+    st.caption(
+        "Πες τον προϋπολογισμό σου. Δείχνω 3 αγγελίες για αγορά προς ενοικίαση, "
+        "πρώτες όσες έχουμε ελέγξει."
+    )
     st.markdown(PHONE_CSS, unsafe_allow_html=True)
     st.session_state.setdefault("find_age", picks.NEW_YEARS)
     with st.container(border=True, key="find-form"):
         budget = st.number_input(
             "Προϋπολογισμός (€)", 50_000, BUDGET_MAX, 300_000, 10_000, key="find_budget"
         )
+        st.caption(buyer.eur(budget))  # the number input cannot group digits itself
         max_age = st.selectbox(
             "Ηλικία κτιρίου", list(AGES), format_func=AGES.__getitem__, key="find_age"
         )
         c = st.columns(2)
         near_rail = c[0].toggle("Δίπλα σε σταθμό μετρό/ΗΣΑΠ", True, key="find_rail")
-        checked_only = c[1].toggle("Μόνο ελεγμένες σελίδες", False, key="find_checked")
+        checked_only = c[1].toggle("Μόνο με ελεγμένη περιγραφή", False, key="find_checked")
     intel = market_intel.build(listings)
     rents = _rent_rows()
     year = date.today().year
     rules = dict(max_age=max_age, near_rail=near_rail, checked_only=checked_only, year=year)
     found = picks.find(listings, intel, rents, int(budget), top=10_000, **rules)
     review = _review()
+    if not st.session_state.get("review_persisted") or st.session_state.get("review_unsaved"):
+        st.caption(SESSION_ONLY)
     every, dropped = arrange(found, review)
     lo, hi = budget * (1 - picks.BUDGET_BAND), budget * (1 + picks.BUDGET_BAND)
     what = (
-        f"{buyer.eur(lo)}–{buyer.eur(hi)}"
+        f"με τιμή {buyer.eur(lo)}–{buyer.eur(hi)}"
         + (f", κτίριο έως {max_age} ετών" if max_age is not None else "")
         + (", δίπλα σε σταθμό" if near_rail else "")
-        + (", μόνο ελεγμένες" if checked_only else "")
+        + (", μόνο με ελεγμένη περιγραφή" if checked_only else "")
     )
     checked = sum(p.checked for p in every)
     relax = (
@@ -257,13 +261,14 @@ def page_find(listings: list[dict]) -> None:
         _method()
         return
     st.markdown(
-        f"**{len(every)}** αγγελίες {what}. Ελέγχθηκε η περιγραφή σε **{checked}** από αυτές."
+        f"**{len(every)}** {'αγγελία' if len(every) == 1 else 'αγγελίες'} {what}. "
+        f"Ελέγχθηκε η περιγραφή σε **{checked}** από {len(every)}."
         f" Διάμεση μικτή απόδοση **{picks.gr_pct(statistics.median(p.gross for p in every))}**."
     )
     intro = (
         f"Μόνο {len(every)} {'ταιριάζει' if len(every) == 1 else 'ταιριάζουν'}"
         if len(every) < picks.TOP
-        else f"Μόνο {checked} {'ελεγμένη' if checked == 1 else 'ελεγμένες'}"
+        else f"Μόνο {checked} με ελεγμένη περιγραφή"
     ) + ". Με έναν όρο λιγότερο (σε παρένθεση πόσες προστίθενται):"
     if relax and len(every) < picks.TOP:
         _relax(relax, intro)

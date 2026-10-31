@@ -89,19 +89,25 @@ def describe(f: SearchFilters) -> str:
     """The parsed filters in plain Greek, so the user can check what was understood."""
     parts = []
     if f.areas:
-        parts.append("περιοχή: " + ", ".join(f.areas))
+        named = [a for a in f.areas if not a.isascii()] or f.areas  # "Χολαργός" over "Cholargos"
+        parts.append("περιοχή: " + ", ".join(named))
     if f.budget:
         parts.append(f"κεφάλαιο {_gr(f.budget)} €")
-    if f.price_min or f.price_max:
-        hi = _gr(f.price_max) if f.price_max else "∞"
-        parts.append(f"τιμή {_gr(f.price_min or 0)}–{hi} €")
-    if f.area_min or f.area_max:
-        parts.append(f"{f.area_min or 0:g}–{f'{f.area_max:g}' if f.area_max else '∞'} τ.μ.")
+    if f.price_min and f.price_max:
+        parts.append(f"τιμή {_gr(f.price_min)}–{_gr(f.price_max)} €")
+    elif f.price_min or f.price_max:
+        parts.append(
+            f"τιμή από {_gr(f.price_min)} €" if f.price_min else f"τιμή έως {_gr(f.price_max)} €"
+        )
+    if f.area_min and f.area_max:
+        parts.append(f"{f.area_min:g}–{f.area_max:g} τ.μ.")
+    elif f.area_min or f.area_max:
+        parts.append(f"από {f.area_min:g} τ.μ." if f.area_min else f"έως {f.area_max:g} τ.μ.")
     if f.bedrooms_min is not None or f.bedrooms_max is not None:
         lo, hi = f.bedrooms_min, f.bedrooms_max
         parts.append(f"υπνοδωμάτια: {lo if lo == hi else f'{lo}–{hi}'}")
     if f.floor_min is not None:
-        parts.append(f"όροφος ≥ {f.floor_min:g}")
+        parts.append(f"από {f.floor_min:g}ο όροφο")
     if f.kinds:
         parts.append("τύπος: " + "/".join(KIND_LABEL[k] for k in f.kinds))
     if f.year_min:
@@ -390,7 +396,7 @@ def parse_query(text: str, client=None) -> SearchFilters:
     if client is None:
         key = get_settings().anthropic_api_key
         if not key:
-            raise SearchParseError("Λείπει το ANTHROPIC_API_KEY (βάλ'το στο .env ή στα secrets).")
+            raise SearchParseError("Η αναζήτηση με ελεύθερο κείμενο δεν είναι διαθέσιμη εδώ.")
         import anthropic
 
         client = anthropic.Anthropic(api_key=key)
@@ -412,4 +418,4 @@ def parse_query(text: str, client=None) -> SearchFilters:
         block = next(b for b in resp.content if b.type == "tool_use")
         return SearchFilters.model_validate(block.input)
     except Exception as e:  # API, no tool block, or invalid filters: all the same to the user
-        raise SearchParseError(f"Δεν κατάλαβα την αναζήτηση ({type(e).__name__}).") from e
+        raise SearchParseError("Δεν κατάλαβα την αναζήτηση — δοκίμασε να τη γράψεις αλλιώς.") from e

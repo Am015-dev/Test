@@ -292,7 +292,7 @@ def test_why_is_a_filled_template_without_adjectives():
     rents = [rent("Cholargos", None, 11.2, 38), rent("Cholargos", "Χολαργός (Περισσός)", 11.2, 38)]
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert x.why == (
-        "Απόδοση 4,5 % (1η από 1) με ενοίκιο 11,2 €/τ.μ. από 38 αγγελίες ενοικίασης"
+        "Μικτή απόδοση 4,5 % (1η από 1) με ενοίκιο (εκτίμηση) 11,2 €/τ.μ. από 38 αγγελίες ενοικίασης"
         "· νεόδμητα 60 % ακριβότερα από τα παλιά (n=6/6)· ΗΣΑΠ Περισσός"
     )
 
@@ -330,7 +330,10 @@ def test_decision_sentences_have_numbers_and_budget():
     ]
     ranked = ai.rank_areas(a + b + c, rents, year=YEAR)
     s = ai.decision(ranked, 300_000)
-    assert s[0].startswith("Για απόδοση: Παπάγου, μικτή ") and "ενοίκιο 12,0 €/τ.μ." in s[0]
+    assert (
+        s[0].startswith("Για απόδοση: Παπάγου, μικτή απόδοση ")
+        and "ενοίκιο (εκτίμηση) 12,0 €/τ.μ." in s[0]
+    )
     assert s[1].startswith("Για ρευστότητα: Χολαργός, 61 αγγελίες")
     assert s[2].startswith("Για νεόδμητο κοντά σε σταθμό έως 300.000 €: Μαρούσι (ΗΣΑΠ Μαρούσι)")
     assert "30 αγγελίες, 30 με ελεγμένη περιγραφή" in s[2]
@@ -367,8 +370,8 @@ def test_decision_yield_sentence_splits_old_and_new():
     ranked = ai.rank_areas(_stock() + many(30, ppm=3000, year_built=2015), rents, year=YEAR)
     first = ai.decision(ranked, 300_000)[0]
     assert first == (
-        "Για απόδοση: Χολαργός, μικτή 4,8 % στα παλιά (3,6 % στα νεόδμητα), "
-        "ενοίκιο 12,0 €/τ.μ. από ζητούμενα ενοίκια της περιοχής, 55 αγγελίες πώλησης."
+        "Για απόδοση: Χολαργός, μικτή απόδοση 4,8 % στα παλιά (3,6 % στα νεόδμητα), "
+        "ενοίκιο (εκτίμηση) 12,0 €/τ.μ. από ζητούμενα ενοίκια της περιοχής, 55 αγγελίες πώλησης."
     )
 
 
