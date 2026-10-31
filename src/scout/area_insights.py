@@ -918,13 +918,15 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
         out.append(
             (
                 "Μικτή απόδοση",
-                f"{_pct(gy, 1)} = 12 × {_num(rent_m)} €/μήνα ({basis}) ÷ "
-                f"{_num(d['price'])} €, πριν από έξοδα και φόρους",
+                f"{_pct(gy, 1)} πριν από έξοδα και φόρους. Βγαίνει από ενοίκιο {_num(rent_m)} €/μήνα, "
+                f"{basis}: 12 × {_num(rent_m)} €/μήνα ÷ {_num(d['price'])} € τιμή.",
                 v,
             )
         )
     else:
-        out.append(("Μικτή απόδοση", "Δεν την ξέρουμε: δεν έχουμε ενοίκιο για εδώ.", UNKNOWN))
+        out.append(
+            ("Μικτή απόδοση", "Δεν ξέρουμε την απόδοση: δεν έχουμε ενοίκιο για εδώ.", UNKNOWN)
+        )
 
     # 3. liquidity of the area
     if insight is None:
@@ -947,7 +949,7 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
         out.append(
             (
                 "Ζήτηση ενοικίου",
-                "Δεν την ξέρουμε: δεν έχουμε στοιχεία για ενοίκια εδώ.",
+                "Δεν ξέρουμε τη ζήτηση: δεν έχουμε στοιχεία για ενοίκια εδώ.",
                 UNKNOWN,
             )
         )

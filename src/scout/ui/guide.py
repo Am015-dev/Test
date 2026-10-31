@@ -324,9 +324,9 @@ def recommend(
         f"Σου προτείνω: **{html.escape(area)}**. Εκεί βγαίνει μικτή απόδοση "
         f"{picks.gr_pct(med(ps, lambda p: p.gross))}"
         + (
-            " και είναι η μόνη αγγελία της λίστας"
+            ". Είναι η μόνη αγγελία που σου δείχνω"
             if len(found) == 1
-            else f" και είναι εκεί {len(ps)} από τις {len(found)} αγγελίες της λίστας"
+            else f". Εκεί είναι {len(ps)} από τις {len(found)} αγγελίες που σου δείχνω"
         )
     )
     extra = []
