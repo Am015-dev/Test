@@ -316,11 +316,14 @@ def test_compare_lines_up_every_picked_listing(env):
     """Two flats in the same neighbourhood used to share one column (the later overwrote it),
     and the mixed int/"—" days-on-market row broke Arrow serialisation."""
     at = fresh("Σύγκριση")
-    picks = at.multiselect[0].options[:4]
-    at.multiselect[0].set_value(picks).run()
+    opts = at.selectbox(key="compare_a").options
+    at.selectbox(key="compare_a").set_value(opts[0]).run()
+    at.selectbox(key="compare_b").set_value(opts[1]).run()
     ok(at, "compare")
-    cols = list(at.dataframe[0].value.columns)
-    assert len(cols) == len(set(cols)) == 4, cols
+    legend = next(m.value for m in at.markdown if m.value.startswith("**Α**"))
+    assert "**Β**" in legend
+    table = next(m.value for m in at.markdown if m.value.startswith("| | Α | Β |"))
+    assert all(r.count("|") == 4 for r in table.splitlines())
 
 
 def test_where_to_buy_cards_table_and_handoff(env):
@@ -522,16 +525,13 @@ def test_one_score_on_map_and_cards(env):
     listings, scores = _buyer_scores()
     # the buyer score really differs from the stored thesis score somewhere (else trivial)
     assert any(scores[d["id"]] != round(d.get("score") or 0) for d in listings)
-    by_url = {d["url"]: scores[d["id"]] for d in listings}
     at = fresh("Χάρτης")
     ok(at, "map")
-    table = at.dataframe[0].value
-    assert list(table["Σκορ"]) == [by_url[u] for u in table["Αγγελία"]]
-    assert list(table["Σκορ"]) == sorted(table["Σκορ"], reverse=True)
+    # the map's best-5 cards carry the buyer score, best first
+    shown = _card_scores(at)
+    assert shown and shown == sorted(shown, reverse=True)
+    assert set(shown) <= set(scores.values())
     assert any("Σκορ 0–100" in c.value for c in at.caption)
-    # the map's min-score slider filters on the same score
-    at.slider(key="map_score").set_value(30).run()
-    assert all(s >= 30 for s in at.dataframe[0].value["Σκορ"])
     # the card on the search page and on its listing page show that same score
     at = fresh(SEARCH)
     first = _card_scores(at)[0]
@@ -614,10 +614,12 @@ def test_compare_opens_with_favourites_and_shows_yield(env):
     sl.set_watch("xe:g-1", True)
     at = fresh("Σύγκριση")
     ok(at, "compare")
-    assert len(at.multiselect(key="compare_picks").value) == 2
-    assert all(v.startswith("★ ") for v in at.multiselect(key="compare_picks").value)
-    table = at.dataframe[0].value
-    assert {"Ενοίκιο / μήνα", "Μικτή απόδοση", "Σκορ αγοράς"} <= set(table.index)
+    picked = [at.selectbox(key="compare_a").value, at.selectbox(key="compare_b").value]
+    assert len(set(picked)) == 2 and all(v.startswith("★ ") for v in picked)
+    table = next(m.value for m in at.markdown if m.value.startswith("| | Α | Β |"))
+    assert all(
+        f"| {f} |" in table for f in ("Ενοίκιο (εκτίμηση)", "Μικτή απόδοση", "Καθαρή απόδοση")
+    )
 
 
 DEV_WORDS = ("GITHUB_TOKEN", "GITHUB", "ANTHROPIC", "agent", "Agent", "🤖", "Κατάλαβα", "token")

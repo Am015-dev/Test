@@ -1314,7 +1314,7 @@ def page_today(listings: list[dict]) -> None:
         st.info("Δεν υπάρχουν αγγελίες ακόμα — ανανέωσε τα δεδομένα από το πλάι.")
 
 
-MAP_AGE_ANY = 80  # the age slider's max position means "no age limit"
+MAP_YEAR_MIN = 1960  # the year slider's low end means "any year"
 
 
 def _map_area_group(d: dict) -> str:
@@ -1323,46 +1323,41 @@ def _map_area_group(d: dict) -> str:
     return name.split(" (")[0].strip()
 
 
-def _building_age(d: dict) -> int | None:
-    age = d.get("building_age")
-    if age is not None:
-        return age
+def _built_year(d: dict) -> int | None:
     yb = d.get("year_built")
-    return max(datetime.utcnow().year - yb, 0) if yb else None
+    if yb:
+        return int(yb)
+    age = d.get("building_age")
+    return datetime.utcnow().year - age if age is not None else None
+
+
+def _map_hidden(d: dict) -> bool:
+    """Never drawn: failed the hard filters, suspect data, or a flat that is still unfinished."""
+    return bool(d["excluded"] or d.get("is_suspect") or d.get("is_unfinished"))
 
 
 def _map_filter(
     listings: list[dict],
     *,
     areas: list[str],
-    price: tuple[int, int],
-    price_bounds: tuple[int, int],
-    min_score: int,
-    max_age: int,
-    unknown_age: bool,
-    fresh_only: bool,
-    hide_bad: bool,
+    price_max: int | None,
+    min_year: int | None,
 ) -> list[dict]:
-    """Apply the map page's filters. A price handle left at the slider's end = no limit."""
-    lo = price[0] if price[0] > price_bounds[0] else None
-    hi = price[1] if price[1] < price_bounds[1] else None
+    """The map's three filters. Only active listings that are not hidden (see _map_hidden).
+    A flat with no known year is dropped when a minimum year is set (we can't vouch for it)."""
     wanted = set(areas)
     out = []
     for d in listings:
-        if hide_bad and (d["excluded"] or d.get("is_suspect") or d.get("is_unfinished")):
-            continue
-        if fresh_only and not d.get("is_fresh", True):
+        if _map_hidden(d) or not d.get("is_fresh", True):
             continue
         if wanted and _map_area_group(d) not in wanted:
             continue
         p = d.get("price")
-        if (lo is not None and (p is None or p < lo)) or (hi is not None and p and p > hi):
+        if price_max is not None and p and p > price_max:
             continue
-        if (d.get("score") or 0) < min_score:
-            continue
-        if max_age < MAP_AGE_ANY:
-            age = _building_age(d)
-            if (age is None and not unknown_age) or (age is not None and age > max_age):
+        if min_year is not None:
+            yb = _built_year(d)
+            if yb is None or yb < min_year:
                 continue
         out.append(d)
     return out
@@ -1371,145 +1366,84 @@ def _map_filter(
 def page_map(listings: list[dict]) -> None:
     st.subheader("Χάρτης")
     if not listings:
-        st.info("Δεν υπάρχουν αγγελίες ακόμα — ανανέωσε τα δεδομένα από το πλάι.")
+        st.info("Δεν υπάρχουν αγγελίες ακόμα — πάτα «Ανανέωση» πάνω.")
         return
-    # One score everywhere: the slider, colours, legend and table use the buyer score on the
-    # cards (comparables + age + yield), not the stored thesis score.
+    # One score everywhere: colours and legend use the buyer score on the cards.
     scores = buyer.buyer_scores(listings)
     listings = [{**d, "score": scores[d["id"]]} for d in listings]
-    # Area options stay stable across reruns (all listings); the counts shown follow the
-    # "hide"/"fresh" toggles so they match what the map can actually show.
-    groups = Counter(_map_area_group(d) for d in listings)
-    options = [g for g, _ in groups.most_common()]
-    prices = sorted(d["price"] for d in listings if d.get("price"))
-    if prices:
-        p_lo = int(prices[len(prices) // 100] // 10_000 * 10_000)
-        p_hi = int(-(-prices[min(len(prices) * 99 // 100, len(prices) - 1)] // 10_000) * 10_000)
-    else:
-        p_lo, p_hi = 0, 1_000_000
-    p_hi = max(p_hi, p_lo + 10_000)
+    visible = [d for d in listings if not _map_hidden(d) and d.get("is_fresh", True)]
+    options = [g for g, _ in Counter(_map_area_group(d) for d in visible).most_common()]
+    prices = sorted(d["price"] for d in visible if d.get("price"))
+    p_hi = int(-(-prices[min(len(prices) * 99 // 100, len(prices) - 1)] // 10_000) * 10_000)
+    p_hi = max(p_hi if prices else 1_000_000, 50_000)
 
-    c3, c4 = st.columns(2)
-    hide_bad = c3.checkbox(
-        "Απόκρυψη εκτός κριτηρίων, ύποπτων & ημιτελών",
-        value=True,
-        key="map_hide",
-        help="Κρύβει αγγελίες που κόβονται από τα κριτήρια, με ύποπτα στοιχεία ή ημιτελή κτίρια.",
-    )
-    fresh_only = c4.checkbox(
-        "Μόνο πρόσφατες αγγελίες",
-        value=True,
-        key="map_fresh",
-        help="Μόνο όσες εμφανίστηκαν στην πηγή τις τελευταίες 10 ημέρες.",
-    )
-    base_counts = Counter(
-        _map_area_group(d)
-        for d in listings
-        if not (hide_bad and (d["excluded"] or d.get("is_suspect") or d.get("is_unfinished")))
-        and (not fresh_only or d.get("is_fresh", True))
-    )
-    c1, c2 = st.columns([3, 2])
-    areas = c1.multiselect(
-        "Περιοχές",
-        options,
-        key="map_areas",
-        format_func=lambda g: f"{g} ({base_counts.get(g, 0)})",
-        placeholder="Όλες οι περιοχές",
-    )
-    # In thousands: a numeric slider can't group digits ("450000 €"), "450 χιλ. €" reads right.
-    k_lo, k_hi = c2.slider(
-        "Τιμή",
-        min_value=p_lo // 1000,
+    areas = st.multiselect("Περιοχή", options, key="map_areas", placeholder="Όλες οι περιοχές")
+    c1, c2 = st.columns(2)
+    k_max = c1.slider(
+        "Τιμή έως",
+        min_value=50,
         max_value=p_hi // 1000,
-        value=(p_lo // 1000, p_hi // 1000),
+        value=p_hi // 1000,
         step=10,
         format="%d χιλ. €",
         key="map_price",
-        help="Στα άκρα της μπάρας = χωρίς όριο.",
+        help="Στο τέρμα δεξιά = χωρίς όριο.",
     )
-    price = (k_lo * 1000, k_hi * 1000)
-    c5, c6, c7, c8 = st.columns([2, 2, 1.4, 1.4])
-    min_score = c5.slider(
-        "Ελάχιστο σκορ", 0, 100, 0, step=5, key="map_score", help=buyer.SCORE_HELP
-    )
-    max_age = c6.slider(
-        "Μέγ. ηλικία κτιρίου (έτη)",
-        0,
-        MAP_AGE_ANY,
-        MAP_AGE_ANY,
+    this_year = datetime.utcnow().year
+    year = c2.slider(
+        "Κατασκευή από",
+        min_value=MAP_YEAR_MIN,
+        max_value=this_year,
+        value=MAP_YEAR_MIN,
         step=5,
-        key="map_age",
-        help=f"Στο {MAP_AGE_ANY} = χωρίς όριο.",
+        key="map_year",
+        help="Στο τέρμα αριστερά = χωρίς όριο. Αγγελίες χωρίς έτος κρύβονται όταν βάλεις όριο.",
     )
-    unknown_age = c7.checkbox(
-        "Και χωρίς έτος",
-        value=True,
-        key="map_age_unknown",
-        help="Κράτα και αγγελίες χωρίς έτος κατασκευής όταν βάζεις όριο ηλικίας.",
-    )
-    size_by_price = c8.checkbox("Μέγεθος κατά τιμή", value=False, key="map_size")
-
     matched = _map_filter(
         listings,
         areas=areas,
-        price=price,
-        price_bounds=(p_lo, p_hi),
-        min_score=min_score,
-        max_age=max_age,
-        unknown_age=unknown_age,
-        fresh_only=fresh_only,
-        hide_bad=hide_bad,
+        price_max=None if k_max * 1000 >= p_hi else k_max * 1000,
+        min_year=None if year <= MAP_YEAR_MIN else year,
     )
     shown = [d for d in matched if d.get("lat") and d.get("lng")]
     no_loc = len(matched) - len(shown)
     approx = sum(1 for d in shown if d.get("location_precision") != "exact")
     noun = "αγγελία" if len(shown) == 1 else "αγγελίες"
     st.markdown(f"**{fmt._gr_int(len(shown))} {noun} στον χάρτη**")
+    hidden_unfinished = sum(1 for d in listings if d.get("is_unfinished"))
+    unchecked = sum(1 for d in shown if not d.get("page_checked"))
     notes = []
-    if approx:
+    if hidden_unfinished:
+        notes.append(f"{fmt._gr_int(hidden_unfinished)} υπό κατασκευή δεν εμφανίζονται")
+    if unchecked:
         notes.append(
-            f"{fmt._gr_int(approx)} με κατά προσέγγιση θέση (κέντρο περιοχής — απλωμένες λίγο "
-            "γύρω του για να φαίνονται, πιο αχνές)"
+            f"{fmt._gr_int(unchecked)} δεν έχουν ελεγχθεί ακόμα (δεν ξέρουμε αν είναι έτοιμες)"
         )
+    if approx:
+        notes.append(f"{fmt._gr_int(approx)} με θέση κατά προσέγγιση (κέντρο περιοχής)")
     if no_loc:
-        notes.append(f"{fmt._gr_int(no_loc)} ακόμα ταιριάζουν αλλά δεν έχουν θέση")
+        notes.append(f"{fmt._gr_int(no_loc)} ταιριάζουν αλλά δεν έχουν θέση")
     if notes:
         st.caption(" · ".join(notes) + ".")
     if not shown:
-        if matched:
-            st.info(
-                "Καμία από τις αγγελίες που ταιριάζουν δεν έχει ακόμα θέση. Ο εντοπισμός γίνεται "
-                "κατά την ενημέρωση των δεδομένων."
-            )
-        else:
-            st.info("Καμία αγγελία δεν ταιριάζει — χαλάρωσε τα φίλτρα (σκορ, τιμή, περιοχή).")
+        st.info("Καμία αγγελία δεν ταιριάζει — χαλάρωσε την τιμή, το έτος ή την περιοχή.")
         return
-    components.results_map(shown, key="map_chart", height=480, size_by_price=size_by_price)
+    components.results_map(shown, key="map_chart", height=420)
     st.caption(buyer.SCORE_LEGEND, help=buyer.SCORE_HELP)
 
-    top = sorted(shown, key=lambda d: d.get("score") or 0, reverse=True)[:20]
-    st.markdown("#### Οι καλύτερες στον χάρτη" + (" (top 20)" if len(shown) > 20 else ""))
-    # Link first so it stays on screen on a phone; the wide text columns scroll.
-    table = pd.DataFrame(
-        {
-            "Αγγελία": d.get("url") or "",
-            "Τιμή": fmt.euro(d.get("price")),
-            "Σκορ": round(d.get("score") or 0),
-            "Περιοχή": d.get("neighborhood") or d.get("search_area") or "—",
-            "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")),
-            "Τίτλος": d.get("title") or "",
-        }
-        for d in top
-    )
-    st.dataframe(
-        table,
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Αγγελία": st.column_config.LinkColumn("Αγγελία", display_text="Άνοιγμα ↗"),
-            "Σκορ": st.column_config.NumberColumn("Σκορ", format="%d"),
-        },
-    )
+    # The best few as the same cards as the search page (not a wide table).
+    from scout import market_intel
+
+    intel = market_intel.build(listings)
+    top = sorted(shown, key=lambda d: d.get("score") or 0, reverse=True)[:5]
+    st.markdown("#### Οι 5 καλύτερες στον χάρτη")
+    for d in top:
+        buyer.result_card(
+            d,
+            buyer.buyer_view(d, intel),
+            "m",
+            [("Λεπτομέρειες", buyer.open_detail, (d["id"],)), buyer._star_action(d)],
+        )
 
 
 @st.cache_data(ttl=300)
@@ -2257,12 +2191,55 @@ def page_saved_searches(listings: list[dict]) -> None:
                 st.rerun()
 
 
+def _compare_rows(d: dict, adv: dict) -> dict[str, str]:
+    """One flat's facts as text (field -> value). Every figure names its basis in the field."""
+    from scout import finance, picks
+
+    cmp, age = adv["cmp"], adv["age"]
+    built = d.get("renovated_year") or d.get("year_built")
+    rent = d.get("listed_rent") or d.get("est_monthly_rent")
+    gy = buyer.gross_yield(d)
+    ny = (
+        finance.net_yield(d["price"], rent * 12, d.get("area_m2"), bool(d.get("is_private_seller")))
+        if rent
+        else None
+    )
+    if d.get("is_unfinished"):
+        status = "Υπό κατασκευή"
+    else:
+        status = "Ελέγχθηκε η περιγραφή" if d.get("page_checked") else "Δεν έχει ελεγχθεί ακόμα"
+    return {
+        "Τιμή": fmt.euro(d["price"]),
+        "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")),
+        "Εμβαδόν": f"{d['area_m2']:g} τ.μ." if d.get("area_m2") else "—",
+        "Όροφος": buyer._floor(d["floor"]) if d.get("floor") is not None else "—",
+        "Έτος": f"{built} ({age} ετών)" if built and age is not None else "—",
+        "Ενοίκιο (εκτίμηση)": (
+            f"~{fmt.euro(round(rent, -1))}/μήνα"
+            + ("" if not d.get("listed_rent") else " (αγγελία)")
+            if rent
+            else "—"
+        ),
+        "Μικτή απόδοση": buyer.pct1(gy) if gy else "—",
+        "Καθαρή απόδοση": buyer.pct1(ny) if ny else "—",
+        "Παρόμοια": (
+            f"{cmp['pct']:+.0%} €/τ.μ. · {cmp['n']} παρόμοια, {buyer.confidence(cmp).lower()}"
+            if cmp
+            else "—"
+        ).replace("-", "−"),
+        "Κατάσταση": status,
+        "Σταθμός": picks.station(d) or "—",
+        "Στην αγορά": (
+            f"{d['days_on_market']} μέρες" if d.get("days_on_market") is not None else "—"
+        ),
+    }
+
+
 def page_compare(listings: list[dict]) -> None:
-    """Shortlist several flats and line them up on the numbers that decide it — the "which of
-    these do I chase?" view. Opens with the buyer's favourites when there are 2–4."""
+    """Two flats side by side as a field · Α · Β facts table (3 columns fits a phone)."""
 
     st.subheader("Σύγκριση")
-    st.caption("Διάλεξε 2–4 αγγελίες (τα αγαπημένα πρώτα· γράψε για αναζήτηση).")
+    st.caption("Διάλεξε 2 αγγελίες (τα αγαπημένα πρώτα).")
     from scout import nl_search, shortlist
 
     starred = buyer.watch_keys()
@@ -2275,7 +2252,7 @@ def page_compare(listings: list[dict]) -> None:
 
     def _name(d: dict) -> str:
         # Unique per listing: two flats in one neighbourhood at the same price must not
-        # collapse into one option (or overwrite each other's column in the table below).
+        # collapse into one option.
         size = f" · {d['area_m2']:g} τ.μ." if d.get("area_m2") else ""
         where = d.get("neighborhood") or d["source_id"]
         return f"{where}{size} · {fmt.euro(d['price'])} · #{d['id']}"
@@ -2283,67 +2260,50 @@ def page_compare(listings: list[dict]) -> None:
     by_id = {d["id"]: d for d in elig}
     opts = {("★ " if shortlist.lkey(d) in starred else "") + _name(d): d["id"] for d in elig}
     favs = [o for o, i in opts.items() if shortlist.lkey(by_id[i]) in starred]
-    picks = st.multiselect(
-        "Αγγελίες",
-        list(opts.keys()),
-        default=favs if 2 <= len(favs) <= 4 else None,
-        max_selections=4,
+    # Two selectboxes, not a multiselect: its built-in "select up to 2" notice is English.
+    names = list(opts)
+    pick_a = st.selectbox(
+        "Α",
+        names,
+        index=names.index(favs[0]) if len(favs) >= 2 else None,
+        key="compare_a",
         placeholder="Γράψε περιοχή, τ.μ. ή τιμή",
-        key="compare_picks",
     )
-    chosen = [by_id[opts[p]] for p in picks]
-    if len(chosen) < 2:
-        st.info("Διάλεξε τουλάχιστον δύο αγγελίες.")
+    pick_b = st.selectbox(
+        "Β",
+        names,
+        index=names.index(favs[1]) if len(favs) >= 2 else None,
+        key="compare_b",
+        placeholder="Γράψε περιοχή, τ.μ. ή τιμή",
+    )
+    if not pick_a or not pick_b:
+        st.info("Διάλεξε δύο αγγελίες.")
         return
+    if pick_a == pick_b:
+        st.info("Διάλεξε δύο διαφορετικές αγγελίες.")
+        return
+    chosen = [by_id[opts[pick_a]], by_id[opts[pick_b]]]
 
     from scout import market_intel
 
     intel = market_intel.build(listings)
-
-    def _metrics(d: dict) -> dict:
-        adv = buyer.buyer_view(d, intel)
-        cmp, twins, age = adv["cmp"], adv["twins"], adv["age"]
-        built = d.get("renovated_year") or d.get("year_built")
-        rent = d.get("listed_rent") or d.get("est_monthly_rent")
-        gy = buyer.gross_yield(d)
-        vs = "—"
-        if cmp:
-            vs = f"{cmp['pct']:+.0%} ({cmp['n']}, {buyer.confidence(cmp).lower()})"
-        # Every cell is text: a mixed int/str column fails Arrow serialisation.
-        return {
-            "Τιμή (ζητούμενη)": fmt.euro(d["price"]),
-            "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")),
-            "Εμβαδόν": f"{d['area_m2']:.0f} τ.μ." if d.get("area_m2") else "—",
-            "Υπνοδωμάτια": str(d["bedrooms"]) if d.get("bedrooms") is not None else "—",
-            "Όροφος": f"{d['floor']:g}" if d.get("floor") is not None else "—",
-            "Έτος (ηλικία)": f"{built} ({age} ετών)" if built and age is not None else "—",
-            "Ενοίκιο / μήνα": (
-                f"~{fmt.euro(round(rent, -1))}" + ("" if d.get("listed_rent") else " (εκτίμηση)")
-                if rent
-                else "—"
-            ),
-            "Μικτή απόδοση": buyer.pct1(gy) if gy else "—",
-            "Vs παρόμοια": vs.replace("-", "−"),
-            "Ίδιο σπίτι αλλού": (
-                f"{len(twins)} · από {fmt.euro(twins[0]['price'])}" if twins else "—"
-            ),
-            "Μέρες στην αγορά": (
-                str(d["days_on_market"]) if d.get("days_on_market") is not None else "—"
-            ),
-            "Ενεργ. κλάση": d.get("energy_class") or "—",
-            "Πωλητής": "Ιδιώτης" if d.get("is_private_seller") else "Μεσίτης",
-            "Κατάσταση": "Ημιτελές" if d.get("is_unfinished") else "—",
-            "Σκορ αγοράς": str(adv["score"]),
-        }
-
-    table = {_name(d): _metrics(d) for d in chosen}
-    st.dataframe(pd.DataFrame(table), width="stretch")
-    st.caption(
-        "«Vs παρόμοια»: €/τ.μ. σε σχέση με τη διάμεσο ίδιας περιοχής, ηλικίας και μεγέθους "
-        "(πόσα παρόμοια, αξιοπιστία). Αρνητικό = φθηνότερο. Μικτή απόδοση = 12 × ενοίκιο ÷ "
-        "τιμή. " + buyer.SCORE_LEGEND,
-        help=buyer.SCORE_HELP,
+    views = [_compare_rows(d, buyer.buyer_view(d, intel)) for d in chosen]
+    st.markdown(
+        "\n\n".join(
+            f"**{tag}** · {_name(d).rsplit(' · #', 1)[0]}"
+            for tag, d in zip("ΑΒ", chosen, strict=True)
+        )
     )
+    rows = "".join(f"| {k} | {views[0][k]} | {views[1][k]} |\n" for k in views[0])
+    st.markdown(f"| | Α | Β |\n|---|---|---|\n{rows}")
+    st.caption(
+        "Ενοίκιο: εκτίμηση από ζητούμενα ενοίκια της περιοχής (εκτός αν αναφέρεται στην αγγελία). "
+        "Μικτή απόδοση = 12 × ενοίκιο ÷ τιμή. Καθαρή = μετά από κόστη αγοράς και λειτουργίας. "
+        "Παρόμοια: €/τ.μ. σε σχέση με τη διάμεσο ίδιας περιοχής, ηλικίας και μεγέθους· "
+        "αρνητικό = φθηνότερο.",
+    )
+    for tag, d in zip("ΑΒ", chosen, strict=True):
+        st.link_button(f"Άνοιγμα {tag} στο {d['source'].upper()} ↗", d["url"], width="stretch")
 
 
 # What a buyer uses. The older rental-investor tools (yields, cap rate, Airbnb, Golden Visa)
@@ -2369,15 +2329,36 @@ ADMIN_NAV = {  # open with ?admin=1
 }
 
 
+# Phone navigation: one tap, short labels. Each maps to an existing NAV key (never renamed).
+# «Αποθηκευμένες αναζητήσεις» and «Αγγελία» are reached from their pages, so no pill.
+SHORT_NAV = {
+    "Βρες μου σπίτι": find.TITLE,
+    "Περιοχές": "Πού να αγοράσω",
+    "Αναζήτηση": "Αναζήτηση",
+    "Χάρτης": "Χάρτης",
+    "Αγαπημένα": "Αγαπημένα",
+    "Σύγκριση": "Σύγκριση",
+}
+_PILL_OF = {key: short for short, key in SHORT_NAV.items()}
+
+
+def _pick_page() -> None:
+    """Pill tapped -> go to its page. Deselecting (None) keeps the current page."""
+    pick = st.session_state.get("nav_pill")
+    if pick in SHORT_NAV:
+        st.session_state["page"] = SHORT_NAV[pick]
+
+
 def _data_status(listings: list[dict]) -> str:
+    """«Αγγελίες XE.gr · ενημέρωση ΗΗ/ΜΜ · N ενεργές · M ελεγμένες σελίδες» from the data."""
     last_up = _last_updated(listings)
     if last_up is None:
         return "Δεν υπάρχουν δεδομένα ακόμα."
-    days = (datetime.utcnow() - last_up).days
-    when = "σήμερα" if days <= 0 else f"πριν {days} μέρες"
-    flag = "⚠️ " if days >= 3 else ""
-    return f"{flag}Δεδομένα: {last_up:%d/%m/%Y} ({when}) · {len(listings):,} αγγελίες".replace(
-        ",", "."
+    active = sum(1 for d in listings if d.get("is_fresh", True))
+    checked = sum(1 for d in listings if d.get("page_checked"))
+    return (
+        f"Αγγελίες XE.gr · ενημέρωση {last_up:%d/%m} · {fmt._gr_int(active)} ενεργές · "
+        f"{fmt._gr_int(checked)} ελεγμένες σελίδες"
     )
 
 
@@ -2394,14 +2375,22 @@ def _refresh_data() -> None:
 def main() -> None:
     admin = bool(st.query_params.get("admin"))
     pages = {**NAV, **(ADMIN_NAV if admin else {})}
-    with st.sidebar:
+    with st.sidebar:  # desktop / keyboard navigation; on a phone the pills below do the job
         st.markdown("### Property Scout")
         page = st.radio("Σελίδα", list(pages), key="page", label_visibility="collapsed")
-        st.button("🔄 Φρέσκα δεδομένα", key="refresh", on_click=_refresh_data, width="stretch")
+    # Pills mirror the current page (pages also navigate by setting session_state["page"]).
+    st.session_state["nav_pill"] = _PILL_OF.get(page)
+    st.pills(
+        "Σελίδα",
+        list(SHORT_NAV),
+        key="nav_pill",
+        on_change=_pick_page,
+        label_visibility="collapsed",
+    )
     listings = get_listings()
-    with st.sidebar:
-        st.caption(buyer.data_line(listings))
-        st.caption("Πηγή: XE.gr (+ Green-Acres). Μέρος της αγοράς, όχι κάθε αγγελία.")
+    with st.container(horizontal=True, vertical_alignment="center", wrap=False):
+        st.caption(_data_status(listings), width="stretch")
+        st.button("Ανανέωση", key="refresh", on_click=_refresh_data, width="content")
 
     if pages[page] in (page_opportunities, page_today):
         st.markdown(f"## {page}")

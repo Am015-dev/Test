@@ -355,7 +355,7 @@ def map_legend() -> None:
         (score_color(60), f"σκορ ≥ {MAP_SCORE_GOOD} (καλό)"),
         (score_color(40), f"{MAP_SCORE_MID}–{MAP_SCORE_GOOD}"),
         (score_color(10), f"< {MAP_SCORE_MID} (αδύναμο)"),
-        ([30, 90, 255], "σταθμός μετρό"),
+        ([30, 90, 255], "σταθμός ΗΣΑΠ/Μετρό"),
     ]
     items = "".join(
         f'<span style="margin-right:14px;white-space:nowrap">'
@@ -364,7 +364,20 @@ def map_legend() -> None:
         f"{_esc(label)}</span>"
         for c, label in dots
     )
-    st.markdown(f'<div style="font-size:0.85rem">{items}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="font-size:0.9rem;line-height:1.7">{items}</div>', unsafe_allow_html=True
+    )
+
+
+def _floor_gr(f: float) -> str:
+    return "υπόγειο" if f < 0 else "ισόγειο" if f == 0 else f"{f:g}ος όροφος"
+
+
+def _status_gr(d: dict) -> str:
+    """Glossary wording: unfinished, page read with the check, or not read yet."""
+    if d.get("is_unfinished"):
+        return "Υπό κατασκευή"
+    return "Ελέγχθηκε η περιγραφή" if d.get("page_checked") else "Δεν έχει ελεγχθεί ακόμα"
 
 
 def results_map(
@@ -394,21 +407,25 @@ def results_map(
     recs = []
     for d in pts:
         lat, lng = map_position(d)
-        score, price, yb = d.get("score"), d.get("price"), d.get("year_built")
+        score, price = d.get("score"), d.get("price")
         approx = d.get("location_precision") != "exact"
+        fl = d.get("floor")
         recs.append(
             {
                 "lat": lat,
                 "lon": lng,
                 "fill": [*score_color(score), 185 if approx else 235],
-                "r": min(max((price or 0) / 60_000, 3), 9) if size_by_price else 4,
+                "r": min(max((price or 0) / 60_000, 3), 9) if size_by_price else 5,
                 "title": _esc((d.get("title") or "")[:70]),
                 "price": fmt.euro(price),
+                "m2": f"{d['area_m2']:g} τ.μ." if d.get("area_m2") else "— τ.μ.",
                 "ppm2": fmt.euro_per_m2(d.get("price_per_m2")),
+                "floor": "όροφος —" if fl is None else _floor_gr(fl),
+                "year": f"κατασκευή {d['year_built']}" if d.get("year_built") else "κατασκευή —",
+                "status": _status_gr(d),
                 "score": f"{score:.0f}" if score is not None else "—",
-                "year": str(yb) if yb else "—",
                 "hood": _esc(d.get("neighborhood") or d.get("search_area") or "—"),
-                "prec": "📍 κατά προσέγγιση θέση" if approx else "",
+                "prec": "κατά προσέγγιση θέση" if approx else "",
             }
         )
     df = pd.DataFrame(recs)
@@ -446,9 +463,9 @@ def results_map(
             )
         )
     tooltip = {
-        "html": "<b>{title}</b><br/>{price} · {ppm2}<br/>Σκορ: <b>{score}</b> · "
-        "Έτος κατασκευής: {year}<br/>{hood}<br/><i>{prec}</i>",
-        "style": {"fontSize": "12px", "maxWidth": "280px"},
+        "html": "<b>{price}</b> · {m2} · {ppm2}<br/>{floor} · {year}<br/>{status}<br/>"
+        "{hood} · Σκορ <b>{score}</b><br/><i>{prec}</i>",
+        "style": {"fontSize": "14px", "maxWidth": "260px", "whiteSpace": "normal"},
     }
     st.pydeck_chart(
         pdk.Deck(
