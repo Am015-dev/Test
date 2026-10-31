@@ -1,6 +1,7 @@
 // Design measurements (round 5, C6). Assessment B of the impeccable critique: computed styles on
 // the running app, not opinions. Usage:
-//   NODE_PATH=$(npm root -g) node docs/qa/design/measure.js [label] [baseUrl] [only]
+//   NODE_PATH=$(npm root -g) node docs/qa/design/measure.js [label] [baseUrl] [only] [rentBaseUrl]
+// The rent result screens (r1-r6) need a second instance: docs/qa/design/rent_app.py on 8502.
 //   label = before | after (output: docs/qa/design/measure-<label>.json + .md, shots in <label>/)
 //   only  = comma list of screen ids to run (default: all)
 // Needs the app running (default http://127.0.0.1:8501) against the published DB, with no
@@ -11,6 +12,7 @@
 //  - scrollWidth vs innerWidth and elements whose right edge passes the viewport;
 //  - every visible interactive element (button, a, [role=button|radio|option|tab|switch|checkbox],
 //    summary, input, select, textarea, label[for]) with its box and whether it is < 44 px tall;
+//    a label[for] whose control is visible is skipped (the control is the measured target);
 //    visually hidden native inputs (≤ 2 px or opacity 0, e.g. Streamlit's radio <input>) are
 //    skipped because their visible label is the target and is measured itself;
 //  - every visible text node: font-size, colour, the composited background behind it (nearest
@@ -20,7 +22,8 @@
 //  - the sets of distinct font sizes (text), border radii, box-shadows, margins and paddings in
 //    use on visible elements of the main area and the sidebar;
 //  - :focus-visible: after one real Tab key press (keyboard modality), each focusable control is
-//    focused in turn and its outline / box-shadow compared with its resting state.
+//    focused in turn and its outline / box-shadow / border (and those of up to three wrapping
+//    ancestors, where Streamlit draws input rings) compared with its resting state.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
@@ -134,6 +137,12 @@ function measureInPage() {
     if (!visible(el)) continue;
     const r = el.getBoundingClientRect();
     if (el.tagName === 'INPUT' && (r.width <= 2 || r.height <= 2)) continue;
+    // a <label for=…> whose control is visible is not a separate target: the control is
+    // measured itself (WCAG 2.5.8 «equivalent control»)
+    if (el.tagName === 'LABEL' && el.htmlFor) {
+      const ctl = document.getElementById(el.htmlFor);
+      if (ctl && visible(ctl) && ctl.getBoundingClientRect().height > 2) continue;
+    }
     // a checkbox / toggle <input> wrapped by its <label>: the label is the touch target
     const wrapLabel = el.tagName === 'INPUT' && el.closest('label');
     if (wrapLabel) {
@@ -216,12 +225,16 @@ function focusInPage() {
     target.focus({ preventScroll: true });
     const focused = document.activeElement === target;
     const on = ringOf(el);
-    // the ring may be drawn by a wrapper (Streamlit inputs): look one level up as well
-    const wrap = el.parentElement ? [ringOf(el.parentElement)] : [];
+    // the ring may be drawn by a wrapper (Streamlit / BaseWeb inputs and selects draw it on a
+    // container 1-3 levels up): compare those too
+    const ups = [];
+    for (let a = el.parentElement, i = 0; a && i < 3; a = a.parentElement, i++) ups.push(a);
+    const upOn = ups.map(ringOf);
     target.blur();
-    const restWrap = el.parentElement ? ringOf(el.parentElement) : null;
+    const upRest = ups.map(ringOf);
+    const changed = (x, y) => x.shadow !== y.shadow || x.border !== y.border || (!!x.outline && !y.outline);
     const ring = !!on.outline || on.shadow !== rest.shadow || on.border !== rest.border ||
-      (wrap[0] && restWrap && (wrap[0].shadow !== restWrap.shadow || wrap[0].border !== restWrap.border || (wrap[0].outline && !restWrap.outline)));
+      upOn.some((u, i) => changed(u, upRest[i]));
     const txt = (el.innerText || el.getAttribute('aria-label') || el.value || '').trim().replace(/\s+/g, ' ').slice(0, 40);
     out.push({ what: `${el.tagName.toLowerCase()}${el.getAttribute('role') ? '[role=' + el.getAttribute('role') + ']' : ''} «${txt}»`, focused, ring: !!ring, focusStyle: on.outline || (on.shadow !== rest.shadow ? on.shadow : '') });
   }
@@ -232,7 +245,8 @@ function focusInPage() {
 // Each step leaves the page on a state to measure. Steps run in order within one session per
 // viewport; a failing step is logged and the remaining screens still run.
 const SCREENS = [
-  ['a1-guide-budget', async () => {}],
+  ['a0-guide-mode', async () => {}],
+  ['a1-guide-budget', async (p) => tap(p, 'Να αγοράσω')],
   ['a2-guide-goal', async (p) => tap(p, '300 χιλ. €')],
   ['a3-guide-where', async (p) => tap(p, 'Απόδοση ενοικίου')],
   ['a4-guide-kind', async (p) => tap(p, 'Κοντά σε μετρό/ΗΣΑΠ')],
@@ -253,6 +267,24 @@ const SCREENS = [
   ['s1-saved-searches', async (p, phone) => sidebarPage(p, phone, 'Αποθηκευμένες αναζητήσεις')],
   ['e0-sidebar', async (p, phone) => { if (phone) await openSidebar(p); }],
 ];
+// rent flow on the QA instance (docs/qa/design/rent_app.py: the test fixture's 36 rentals)
+const RENT_SCREENS = [
+  ['r1-rent-budget-fixture', async (p) => tap(p, 'Να νοικιάσω')],
+  ['r2-rent-beds-fixture', async (p) => tap(p, '800 €')],
+  ['r3-rent-where-fixture', async (p) => tap(p, '2')],
+  ['r4-rent-kind-fixture', async (p) => tap(p, 'Όλες οι περιοχές')],
+  ['r5-rent-result-fixture', async (p) => {
+    await p.getByRole('button', { name: /^Η πρότασή μου/ }).first().click(); await settle(p, 1500);
+  }],
+  ['r6-rent-card-expander-fixture', async (p) => {
+    const s = p.locator('summary', { hasText: 'Από πού βγαίνουν' }).first();
+    await s.scrollIntoViewIfNeeded(); await s.click(); await settle(p, 600);
+  }],
+];
+// rent, real DB (fresh session): no rental rows are published yet, so the flow shows its
+// «coming» state
+const R0_SCREENS = [['r0-rent-empty-realdb', async (p) => tap(p, 'Να νοικιάσω')]];
+const BASE2 = process.argv[5] || 'http://127.0.0.1:8502';
 
 async function screenshot(page, file, phone) {
   const vp = page.viewportSize();
@@ -264,13 +296,13 @@ async function screenshot(page, file, phone) {
   await page.setViewportSize(vp); await sleep(400);
 }
 
-async function run(browser, phone) {
+async function run(browser, phone, base = BASE, screens = SCREENS) {
   const [w, h] = phone ? [390, 844] : [1280, 900];
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, hasTouch: phone, isMobile: phone });
   const page = await ctx.newPage();
-  await page.goto(BASE, { waitUntil: 'domcontentloaded' }); await settle(page);
+  await page.goto(base, { waitUntil: 'domcontentloaded' }); await settle(page);
   const res = {};
-  for (const [id, step] of SCREENS) {
+  for (const [id, step] of screens) {
     const key = `${id}@${w}`;
     try { await step(page, phone); } catch (e) { log('STEP FAIL', key, e.message.split('\n')[0]); res[key] = { error: e.message.split('\n')[0] }; continue; }
     if (ONLY && !ONLY.includes(id)) continue;
@@ -317,7 +349,14 @@ function summarize(all) {
 
 (async () => {
   const browser = await chromium.launch();
-  const all = { ...(await run(browser, true)), ...(await run(browser, false)) };
+  // VIEWPORTS=390 runs the phone only (quick iteration); the reported runs use both
+  const phoneOnly = process.env.VIEWPORTS === '390';
+  const run2 = async (phone, ...rest) => (!phone && phoneOnly ? {} : run(browser, phone, ...rest));
+  const all = { ...(await run2(true)), ...(await run2(false)),
+    ...(await run2(true, BASE, R0_SCREENS)), ...(await run2(false, BASE, R0_SCREENS)) };
+  const up = await fetch(BASE2).then((r) => r.ok).catch(() => false);
+  if (up) Object.assign(all, await run2(true, BASE2, RENT_SCREENS), await run2(false, BASE2, RENT_SCREENS));
+  else log('rent QA instance not running at', BASE2, '— r1-r6 skipped');
   await browser.close();
   const out = path.join(DIR, `measure-${LABEL}.json`);
   if (ONLY && fs.existsSync(out)) Object.assign(all, { ...JSON.parse(fs.readFileSync(out, 'utf8')), ...all });
