@@ -31,7 +31,8 @@ APP = str(Path(__file__).resolve().parents[1] / "src" / "scout" / "ui" / "app.py
 SEARCH, SHORTLIST, STARRED = "Αναζήτηση", "Αποθηκευμένες αναζητήσεις", "Αγαπημένα"
 DETAIL = "Αγγελία"
 AREAS = "Πού να αγοράσω"
-PAGES = [AREAS, SEARCH, "Χάρτης", STARRED, SHORTLIST, "Σύγκριση", DETAIL]
+FIND = "Βρες μου σπίτι"
+PAGES = [FIND, AREAS, SEARCH, "Χάρτης", STARRED, SHORTLIST, "Σύγκριση", DETAIL]
 KINDS = [
     "button",
     "checkbox",

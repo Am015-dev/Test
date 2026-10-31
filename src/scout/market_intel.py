@@ -36,6 +36,16 @@ def kind(d: dict) -> str:
     return "house" if title.startswith(HOUSE_WORDS) else "flat"
 
 
+def comp_area(d: dict) -> str:
+    """The area comparables are drawn from: the municipality, or the quarter for central Athens
+    ('Αθήνα (Αμπελόκηποι)' → 'Αμπελόκηποι') — Athens is too varied to compare as one."""
+    m = municipality(d)
+    hood = d.get("neighborhood") or ""
+    if m in ("Αθήνα", "Athina") and "(" in hood:
+        return hood.split("(", 1)[1].rstrip(") ").strip() or m
+    return m
+
+
 def municipality(d: dict) -> str:
     """'Αργυρούπολη (Κέντρο)' → 'Αργυρούπολη'."""
     return (d.get("neighborhood") or "").split(" (")[0].strip()
@@ -91,7 +101,7 @@ class Intel:
     def comps(self, d: dict) -> dict | None:
         """Like-for-like €/m² for ``d``: median, quartiles, n, where ``d`` sits, and a label
         naming exactly what it was compared with. None when fewer than MIN_COMPS exist."""
-        m, a = (municipality(d), kind(d)), age_band(_age(d, self.year))
+        m, a = (comp_area(d), kind(d)), age_band(_age(d, self.year))
         s, f = _size_band(d.get("area_m2")), _floor_band(d.get("floor"))
         if not m[0] or a is None or s is None or not d.get("price_per_m2"):
             return None
@@ -186,7 +196,7 @@ def build(listings: list[dict], year: int | None = None) -> Intel:
         if not _usable(d):
             continue
         key = (
-            (municipality(d), kind(d)),
+            (comp_area(d), kind(d)),
             age_band(_age(d, intel.year)),
             _size_band(d.get("area_m2")),
             _floor_band(d.get("floor")),
