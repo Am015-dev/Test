@@ -24,13 +24,14 @@ BASE = "https://www.remax.gr"
 PRICE_RE = re.compile(r"\d{1,3}(?:\.\d{3})+\s*(?:€|&euro;)|€\s*\d{1,3}(?:\.\d{3})+")
 DETAIL_RE = re.compile(r"/property/\d{4,}-[a-z0-9-]+")
 CHOL_RE = re.compile(r'href="([^"]*(?:xolarg|cholarg|holarg)[^"]*)"', re.I)
-CANDIDATES = [
-    "/pwlhseis-katoikies/101-athhna-boreia-proastia",
-    "/pwlhseis-katoikies/10007-ampelokhpoi",
-    "/polhseis-katoikies/101-athhna-boreia-proastia",
-    "/search/analytic",
-    "/property/sell",
-]
+# Round 1 (run 41221767513) found the sale scheme in the sitemap:
+# /pwliseis-agora-katoikies/<id>-<slug>; round 2 checks the page itself.
+CANDIDATES = ["/pwliseis-agora-katoikies/1031-xolargos"]
+WEEKLY = re.compile(
+    r"/\d+-(xolargos|papagoy|agia-paraskeyh|xalandri|brilhssia|maroysi|zwgrafoy|"
+    r"palaio-ycyxiko|neo-ycyxiko|ycyxiko|filo8eh|hrakleio|nea-filadelfeia|peykh|galatsi|"
+    r"ampelokhpoi|metamorfwsh)$"
+)
 
 s = requests.Session()
 s.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "el-GR,el;q=0.9"})
@@ -82,30 +83,9 @@ for path in CANDIDATES:
     if r is not None:
         report(path, r)
 
-# Sitemap index: list children, then sample sale/search sitemaps for Χολαργός URLs.
-r = get("/xml_sitemaps/el/index_el.xml")
+# Area ids for the weekly areas, from the sale-homes sitemap.
+r = get("/xml_sitemaps/el/pwliseis-agora/katoikies.xml")
 if r is not None:
-    locs = re.findall(r"<loc>([^<]+)</loc>", r.text)
-    print(f"SITEMAP index {r.status_code} children={len(locs)}")
-    for loc in locs[:40]:
-        print(f"   sm {loc}")
-    for loc in [x for x in locs if re.search(r"search|pwl|pol|sale|list|area", x, re.I)][:3]:
-        rr = get(loc)
-        if rr is None:
-            continue
-        urls = re.findall(r"<loc>([^<]+)</loc>", rr.text)
-        print(f"SITEMAP {loc} {rr.status_code} urls={len(urls)}")
-        for u in [u for u in urls if re.search(r"xolarg|cholarg|holarg", u, re.I)][:15]:
-            print(f"   sm-chol {u}")
-        for u in urls[:5]:
-            print(f"   sm-sample {u}")
-
-# Follow the first Χολαργός sale link found on a region page, if any.
-for path in CANDIDATES[:3]:
-    r2 = s.get(urljoin(BASE, path), timeout=30)
-    links = [c for c in CHOL_RE.findall(r2.text) if "pwl" in c or "pol" in c]
-    if links:
-        r3 = get(links[0])
-        if r3 is not None:
-            report(links[0], r3)
-        break
+    for u in re.findall(r"<loc>([^<]+)</loc>", r.text):
+        if u.startswith(BASE + "/pwliseis-agora-katoikies/") and WEEKLY.search(u):
+            print(f"AREA {u}")
