@@ -139,3 +139,45 @@ def test_yield_text_shows_old_and_new():
     assert areas.yield_text(_insight(gross_yield=0.055)) == "5,5 %"
     x = _insight(gross_yield=0.055, gross_yield_new=0.036)
     assert areas.yield_text(x) == "5,5 % στα παλιά · 3,6 % στα νεόδμητα"
+
+
+# ---- round 3: insight lines on the card ---------------------------------------------------
+
+
+def test_trend_line_prefers_six_months_then_july_and_says_when_missing():
+    six = _insight(trend_pct_6m=0.041, trend_6m_n=(15, 22))
+    assert areas.trend_line(six).startswith("+4,1 % σε 6 μήνες")
+    assert "n=15/22" in areas.trend_line(six)
+    assert areas.trend_line(_insight()).startswith("+1,0 % από τον Ιούλιο")
+    none = areas.trend_line(_insight(trend_pct=None, trend_early_n=4))
+    assert none.startswith("δεν υπάρχει αρκετό ιστορικό") and "n=4/120" in none
+
+
+def test_supply_line_shows_both_counts_or_says_unknown():
+    x = _insight(n_fresh=120, rent_samples=30, supply_per_rent=4.0)
+    assert areas.supply_line(x) == "4,0 (120 πώλησης / 30 ενοικίασης)"
+    assert areas.supply_line(_insight()).startswith("άγνωστη")
+
+
+def test_render_checks_prints_label_verdict_and_value(monkeypatch):
+    seen = []
+    monkeypatch.setattr(areas.st, "markdown", lambda s, **kw: seen.append(s))
+    areas.render_checks(
+        [("Απόδοση", "Μικτή 5,6 %", "καλό"), ("Ζήτηση ενοικίου", "δεν έχουμε", "άγνωστο")]
+    )
+    assert seen[0] == "**Απόδοση:** :green[**καλό**]  \nΜικτή 5,6 %"
+    assert ":gray[**άγνωστο**]" in seen[1]
+
+
+def test_page_pipeline_attaches_all_insight_fields():
+    rows = many(60, area="Γαλάτσι", search_area="Galatsi", ppm=2500)
+    x = ai.rank_areas(rows, year=YEAR, areas=ai.NE_ATHENS_AREAS)[0]
+    assert x.line4 and x.trend_series and x.liquidity is None
+    assert areas.is_ne(x.area)
+
+
+def test_sparkline_and_series_text():
+    assert areas.sparkline([1.0, 2.0, 3.0]) == "▁▅█"
+    assert areas.sparkline([5.0, 5.0]) == "▄▄"
+    x = _insight(trend_series=[("2026-07", 2589.0, 178), ("2026-10", 2778.0, 123)])
+    assert areas.series_text(x) == "Ιουλ 2.589 (n=178) · Οκτ 2.778 (n=123)"

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from scout import market_intel, picks
+import pytest
 
-from .test_ui_gauntlet import FIND, env, fresh, ok  # noqa: F401 — AppTest harness
+from scout import market_intel, picks
 
 YEAR = 2026
 RENTS = [
@@ -73,7 +73,7 @@ def test_checked_pages_rank_first_and_unchecked_are_flagged():
 
 
 def test_approved_go_first_and_dropped_leave_so_the_next_moves_up():
-    from scout.ui.find import arrange
+    from scout.ui.guide import arrange
 
     found = [
         picks.Pick(listing={"source": "xe", "source_id": str(i)}, rank_score=0, rent=0,
@@ -174,25 +174,50 @@ def test_relaxations_count_exactly_what_find_would_add():
     )
 
 
-def test_find_page_relaxation_tap_and_drop(env):  # noqa: F811 — the gauntlet's app fixture
-    at = fresh(FIND)
-    ok(at, "find")
-    at.number_input(key="find_budget").set_value(230_000).run()  # seed: new flats in Galatsi
-    text = " ".join(m.value for m in at.markdown)
-    assert "## Βρες μου σπίτι" in text and "Καμία αγγελία" in text  # no station hoods in seed
-    relax = [b for b in at.button if b.key and b.key.startswith("relax-")]
-    no_rail = next(b for b in relax if b.label.startswith("Χωρίς όρο σταθμού (+"))
-    added = int(no_rail.label.split("(+")[1].split(",")[0])
-    no_rail.click().run()
-    ok(at, "relaxation")
-    assert at.toggle(key="find_rail").value is False
-    text = " ".join(m.value for m in at.markdown)
-    assert f"**{added}** αγγελίες" in text  # the tapped count is what the page now finds
-    assert "Δεν έχει ελεγχθεί ακόμα η σελίδα της αγγελίας" in text  # status on every card
-    assert not at.metric  # no cramped metric rows on a phone
-    assert any(e.label == "Πώς υπολογίζω" for e in at.expander)
-    first = next(b for b in at.button if b.key and b.key.startswith("pick-no-"))
-    first.click().run()
-    ok(at, "drop")
-    assert first.key not in {b.key for b in at.button if b.key}  # it left the list
-    assert any(e.label == "Απέρριψες 1" for e in at.expander)
+def test_goal_weights_reorder_within_checked_pages():
+    # 1: best yield, nothing else; 2: lower yield but every safety signal; both pages read
+    rows = [flat(1, 265_000, m2=95, page_checked=True)]
+    rows += [
+        flat(2, 300_000, page_checked=True, photo_count=12, energy_class="B")
+    ]  # fmt: skip
+    got = {g: [p.listing["id"] for p in run(rows, goal=g, top=10)] for g in picks.GOALS}
+    assert got["yield"] == [1, 2] and got["safety"] == [2, 1]
+    p = run(rows, goal="safety", top=10)[0]
+    assert "πάνω από 2 φωτογραφίες" in p.reasons["safety"]
+    assert p.rank_score == pytest.approx(picks.score(p.parts, "safety"))
+    for g, w in picks.GOAL_WEIGHTS.items():
+        assert set(w) == {"yield", "value", "safety", "growth"}, g
+
+
+def test_growth_goal_prefers_a_station_and_never_lifts_an_unread_page():
+    rows = [
+        flat(1, 265_000, m2=95, hood="Γαλάτσι (Λαμπρινή)", page_checked=True),  # no station
+        flat(2, 300_000, page_checked=True),  # Περισσός station, lower yield
+        flat(3, 270_000, m2=95),  # station, best yield, page not read
+    ]
+    got = [p.listing["id"] for p in run(rows, goal="growth", near_rail=False, top=10)]
+    assert got == [2, 1, 3]
+    assert [p.listing["id"] for p in run(rows, goal="yield", near_rail=False, top=10)][-1] == 3
+
+
+def test_bedrooms_and_area_answers_filter_and_relax_with_counts():
+    rows = [
+        flat(1, 300_000, bedrooms=2),
+        flat(2, 290_000, bedrooms=3),
+        flat(3, 295_000, bedrooms=4, year=2023),
+        flat(4, 305_000, year=2022),  # bedrooms unknown: only without the rule
+    ]
+    assert [p.listing["id"] for p in run(rows, bedrooms=2, top=10)] == [1]
+    assert {p.listing["id"] for p in run(rows, bedrooms=3, top=10)} == {2, 3}
+    intel = market_intel.build(rows, YEAR)
+    got = picks.relaxations(rows, intel, RENTS, 300_000, year=YEAR, bedrooms=2)
+    assert next(r for r in got if r.label == "Χωρίς όρο υπνοδωματίων").added == 3
+    assert run(rows, areas=["Γαλάτσι"], top=10) == []
+    assert len(run(rows, areas=["Νέα Ιωνία"], top=10)) == 4
+
+
+def test_instalment_is_the_annuity_and_cashflow_is_rent_minus_it():
+    p = run([flat(1, 300_000)], loan=True)[0]
+    assert p.instalment == round(picks.instalment(300_000) / 10) * 10 == 1110
+    assert abs(p.cashflow - (p.rent - picks.instalment(300_000))) <= 10
+    assert run([flat(1, 300_000)])[0].loan is False
