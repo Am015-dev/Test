@@ -108,7 +108,7 @@ def test_trend_is_none_when_a_cohort_is_small():
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert x.trend_pct is None and x.trend_early_n == ai.MIN_TREND - 1
     assert x.components["momentum"] == ai.NEUTRAL
-    assert any("Τάση τιμών μη διαθέσιμη" in r for r in x.risks)
+    assert any("Δεν ξέρουμε ακόμα αν οι τιμές ανεβαίνουν" in r for r in x.risks)
 
 
 def test_price_cuts_and_days_on_market():
@@ -124,7 +124,7 @@ def test_gross_yield_only_with_rent():
     rows = many(25, ppm=3000)
     (no_rent,) = ai.rank_areas(rows, year=YEAR)
     assert no_rent.gross_yield is None and no_rent.components["yield"] == ai.NEUTRAL
-    assert any("ενοικίων" in r for r in no_rent.risks)
+    assert any("αγγελίες ενοικίασης" in r for r in no_rent.risks)
 
     rents = [rent("Cholargos", None, 12.5, 40), rent("Cholargos", "Χολαργός (Κέντρο)", 13, 5)]
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
@@ -205,8 +205,8 @@ def test_reasons_and_risks_are_factual_greek():
     rents = [rent("Cholargos", None, 12.0, 40), rent("Cholargos", "Χολαργός (Κέντρο)", 12, 40)]
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert 2 <= len(x.reasons) <= 4 and 1 <= len(x.risks) <= 2
-    assert any("Μικτή απόδοση 5,8 %" in r and "40 δείγματα" in r for r in x.reasons)
-    assert any("Μικρό δείγμα: μόνο 40" in r for r in x.risks)
+    assert any("Μικτή απόδοση 5,8 %" in r and "(40 αγγελίες)" in r for r in x.reasons)
+    assert any("Μόνο 40 αγγελίες σήμερα" in r for r in x.risks)
     assert all(any(ch.isdigit() for ch in r) for r in x.reasons)
 
 
@@ -215,7 +215,7 @@ def test_falling_prices_and_old_stock_are_risks():
     late = many(60, ppm=2700, first_seen=OCT, year_built=1970)
     (x,) = ai.rank_areas(early + late, year=YEAR)
     assert x.trend_pct == pytest.approx(-0.10)
-    assert x.risks[0].startswith("Πτωτικές ζητούμενες τιμές: -10,0 %")
+    assert x.risks[0].startswith("Οι τιμές έπεσαν 10,0 % από τον Ιούλιο")
     assert len(x.risks) == 2  # capped
     assert not any("πάνω από τον Ιούλιο" in r for r in x.reasons)
 
@@ -239,7 +239,7 @@ def test_unrecorded_rent_samples_read_as_dash():
     rents = [rent("Cholargos", None, 12.0, 0), rent("Cholargos", "Χολαργός (Κέντρο)", 12, 0)]
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert x.rent_samples is None
-    assert any("δείγματα: —" in r for r in x.reasons)
+    assert any("δεν ξέρουμε από πόσες αγγελίες" in r for r in x.reasons)
 
 
 # ---- per-area facts, explained why, decision sentences -----------------------------------
@@ -292,14 +292,15 @@ def test_why_is_a_filled_template_without_adjectives():
     rents = [rent("Cholargos", None, 11.2, 38), rent("Cholargos", "Χολαργός (Περισσός)", 11.2, 38)]
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert x.why == (
-        "Μικτή απόδοση 4,5 % (1η από 1 περιοχή με ενοίκιο) με ενοίκιο (εκτίμηση) 11,2 €/τ.μ. από 38 αγγελίες ενοικίασης"
-        "· νεόδμητα 60 % ακριβότερα από τα παλιά (6 και 6 αγγελίες)· ΗΣΑΠ Περισσός"
+        "Μικτή απόδοση 4,5 % (1η από 1 περιοχή). Ενοίκιο (εκτίμηση) 11,2 €/τ.μ. τον μήνα από 38 "
+        "αγγελίες ενοικίασης· για νεόδμητο ζητούν 60 % περισσότερα από ένα παλιό (6 και 6 "
+        "αγγελίες)· ΗΣΑΠ Περισσός"
     )
 
 
 def test_why_leaves_out_missing_parts():
     (x,) = ai.rank_areas(many(25), year=YEAR)
-    assert x.why.startswith("25 αγγελίες, διάμεση 3.000")
+    assert x.why.startswith("25 αγγελίες, ζητούν συνήθως 3.000")
 
 
 def test_decision_sentences_have_numbers_and_budget():
@@ -331,20 +332,20 @@ def test_decision_sentences_have_numbers_and_budget():
     ranked = ai.rank_areas(a + b + c, rents, year=YEAR)
     s = ai.decision(ranked, 300_000)
     assert (
-        s[0].startswith("Για απόδοση: Παπάγου, μικτή απόδοση ")
+        s[0].startswith("Για απόδοση: Παπάγου. Μικτή απόδοση ")
         and "ενοίκιο (εκτίμηση) 12,0 €/τ.μ." in s[0]
     )
-    assert s[1].startswith("Για ρευστότητα: Χολαργός, 61 αγγελίες")
+    assert s[1].startswith("Για εύκολη μεταπώληση: Χολαργός. 61 σπίτια προς πώληση")
     assert s[2].startswith("Για ανατίμηση:")
-    assert s[3].startswith("Για νεόδμητο κοντά σε σταθμό έως 300.000 €: Μαρούσι (ΗΣΑΠ Μαρούσι)")
-    assert "30 αγγελίες, 30 με ελεγμένη περιγραφή" in s[3]
+    assert s[3].startswith("Για νεόδμητο κοντά σε σταθμό έως 300.000 €: Μαρούσι (ΗΣΑΠ Μαρούσι).")
+    assert "30 αγγελίες, από αυτές 30 με ελεγμένη περιγραφή" in s[3]
     assert all(any(ch.isdigit() for ch in line) for line in s)
 
 
 def test_decision_says_when_nothing_is_in_budget():
     ranked = ai.rank_areas(many(60), year=YEAR)
     assert ai.decision(ranked, 300_000)[-1] == (
-        "Νεόδμητο έως 300.000 € σε γειτονιά με σταθμό: δεν βρέθηκε αγγελία."
+        "Νεόδμητο έως 300.000 € σε γειτονιά με σταθμό: δεν υπάρχει σήμερα καμία αγγελία."
     )
 
 
@@ -352,7 +353,9 @@ def test_decision_still_answers_on_small_samples_and_says_so():
     rents = [rent("Cholargos", None, 12.0, 30), rent("Cholargos", "Χολαργός (Κέντρο)", 12, 30)]
     ranked = ai.rank_areas(many(25), rents, year=YEAR)
     s = ai.decision(ranked, 300_000)
-    assert s[0].startswith("Για απόδοση: Χολαργός") and s[0].endswith("Μικρό δείγμα.")
+    assert s[0].startswith("Για απόδοση: Χολαργός") and s[0].endswith(
+        "Λίγες αγγελίες ακόμα, κρατάμε επιφύλαξη."
+    )
 
 
 def test_gross_yield_new_uses_the_new_build_median():
@@ -371,8 +374,9 @@ def test_decision_yield_sentence_splits_old_and_new():
     ranked = ai.rank_areas(_stock() + many(30, ppm=3000, year_built=2015), rents, year=YEAR)
     first = ai.decision(ranked, 300_000)[0]
     assert first == (
-        "Για απόδοση: Χολαργός, μικτή απόδοση 4,8 % στα παλιά (3,6 % στα νεόδμητα), "
-        "ενοίκιο (εκτίμηση) 12,0 €/τ.μ. από ζητούμενα ενοίκια της περιοχής, 55 αγγελίες πώλησης."
+        "Για απόδοση: Χολαργός. Μικτή απόδοση 4,8 % στα παλιά και 3,6 % στα νεόδμητα, "
+        "με ενοίκιο (εκτίμηση) 12,0 €/τ.μ. τον μήνα, όσο ζητούν στη γειτονιά. "
+        "55 σπίτια προς πώληση."
     )
 
 
@@ -416,7 +420,7 @@ def test_area_trend_6m_flows_into_the_insight():
     assert [n for _, _, n in x.trend_series] == [15, 15]
     # ...and the decision sentence quotes it with its basis
     s = [t for t in ai.decision([x], 300_000) if t.startswith("Για ανατίμηση")][0]
-    assert "+4,1 % €/τ.μ. σε 6 μήνες (15 και 15 αγγελίες)" in s
+    assert "Η τιμή ανά τ.μ. άλλαξε +4,1 % σε 6 μήνες (15 και 15 αγγελίες)" in s
 
 
 def test_trend_6m_is_none_without_history():
@@ -483,7 +487,7 @@ def test_rank_areas_attaches_liquidity_from_lifecycle():
     x = ai.rank_areas(many(25), year=YEAR, lifecycle=life)[0]
     assert x.liquidity == "γρήγορη" and x.gone_60 == 0.5 and x.gone_n_60 == 40
     text = ai.liquidity_text(x)
-    assert text.startswith("γρήγορη — 50 % έφυγαν σε 60 μέρες (40 αγγελίες)")
+    assert text.startswith("γρήγορη: το 50 % κατέβηκε μέσα σε 60 μέρες (από 40 αγγελίες)")
     assert "τουλάχιστον 35 %" in ai.LIQUIDITY_THRESHOLDS
     assert "κάτω από 15 %" in ai.LIQUIDITY_THRESHOLDS
 
@@ -491,7 +495,7 @@ def test_rank_areas_attaches_liquidity_from_lifecycle():
 def test_liquidity_unknown_says_why():
     x = ai.rank_areas(many(25), year=YEAR)[0]  # active-only input: no history
     assert x.liquidity is None
-    assert ai.liquidity_text(x).startswith("άγνωστη — χρειάζεται ιστορικό σαρώσεων")
+    assert ai.liquidity_text(x).startswith("δεν το ξέρουμε ακόμα")
 
 
 def test_supply_per_rent_listing_and_relative_to_median():
@@ -531,7 +535,10 @@ def test_decision_appreciation_names_line4_and_trend_basis():
     rows = many(60, area="Γαλάτσι", search_area="Galatsi", ppm=3000)
     x = ai.rank_areas(rows, year=YEAR)[0]
     s = [t for t in ai.decision([x], 300_000) if t.startswith("Για ανατίμηση")][0]
-    assert "Γαλάτσι — Γραμμή 4 υπό κατασκευή (Άλσος Βεΐκου, Γαλάτσι, Ελικώνος, ορίζοντας 2032)" in s
+    assert (
+        "Γαλάτσι. Εκεί φτιάχνεται η Γραμμή 4 του μετρό (Άλσος Βεΐκου, Γαλάτσι, Ελικώνος, για το 2032)"
+        in s
+    )
     assert "από τον Ιούλιο" in s and "60 και 60 αγγελίες" in s
 
 
@@ -539,8 +546,10 @@ def test_decision_liquidity_uses_gone_share_when_known():
     life = _weekly_life(40, gone_after=0.4)
     active = [d for d in life if d["status"] == "active"]
     x = ai.rank_areas(active, year=YEAR, lifecycle=life)[0]
-    s = next(t for t in ai.decision([x], 300_000) if t.startswith("Για ρευστότητα"))
-    assert s.startswith("Για ρευστότητα: Χολαργός, γρήγορη — 40 % έφυγαν σε 60 μέρες (40 αγγελίες)")
+    s = next(t for t in ai.decision([x], 300_000) if t.startswith("Για εύκολη μεταπώληση"))
+    assert s.startswith(
+        "Για εύκολη μεταπώληση: Χολαργός. Η αγορά είναι γρήγορη: το 40 % κατέβηκε μέσα σε 60 μέρες (από 40 αγγελίες)"
+    )
 
 
 # ---- the six checks ----------------------------------------------------------------------
@@ -593,10 +602,14 @@ def test_price_check_good_when_below_comps_and_warns_when_too_cheap_or_dear():
     for i, r in enumerate(rows):
         r["id"] = 100 + i
     c = _checks(_subject(), rows, None)["Τιμή έναντι παρόμοιων"]
-    assert c[2] == ai.GOOD and "2.400 €/τ.μ. έναντι διάμεσης 3.000 €/τ.μ. (−20,0 %)" in c[1]
+    assert (
+        c[2] == ai.GOOD
+        and "2.400 €/τ.μ. (−20,0 %). Τα άλλα σπίτια της γειτονιάς ζητούν συνήθως 3.000 €/τ.μ."
+        in c[1]
+    )
     assert "Παρόμοια (30)" in c[1]
     cheap = _checks(_subject() | {"price_per_m2": 1500.0}, rows, None)["Τιμή έναντι παρόμοιων"]
-    assert cheap[2] == ai.WARN and "υπερβολικά φθηνό" in cheap[1]
+    assert cheap[2] == ai.WARN and "πολύ φθηνό" in cheap[1]
     dear = _checks(_subject() | {"price_per_m2": 3300.0}, rows, None)["Τιμή έναντι παρόμοιων"]
     assert dear[2] == ai.WARN
     fair = _checks(_subject() | {"price_per_m2": 3000.0}, rows, None)["Τιμή έναντι παρόμοιων"]
@@ -630,7 +643,7 @@ def test_liquidity_and_rent_demand_checks_follow_the_insight():
     assert demand[2] == ai.UNKNOWN  # no rent sample count in this fixture
     x.supply_per_rent, x.supply_rel, x.rent_samples = 2.5, 0.5, 10
     good = ai.investor_checks(_subject(), None, x)[3]
-    assert good[2] == ai.GOOD and "2,5 αγγελίες πώλησης ανά αγγελία ενοικίασης" in good[1]
+    assert good[2] == ai.GOOD and "2,5 σπίτια προς πώληση για κάθε ένα που νοικιάζεται" in good[1]
     x.supply_rel = 2.0
     assert ai.investor_checks(_subject(), None, x)[3][2] == ai.WARN
     x.supply_rel = 1.0
@@ -659,10 +672,10 @@ def test_exit_check_uses_trend_and_line4():
     c = ai.investor_checks(d, None, x)[5]
     assert c[2] == ai.GOOD
     assert "+4,1 % σε 6 μήνες" in c[1] and "15 και 15 αγγελίες" in c[1]
-    assert "Μετρό Γραμμή 4 υπό κατασκευή: Άλσος Βεΐκου (ορίζοντας 2032)" in c[1]
+    assert "σταθμός της Γραμμής 4 του μετρό: Άλσος Βεΐκου, για το 2032" in c[1]
     # a sub-area without a station name only gets the area-level stations
     other = _subject(neighborhood="Γαλάτσι (Λαμπρινή)")
     assert "Άλσος Βεΐκου, Γαλάτσι, Ελικώνος" in ai.investor_checks(other, None, x)[5][1]
     x.trend_pct_6m, x.trend_pct = None, None
     unk = ai.investor_checks(d, None, x)[5]
-    assert unk[2] == ai.UNKNOWN and "δεν υπάρχει αρκετό ιστορικό" in unk[1]
+    assert unk[2] == ai.UNKNOWN and "δεν ξέρουμε ακόμα πώς κινούνται οι τιμές" in unk[1]
