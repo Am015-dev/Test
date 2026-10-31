@@ -496,6 +496,7 @@ def card_html(
     compact: bool = False,
     lead: str = "",
     more: list[str] | None = None,
+    hero: bool = False,
 ) -> str:
     """The card body: five fixed lines, then (``basis``) the one-tap «Από πού βγαίνουν».
 
@@ -503,7 +504,9 @@ def card_html(
     price · τ.μ. · €/τ.μ.; floor · year · area · station; status badge; rent + gross yield;
     one comparison line — and every other fact (``more``, days on market, price drop, seller,
     twins, energy class, the full status sentence) moves into the expander. The full card
-    (listing page) shows the extras as a sixth line. ``lead`` prefixes line 1 (the rank)."""
+    (listing page) shows the extras as a sixth line. ``lead`` prefixes line 1 (the rank).
+    The card's photo sits in a fixed 4:3 box left of line 1; ``hero`` (listing page) puts it
+    full width above line 1 instead."""
     e = html.escape
     rent_row = _is_rent(d)
     price = eur(d.get("price")) + ("/μήνα" if rent_row else "")
@@ -543,7 +546,8 @@ def card_html(
     rank = f' data-rank="{e(lead.rstrip("."))}"' if lead else ""  # theme: the first pick leads
     out = (
         f'<div class="hg-card"{mark}{rank} data-lid="{d.get("id")}">'
-        f'<div class="hg-l1">{_join(l1)}</div>'
+        + photo_html(d, hero=hero)
+        + f'<div class="hg-l1">{_join(l1)}</div>'
         f'<div class="hg-l2">{_join(l2)}</div>'
         + (f'<div class="hg-l3">{l3}</div>' if l3 else "")
         + f'<div class="hg-l4">{_rent_line(d)}</div>'
@@ -565,6 +569,26 @@ def card_html(
             + "</details>"
         )
     return out + "</div>"
+
+
+PHOTO_ALT = "Φωτογραφία της αγγελίας"
+NO_PHOTO = "Χωρίς φωτογραφία"
+
+
+def photo_html(d: dict, *, hero: bool = False) -> str:
+    """The listing's first photo in a fixed 4:3 box (``theme``: ``.hg-thumb``), loaded lazily
+    from the portal's own CDN; nothing is downloaded or stored here. Without a photo, or if
+    it fails to load, the same box reads «Χωρίς φωτογραφία»."""
+    cls = "hg-thumb hg-thumb-hero" if hero else "hg-thumb"
+    url = d.get("image_url") or ""
+    label = f'<span class="hg-thumb-none">{NO_PHOTO}</span>'
+    if not url.startswith("https://"):
+        return f'<figure class="{cls} hg-thumb-empty">{label}</figure>'
+    fail = "this.parentNode.classList.add('hg-thumb-empty');this.remove()"
+    return (
+        f'<figure class="{cls}"><img src="{html.escape(url)}" loading="lazy" '
+        f'alt="{PHOTO_ALT}" onerror="{fail}">{label}</figure>'
+    )
 
 
 SCORE_PARTS = {  # strategy.yaml weights → the words a buyer reads
@@ -1625,7 +1649,7 @@ def page_listing(listings: list[dict]) -> None:
     intel = market_intel.build(listings)
     adv = buyer_view(d, intel)
     with st.container(border=True, key=f"card-l-{d['id']}"):
-        st.markdown(card_html(d, adv, basis=False), unsafe_allow_html=True)
+        st.markdown(card_html(d, adv, basis=False, hero=True), unsafe_allow_html=True)
         st.caption(status_basis(d))
     with st.expander("Πώς βγαίνει η βαθμολογία"):
         st.markdown("\n".join(f"- {html.escape(x)}" for x in score_how(d, adv)))
