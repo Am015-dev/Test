@@ -1444,7 +1444,7 @@ def page_map(listings: list[dict]) -> None:
     from scout import nl_search
     from scout.nl_search import SearchFilters
 
-    rank = buyer.SORTS[next(iter(buyer.SORTS))]
+    rank = buyer.SORTS[buyer.DEFAULT_SORT]
     views = {d["id"]: buyer.buyer_view(d, intel) for d in shown}
 
     def _key(d: dict):
