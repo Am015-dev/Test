@@ -119,7 +119,7 @@ def samples_text(x: ai.AreaInsight) -> str:
 
 
 def trend_text(x: ai.AreaInsight) -> str:
-    n = f"n={x.trend_early_n}/{x.trend_late_n}"
+    n = ai.n_words(x.trend_early_n, x.trend_late_n)
     return f"— ({n})" if x.trend_pct is None else f"{gr_pct(x.trend_pct, sign=True)} ({n})"
 
 
@@ -138,15 +138,17 @@ def uc_text(x: ai.AreaInsight) -> str:
 
 
 def confidence_text(x: ai.AreaInsight) -> str:
-    """Confidence word + the n it rests on."""
-    return f"{confidence(x)} (n={x.n_fresh})"
+    """Confidence word + what it rests on; says so when the rent sample count is unknown."""
+    if confidence(x) == CONF_MID and x.rent_samples is None:
+        return f"{CONF_MID} (δείγμα ενοικίου άγνωστο)"
+    return f"{confidence(x)} ({ai.n_words(x.n_fresh)})"
 
 
 def new_old_text(x: ai.AreaInsight) -> str:
     if x.new_premium is None:
-        return f"δεν υπάρχουν τουλάχιστον {ai.MIN_BAND} αγγελίες και στις δύο ομάδες (n={x.n_new}/{x.n_old})"
+        return f"δεν υπάρχουν τουλάχιστον {ai.MIN_BAND} αγγελίες και στις δύο ομάδες ({ai.n_words(x.n_new, x.n_old)})"
     return (
-        f"{gr_ppm(x.ppm_new)} (n={x.n_new}) έναντι {gr_ppm(x.ppm_old)} (n={x.n_old}), "
+        f"{gr_ppm(x.ppm_new)} ({ai.n_words(x.n_new)}) έναντι {gr_ppm(x.ppm_old)} ({ai.n_words(x.n_old)}), "
         f"{gr_pct(x.new_premium, 0, sign=True)}"
     )
 
@@ -155,8 +157,10 @@ def trend_line(x: ai.AreaInsight) -> str:
     """Price trend of the area with its basis, or why there is none."""
     t = ai.exit_trend(x)
     if t is None:
-        return f"δεν υπάρχει αρκετό ιστορικό (n={x.trend_early_n}/{x.trend_late_n})"
-    return f"{gr_pct(t[0], sign=True)} {t[1]} (διάμεση €/τ.μ. αγγελιών που πρωτοεμφανίστηκαν, n={t[2]})"
+        return f"δεν υπάρχει αρκετό ιστορικό ({ai.n_words(x.trend_early_n, x.trend_late_n)})"
+    return (
+        f"{gr_pct(t[0], sign=True)} {t[1]} (διάμεση €/τ.μ. αγγελιών που πρωτοεμφανίστηκαν, {t[2]})"
+    )
 
 
 def supply_line(x: ai.AreaInsight) -> str:
@@ -179,9 +183,9 @@ def sparkline(values: list[float]) -> str:
 
 
 def series_text(x: ai.AreaInsight) -> str:
-    """«Ιουλ 2.589 (n=178) · Αυγ 2.376 (n=18)» — the monthly medians behind the trend."""
+    """«Ιουλ 2.589 (178 αγγελίες) · Αυγ 2.376 (18 αγγελίες)» — the monthly medians behind the trend."""
     return " · ".join(
-        f"{_MONTHS[int(k[5:]) - 1]} {gr_num(p)} (n={n})" for k, p, n in x.trend_series
+        f"{_MONTHS[int(k[5:]) - 1]} {gr_num(p)} ({ai.n_words(n)})" for k, p, n in x.trend_series
     )
 
 
@@ -406,6 +410,24 @@ def _method() -> None:
         )
 
 
+def _liquidity_rows(x: ai.AreaInsight) -> list[tuple[str, str]]:
+    """Liquidity and rent demand: both unknown → one short row; else only the known one."""
+    liq = (
+        [("Ρευστότητα", ai.liquidity_text(x) + f" ({ai.LIQUIDITY_THRESHOLDS})")]
+        if x.liquidity
+        else []
+    )
+    sup = [] if x.supply_per_rent is None else [("Προσφορά ανά αγγελία ενοικίασης", supply_line(x))]
+    if liq or sup:
+        return liq + sup
+    return [
+        (
+            "Ρευστότητα και ζήτηση ενοικίου",
+            "άγνωστες ακόμα (χρειάζεται ιστορικό εβδομαδιαίων σαρώσεων από 30/10)",
+        )
+    ]
+
+
 def _card(rank: int | None, x: ai.AreaInsight, *, key: str) -> None:
     with st.container(border=True):
         st.markdown(f"#### {rank}. {x.area}" if rank else f"##### {x.area}")
@@ -417,7 +439,7 @@ def _card(rank: int | None, x: ai.AreaInsight, *, key: str) -> None:
                 "Ενοίκιο (εκτίμηση)",
                 f"{gr_rent(x.rent_ppm)}/μήνα"
                 + (
-                    f", n={x.rent_samples}"
+                    f", {x.rent_samples} αγγελίες ενοικίασης"
                     if x.rent_samples
                     else ", δείγμα ενοικίων μη καταγεγραμμένο"
                 ),
@@ -434,11 +456,7 @@ def _card(rank: int | None, x: ai.AreaInsight, *, key: str) -> None:
             ),
             ("Με μείωση τιμής", gr_pct(x.cut_share, 0)),
             ("Τάση €/τ.μ.", trend_line(x)),
-            (
-                "Ρευστότητα",
-                ai.liquidity_text(x) + (f" ({ai.LIQUIDITY_THRESHOLDS})" if x.liquidity else ""),
-            ),
-            ("Προσφορά ανά αγγελία ενοικίασης", supply_line(x)),
+            *_liquidity_rows(x),
             ("Σταθμός", ", ".join(x.stations) if x.stations else "κανένας στις γειτονιές"),
         ]
         if x.line4:

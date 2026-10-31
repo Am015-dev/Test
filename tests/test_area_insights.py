@@ -292,8 +292,8 @@ def test_why_is_a_filled_template_without_adjectives():
     rents = [rent("Cholargos", None, 11.2, 38), rent("Cholargos", "Χολαργός (Περισσός)", 11.2, 38)]
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert x.why == (
-        "Μικτή απόδοση 4,5 % (1η από 1) με ενοίκιο (εκτίμηση) 11,2 €/τ.μ. από 38 αγγελίες ενοικίασης"
-        "· νεόδμητα 60 % ακριβότερα από τα παλιά (n=6/6)· ΗΣΑΠ Περισσός"
+        "Μικτή απόδοση 4,5 % (1η από 1 περιοχή με ενοίκιο) με ενοίκιο (εκτίμηση) 11,2 €/τ.μ. από 38 αγγελίες ενοικίασης"
+        "· νεόδμητα 60 % ακριβότερα από τα παλιά (6 και 6 αγγελίες)· ΗΣΑΠ Περισσός"
     )
 
 
@@ -416,7 +416,7 @@ def test_area_trend_6m_flows_into_the_insight():
     assert [n for _, _, n in x.trend_series] == [15, 15]
     # ...and the decision sentence quotes it with its basis
     s = [t for t in ai.decision([x], 300_000) if t.startswith("Για ανατίμηση")][0]
-    assert "+4,1 % €/τ.μ. σε 6 μήνες (n=15/15)" in s
+    assert "+4,1 % €/τ.μ. σε 6 μήνες (15 και 15 αγγελίες)" in s
 
 
 def test_trend_6m_is_none_without_history():
@@ -483,7 +483,7 @@ def test_rank_areas_attaches_liquidity_from_lifecycle():
     x = ai.rank_areas(many(25), year=YEAR, lifecycle=life)[0]
     assert x.liquidity == "γρήγορη" and x.gone_60 == 0.5 and x.gone_n_60 == 40
     text = ai.liquidity_text(x)
-    assert text.startswith("γρήγορη — 50 % έφυγαν σε 60 μέρες (n=40)")
+    assert text.startswith("γρήγορη — 50 % έφυγαν σε 60 μέρες (40 αγγελίες)")
     assert "τουλάχιστον 35 %" in ai.LIQUIDITY_THRESHOLDS
     assert "κάτω από 15 %" in ai.LIQUIDITY_THRESHOLDS
 
@@ -532,7 +532,7 @@ def test_decision_appreciation_names_line4_and_trend_basis():
     x = ai.rank_areas(rows, year=YEAR)[0]
     s = [t for t in ai.decision([x], 300_000) if t.startswith("Για ανατίμηση")][0]
     assert "Γαλάτσι — Γραμμή 4 υπό κατασκευή (Άλσος Βεΐκου, Γαλάτσι, Ελικώνος, ορίζοντας 2032)" in s
-    assert "από τον Ιούλιο" in s and "n=60/60" in s
+    assert "από τον Ιούλιο" in s and "60 και 60 αγγελίες" in s
 
 
 def test_decision_liquidity_uses_gone_share_when_known():
@@ -540,7 +540,7 @@ def test_decision_liquidity_uses_gone_share_when_known():
     active = [d for d in life if d["status"] == "active"]
     x = ai.rank_areas(active, year=YEAR, lifecycle=life)[0]
     s = next(t for t in ai.decision([x], 300_000) if t.startswith("Για ρευστότητα"))
-    assert s.startswith("Για ρευστότητα: Χολαργός, γρήγορη — 40 % έφυγαν σε 60 μέρες (n=40)")
+    assert s.startswith("Για ρευστότητα: Χολαργός, γρήγορη — 40 % έφυγαν σε 60 μέρες (40 αγγελίες)")
 
 
 # ---- the six checks ----------------------------------------------------------------------
@@ -658,7 +658,7 @@ def test_exit_check_uses_trend_and_line4():
     d = _subject(neighborhood="Γαλάτσι (Άλσος Βεΐκου)")
     c = ai.investor_checks(d, None, x)[5]
     assert c[2] == ai.GOOD
-    assert "+4,1 % σε 6 μήνες" in c[1] and "n=15/15" in c[1]
+    assert "+4,1 % σε 6 μήνες" in c[1] and "15 και 15 αγγελίες" in c[1]
     assert "Μετρό Γραμμή 4 υπό κατασκευή: Άλσος Βεΐκου (ορίζοντας 2032)" in c[1]
     # a sub-area without a station name only gets the area-level stations
     other = _subject(neighborhood="Γαλάτσι (Λαμπρινή)")
