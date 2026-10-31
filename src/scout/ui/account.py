@@ -267,14 +267,20 @@ def login_ui() -> None:
     if not shortlist.storage_configured():
         st.caption(SESSION_ONLY)
         return
-    with st.expander("Σύνδεση", expanded=False):
+    # Streamlit's own field hint («Press Enter to apply») is English: hide it in the sidebar.
+    st.markdown(
+        "<style>section[data-testid='stSidebar'] [data-testid='InputInstructions']"
+        "{display:none}</style>",
+        unsafe_allow_html=True,
+    )
+    with st.expander("Σύνδεση", expanded=bool(st.session_state.get("login_msg"))):
         st.text_input("Όνομα", key="login_name", max_chars=40)
         st.text_input("PIN (4 ψηφία)", key="login_pin", type="password", max_chars=4)
         c1, c2 = st.columns(2)
         c1.button("Σύνδεση", key="login_go", on_click=_do_login, args=(False,), width="stretch")
         c2.button("Νέο προφίλ", key="login_new", on_click=_do_login, args=(True,), width="stretch")
         if st.session_state.get("login_msg"):
-            st.caption(st.session_state["login_msg"])
+            st.warning(st.session_state["login_msg"])
         st.caption("Το PIN προστατεύει μόνο τις προτιμήσεις σου σε αυτή την εφαρμογή.")
     st.caption(NOT_SIGNED_IN)
 

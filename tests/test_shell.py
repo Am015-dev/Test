@@ -179,7 +179,7 @@ def test_wrong_pin_is_refused_without_echoing_it(env):  # noqa: F811
     at = _sign_up(_app(), "Νίκος", "4321")
     at.sidebar.button(key="logout").click().run()
     at = _sign_up(at, "Νίκος", "9999", new=False)
-    texts = [c.value for c in at.sidebar.caption]
+    texts = [w.value for w in at.sidebar.warning] + [c.value for c in at.sidebar.caption]
     assert any("Λάθος PIN" in t for t in texts) and not any("9999" in t for t in texts)
     assert not any("Συνδεδεμένος" in m.value for m in at.sidebar.markdown)
 
