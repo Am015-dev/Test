@@ -1043,11 +1043,7 @@ footer {{ visibility: hidden; height: 0; }}
 /* The listing page: its title and «Πίσω» share one line (the button is pulled up beside the
  * title that precedes it; the rule applies only in that order). */
 [data-testid="stMain"] [data-testid="stElementContainer"]:has(h2) + .st-key-listing-back {{
-    margin-top: -60px; display: flex; justify-content: flex-end;
-}}
-[data-testid="stMain"] [data-testid="stElementContainer"]:has(h2) + .st-key-listing-back
-    .stButton {{
-    width: auto;
+    margin-top: -40px; align-self: flex-end;
 }}
 /* The sidebar opener: a hairline control, not a floating card. */
 header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {{
