@@ -214,9 +214,10 @@ def test_page_says_rents_are_coming_without_the_loader(env, monkeypatch):  # noq
 
     monkeypatch.delattr(queries, "load_rent_listings", raising=False)
     at = fresh(FIND)
-    at.button(key="guide-mode-rent").click().run()
     ok(at, "no loader")
-    assert any(rent_guide.SOON in i.value for i in at.info)
+    rent = at.button(key="guide-mode-rent")
+    assert rent.disabled and any(rent_guide.SOON in c.value for c in at.caption)
+    assert "### Τι ψάχνεις;" in _text(at)
 
 
 def test_page_says_no_rentals_yet_on_the_real_loader(env):  # noqa: F811
@@ -224,10 +225,27 @@ def test_page_says_no_rentals_yet_on_the_real_loader(env):  # noqa: F811
 
     assert queries.load_rent_listings() == []  # the seeded DB has sales only
     at = fresh(FIND)
-    at.button(key="guide-mode-rent").click().run()
     ok(at, "empty")
-    assert any(rent_guide.SOON in i.value for i in at.info)
-    assert "Βήμα 1 από 5" in _text(at)
+    assert at.button(key="guide-mode-rent").disabled
+    assert any(rent_guide.SOON in c.value for c in at.caption)
+    assert not at.button(key="guide-mode-buy").disabled
+
+
+def test_a_saved_rent_mode_without_rentals_returns_to_step_zero(env):  # noqa: F811
+    """A profile that chose «Να νοικιάσω» before the first weekly run with rentals must not
+    open on an empty rent flow: the guide resets the mode and shows step 0."""
+    at = fresh(FIND)
+    at.session_state["guide"] = {**guide_defaults(), "mode": "rent"}
+    at.run()
+    ok(at, "stranded")
+    assert "### Τι ψάχνεις;" in _text(at) and "Βήμα" not in _text(at)
+    assert at.session_state["guide"]["mode"] is None
+
+
+def guide_defaults() -> dict:
+    from scout.ui import guide
+
+    return dict(guide.DEFAULTS)
 
 
 def test_mode_is_saved_in_the_profile_store(monkeypatch):
