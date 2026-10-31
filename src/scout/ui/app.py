@@ -136,7 +136,7 @@ sys.modules["scout"]._source_stamp = _SOURCE_STAMP
 from scout.ui.theme import inject_css  # noqa: E402
 
 st.set_page_config(
-    page_title="Holargos Property Scout",
+    page_title="Σκάουτ ακινήτων",
     page_icon="🏠",
     layout="wide",
     # "auto": open on desktop, collapsed on phones. "expanded" covered the whole page on a

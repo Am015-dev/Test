@@ -292,7 +292,7 @@ def test_why_is_a_filled_template_without_adjectives():
     rents = [rent("Cholargos", None, 11.2, 38), rent("Cholargos", "Χολαργός (Περισσός)", 11.2, 38)]
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert x.why == (
-        "Απόδοση 4,5 % (1η από 1) με ενοίκιο 11,2 €/τ.μ. από 38 αγγελίες ενοικίασης"
+        "Μικτή απόδοση 4,5 % (1η από 1) με ενοίκιο (εκτίμηση) 11,2 €/τ.μ. από 38 αγγελίες ενοικίασης"
         "· νεόδμητα 60 % ακριβότερα από τα παλιά (n=6/6)· ΗΣΑΠ Περισσός"
     )
 
@@ -330,7 +330,10 @@ def test_decision_sentences_have_numbers_and_budget():
     ]
     ranked = ai.rank_areas(a + b + c, rents, year=YEAR)
     s = ai.decision(ranked, 300_000)
-    assert s[0].startswith("Για απόδοση: Παπάγου, μικτή ") and "ενοίκιο 12,0 €/τ.μ." in s[0]
+    assert (
+        s[0].startswith("Για απόδοση: Παπάγου, μικτή απόδοση ")
+        and "ενοίκιο (εκτίμηση) 12,0 €/τ.μ." in s[0]
+    )
     assert s[1].startswith("Για ρευστότητα: Χολαργός, 61 αγγελίες")
     assert s[2].startswith("Για ανατίμηση:")
     assert s[3].startswith("Για νεόδμητο κοντά σε σταθμό έως 300.000 €: Μαρούσι (ΗΣΑΠ Μαρούσι)")
@@ -368,8 +371,8 @@ def test_decision_yield_sentence_splits_old_and_new():
     ranked = ai.rank_areas(_stock() + many(30, ppm=3000, year_built=2015), rents, year=YEAR)
     first = ai.decision(ranked, 300_000)[0]
     assert first == (
-        "Για απόδοση: Χολαργός, μικτή 4,8 % στα παλιά (3,6 % στα νεόδμητα), "
-        "ενοίκιο 12,0 €/τ.μ. από ζητούμενα ενοίκια της περιοχής, 55 αγγελίες πώλησης."
+        "Για απόδοση: Χολαργός, μικτή απόδοση 4,8 % στα παλιά (3,6 % στα νεόδμητα), "
+        "ενοίκιο (εκτίμηση) 12,0 €/τ.μ. από ζητούμενα ενοίκια της περιοχής, 55 αγγελίες πώλησης."
     )
 
 
@@ -481,13 +484,14 @@ def test_rank_areas_attaches_liquidity_from_lifecycle():
     assert x.liquidity == "γρήγορη" and x.gone_60 == 0.5 and x.gone_n_60 == 40
     text = ai.liquidity_text(x)
     assert text.startswith("γρήγορη — 50 % έφυγαν σε 60 μέρες (n=40)")
-    assert "≥ 35 %" in ai.LIQUIDITY_THRESHOLDS and "< 15 %" in ai.LIQUIDITY_THRESHOLDS
+    assert "τουλάχιστον 35 %" in ai.LIQUIDITY_THRESHOLDS
+    assert "κάτω από 15 %" in ai.LIQUIDITY_THRESHOLDS
 
 
 def test_liquidity_unknown_says_why():
     x = ai.rank_areas(many(25), year=YEAR)[0]  # active-only input: no history
     assert x.liquidity is None
-    assert ai.liquidity_text(x).startswith("άγνωστη — δεν υπάρχει αρκετό ιστορικό")
+    assert ai.liquidity_text(x).startswith("άγνωστη — χρειάζεται ιστορικό σαρώσεων")
 
 
 def test_supply_per_rent_listing_and_relative_to_median():
@@ -571,8 +575,8 @@ def test_six_checks_have_labels_values_with_basis_and_a_known_verdict():
     x = ai.rank_areas(rows, year=YEAR, lifecycle=rows + _weekly_life(40, 0.5))[0]
     checks = ai.investor_checks(_subject(), market_intel.build(rows), x)
     assert [c[0].split(" (")[0] for c in checks] == [
-        "Τιμή vs παρόμοια",
-        "Απόδοση",
+        "Τιμή έναντι παρόμοιων",
+        "Μικτή απόδοση",
         "Ρευστότητα περιοχής",
         "Ζήτηση ενοικίου",
         "Νομικά / κανονιστικά",
@@ -588,20 +592,20 @@ def test_price_check_good_when_below_comps_and_warns_when_too_cheap_or_dear():
     rows = many(30, ppm=3000)
     for i, r in enumerate(rows):
         r["id"] = 100 + i
-    c = _checks(_subject(), rows, None)["Τιμή vs παρόμοια"]
+    c = _checks(_subject(), rows, None)["Τιμή έναντι παρόμοιων"]
     assert c[2] == ai.GOOD and "2.400 €/τ.μ. έναντι διάμεσης 3.000 €/τ.μ. (−20,0 %)" in c[1]
     assert "Παρόμοια (30)" in c[1]
-    cheap = _checks(_subject() | {"price_per_m2": 1500.0}, rows, None)["Τιμή vs παρόμοια"]
+    cheap = _checks(_subject() | {"price_per_m2": 1500.0}, rows, None)["Τιμή έναντι παρόμοιων"]
     assert cheap[2] == ai.WARN and "υπερβολικά φθηνό" in cheap[1]
-    dear = _checks(_subject() | {"price_per_m2": 3300.0}, rows, None)["Τιμή vs παρόμοια"]
+    dear = _checks(_subject() | {"price_per_m2": 3300.0}, rows, None)["Τιμή έναντι παρόμοιων"]
     assert dear[2] == ai.WARN
-    fair = _checks(_subject() | {"price_per_m2": 3000.0}, rows, None)["Τιμή vs παρόμοια"]
+    fair = _checks(_subject() | {"price_per_m2": 3000.0}, rows, None)["Τιμή έναντι παρόμοιων"]
     assert fair[2] == ai.MID
 
 
 def test_price_check_unknown_without_comps():
     c = ai.investor_checks(_subject(), None, None)[0]
-    assert c[2] == ai.UNKNOWN and "δεν υπάρχουν ≥ 5 παρόμοια" in c[1]
+    assert c[2] == ai.UNKNOWN and "λιγότερα από 5 παρόμοια" in c[1]
 
 
 def test_yield_check_shows_rent_and_price_and_verdict_bands():
@@ -618,7 +622,7 @@ def test_yield_check_shows_rent_and_price_and_verdict_bands():
 def test_liquidity_and_rent_demand_checks_follow_the_insight():
     x = ai.rank_areas(many(25), year=YEAR, lifecycle=_weekly_life(40, 0.5))[0]
     liq = ai.investor_checks(_subject(), None, x)[2]
-    assert liq[2] == ai.GOOD and "γρήγορη" in liq[1] and "≥ 35 %" in liq[1]
+    assert liq[2] == ai.GOOD and "γρήγορη" in liq[1] and "τουλάχιστον 35 %" in liq[1]
     x.liquidity = "αργή"
     assert ai.investor_checks(_subject(), None, x)[2][2] == ai.WARN
     assert ai.investor_checks(_subject(), None, None)[2][2] == ai.UNKNOWN

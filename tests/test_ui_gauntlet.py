@@ -236,11 +236,11 @@ def test_buyer_journey(env):
     ok(at, "example")
     assert "Χολαργός" in at.expander[0].label  # the filter panel's label says what is applied
     # the AI second opinion is optional: only on request, then its verdicts are on the cards
-    assert not any("Δεύτερη γνώμη (AI)**" in m.value for m in at.markdown)
+    assert not any("Δεύτερη γνώμη από τεχνητή νοημοσύνη**" in m.value for m in at.markdown)
     at.button(key="advice_again").click().run()
     ok(at, "second opinion")
-    assert any("Δεύτερη γνώμη (AI)" in m.value for m in at.markdown)
-    assert any("Δεύτερη γνώμη (AI): Αξίζει" in m.value for m in at.markdown)
+    assert any("Δεύτερη γνώμη από τεχνητή νοημοσύνη" in m.value for m in at.markdown)
+    assert any("Δεύτερη γνώμη από τεχνητή νοημοσύνη: Αξίζει" in m.value for m in at.markdown)
     # star the first result
     next(b for b in at.button if b.label == "☆ Αγαπημένο").click().run()
     ok(at, "star")
@@ -262,10 +262,13 @@ def test_buyer_journey(env):
     assert not any(w in text for w in ("Golden Visa", "Airbnb", "DSCR", "cap rate", "GRM"))
     # a second opinion on this one listing
     calls = at.session_state.get("advice_calls", 0)
-    next(b for b in at.button if b.label == "Δεύτερη γνώμη (AI)").click().run()
+    next(b for b in at.button if b.label == "Δεύτερη γνώμη από τεχνητή νοημοσύνη").click().run()
     ok(at, "listing advice")
     assert at.session_state["advice_calls"] == calls + 1
-    assert any("Δεύτερη γνώμη (AI):" in m.value and "hg-advice" in m.value for m in at.markdown)
+    assert any(
+        "Δεύτερη γνώμη από τεχνητή νοημοσύνη:" in m.value and "hg-advice" in m.value
+        for m in at.markdown
+    )
     # unstar from the listing page
     next(b for b in at.button if b.label == "★ Αφαίρεση").click().run()
     ok(at, "unstar")
@@ -650,13 +653,13 @@ def test_no_developer_text_without_keys(env, monkeypatch):
         ok(at, page)
         found = [(w, t[:80]) for t in texts(at) for w in DEV_WORDS if w in t]
         assert not found, (page, found)
-        assert not any("(AI)" in b.label for b in at.button), page
+        assert not any("τεχνητή νοημοσύνη" in b.label for b in at.button), page
     at = fresh(SEARCH)
     assert any("Τα αγαπημένα κρατιούνται" in c.value for c in fresh(STARRED).caption)
     # the listing page has no AI button either
     next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
     ok(at, "details")
-    assert not any("(AI)" in b.label for b in at.button)
+    assert not any("τεχνητή νοημοσύνη" in b.label for b in at.button)
     found = [(w, t[:80]) for t in texts(at) for w in DEV_WORDS if w in t]
     assert not found, found
     # free text without AI: area + price are read, the filters follow

@@ -27,6 +27,11 @@ from ..models import ListingRow
 from ..nl_search import area_matches
 from . import components, queries
 
+# The citation names the English-language source article; say so in Greek.
+SOURCE_NOTE_GR = SOURCE_NOTE.replace(
+    "Wikipedia «Line 4 (Athens Metro)»", "το αγγλικό άρθρο της Βικιπαίδειας για τη Γραμμή 4"
+)
+
 SEARCH_PAGE = "Αναζήτηση"
 AREA_KEY = "area_pick"
 
@@ -45,14 +50,14 @@ CONF_HIGH, CONF_MID, CONF_LOW = "Υψηλή", "Μέτρια", "Χαμηλή"
 
 # Human-readable scales of area_insights._components (kept next to the weights on screen).
 SCALES = {
-    "yield": ("Μικτή απόδοση", "3% → 7%"),
+    "yield": ("Μικτή απόδοση", "από 3 % έως 7 %"),
     "affordability": (
         "Προσιτότητα",
-        "20% πάνω → 20% κάτω από τη διάμεση €/τ.μ. της ΒΑ Αθήνας",
+        "από 20 % πάνω έως 20 % κάτω από τη διάμεση €/τ.μ. της ΒΑ Αθήνας",
     ),
-    "stock": ("Καλό απόθεμα", "0 → 30 διαμερίσματα"),
-    "negotiability": ("Περιθώριο διαπραγμάτευσης", "0% → 40% των αγγελιών με μείωση τιμής"),
-    "momentum": ("Τάση τιμών", "−5% → +5% από τον Ιούλιο"),
+    "stock": ("Καλό απόθεμα", "από 0 έως 30 διαμερίσματα"),
+    "negotiability": ("Περιθώριο διαπραγμάτευσης", "από 0 % έως 40 % των αγγελιών με μείωση τιμής"),
+    "momentum": ("Τάση τιμών", "από −5 % έως +5 % από τον Ιούλιο"),
 }
 
 
@@ -126,10 +131,10 @@ def yield_text(x: ai.AreaInsight) -> str:
 
 
 def uc_text(x: ai.AreaInsight) -> str:
-    """Under-construction share among new builds whose page was read: '2/5 ελεγμένα'."""
+    """Under-construction share among new builds whose page was read: '2/5 με ελεγμένη περιγραφή'."""
     if not x.uc_checked:
         return "δεν έχει ελεγχθεί ακόμα κανένα νεόδμητο"
-    return f"{x.uc_unfinished}/{x.uc_checked} ελεγμένα"
+    return f"{x.uc_unfinished}/{x.uc_checked} με ελεγμένη περιγραφή"
 
 
 def confidence_text(x: ai.AreaInsight) -> str:
@@ -139,7 +144,7 @@ def confidence_text(x: ai.AreaInsight) -> str:
 
 def new_old_text(x: ai.AreaInsight) -> str:
     if x.new_premium is None:
-        return f"δεν υπάρχουν ≥{ai.MIN_BAND} αγγελίες και στις δύο ομάδες (n={x.n_new}/{x.n_old})"
+        return f"δεν υπάρχουν τουλάχιστον {ai.MIN_BAND} αγγελίες και στις δύο ομάδες (n={x.n_new}/{x.n_old})"
     return (
         f"{gr_ppm(x.ppm_new)} (n={x.n_new}) έναντι {gr_ppm(x.ppm_old)} (n={x.n_old}), "
         f"{gr_pct(x.new_premium, 0, sign=True)}"
@@ -150,17 +155,13 @@ def trend_line(x: ai.AreaInsight) -> str:
     """Price trend of the area with its basis, or why there is none."""
     t = ai.exit_trend(x)
     if t is None:
-        return (
-            f"δεν υπάρχει αρκετό ιστορικό (6 μήνες: ≥ {ai.MIN_MONTH} αγγελίες σε κάθε μήνα· "
-            f"Ιούλιος→Οκτώβριος: ≥ {ai.MIN_TREND} σε κάθε ομάδα, n={x.trend_early_n}/"
-            f"{x.trend_late_n})"
-        )
+        return f"δεν υπάρχει αρκετό ιστορικό (n={x.trend_early_n}/{x.trend_late_n})"
     return f"{gr_pct(t[0], sign=True)} {t[1]} (διάμεση €/τ.μ. αγγελιών που πρωτοεμφανίστηκαν, n={t[2]})"
 
 
 def supply_line(x: ai.AreaInsight) -> str:
     if x.supply_per_rent is None:
-        return "άγνωστη — δεν έχει καταγραφεί πόσες αγγελίες ενοικίασης βρέθηκαν"
+        return "άγνωστη"
     return f"{gr_num(x.supply_per_rent, 1)} ({x.n_fresh} πώλησης / {x.rent_samples} ενοικίασης)"
 
 
@@ -204,7 +205,7 @@ def render_checks(checks: list[tuple[str, str, str]]) -> None:
 
 FILTERS_CAPTION = (
     "Μετράνε μόνο διαμερίσματα από 1ο όροφο και πάνω, με γνωστό όροφο, που εμφανίστηκαν "
-    f"στην τελευταία σάρωση (≤{queries.FRESH_DAYS} ημέρες). Νεόδμητα = έως 5 ετών, "
+    f"στην τελευταία σάρωση (έως {queries.FRESH_DAYS} μέρες πριν). Νεόδμητα = έως 5 ετών, "
     "παλιά = 16+ ετών."
 )
 
@@ -214,7 +215,7 @@ def coverage_line(insights: list[ai.AreaInsight], listings: list[dict]) -> str:
     when = f" έως {max(seen):%d/%m}" if seen else ""
     return (
         f"Ζητούμενες τιμές XE.gr{when} · {len(insights)} περιοχές με "
-        f"≥{ai.MIN_FRESH} πρόσφατες αγγελίες"
+        f"τουλάχιστον {ai.MIN_FRESH} πρόσφατες αγγελίες"
     )
 
 
@@ -225,38 +226,38 @@ def table_frame(insights: list[ai.AreaInsight]) -> pd.DataFrame:
         rows.append(
             {
                 "Περιοχή": x.area,
-                "Σκορ": x.score,
+                "Βαθμολογία": x.score,
                 "Εμπιστοσύνη": confidence(x),
                 "Πρόσφατες αγγελίες": x.n_fresh,
                 "€/τ.μ. (όλα)": x.median_ppm,
-                "€/τ.μ. ≤30 ετών": x.median_ppm_recent,
-                "n ≤30 ετών": x.n_recent,
+                "€/τ.μ. (έως 30 ετών)": x.median_ppm_recent,
+                "Αγγελίες (έως 30 ετών)": x.n_recent,
                 "Ενοίκιο €/τ.μ./μήνα": x.rent_ppm,
                 "Δείγματα ενοικίου": x.rent_samples or None,
                 "Μικτή απόδοση": None if x.gross_yield is None else 100 * x.gross_yield,
                 "Τάση από Ιούλιο": None if x.trend_pct is None else 100 * x.trend_pct,
-                "n τάσης": f"{x.trend_early_n}/{x.trend_late_n}",
+                "Πλήθος τάσης": f"{x.trend_early_n}/{x.trend_late_n}",
                 "Με μείωση τιμής": 100 * x.cut_share,
                 "Καλό απόθεμα": x.good_stock,
-                "Νεόδμητα vs παλιά": None if x.new_premium is None else 100 * x.new_premium,
+                "Νεόδμητα έναντι παλιών": None if x.new_premium is None else 100 * x.new_premium,
             }
         )
     return pd.DataFrame(rows)
 
 
 _TABLE_FORMAT = {
-    "Σκορ": lambda v: gr_num(v, 1),
+    "Βαθμολογία": lambda v: gr_num(v, 1),
     "Πρόσφατες αγγελίες": gr_num,
     "€/τ.μ. (όλα)": gr_ppm,
-    "€/τ.μ. ≤30 ετών": gr_ppm,
-    "n ≤30 ετών": gr_num,
+    "€/τ.μ. (έως 30 ετών)": gr_ppm,
+    "Αγγελίες (έως 30 ετών)": gr_num,
     "Ενοίκιο €/τ.μ./μήνα": gr_rent,
     "Δείγματα ενοικίου": gr_num,
     "Μικτή απόδοση": lambda v: gr_pct(None if _missing(v) else v / 100),
     "Τάση από Ιούλιο": lambda v: gr_pct(None if _missing(v) else v / 100, sign=True),
     "Με μείωση τιμής": lambda v: gr_pct(v / 100, 0),
     "Καλό απόθεμα": gr_num,
-    "Νεόδμητα vs παλιά": lambda v: gr_pct(None if _missing(v) else v / 100, 0, sign=True),
+    "Νεόδμητα έναντι παλιών": lambda v: gr_pct(None if _missing(v) else v / 100, 0, sign=True),
 }
 PHONE_COLUMNS = ["Περιοχή", "Μικτή απόδοση", "€/τ.μ. (όλα)", "Πρόσφατες αγγελίες"]
 
@@ -350,32 +351,32 @@ def _go_to_listings(area: str) -> None:
 def _method() -> None:
     with st.expander("Πώς βαθμολογούμε"):
         rows = "\n".join(
-            f"| {SCALES[k][0]} | {gr_num(100 * w)}% | {SCALES[k][1]} |"
+            f"| {SCALES[k][0]} | {gr_num(100 * w)} % | {SCALES[k][1]} |"
             for k, w in ai.WEIGHTS.items()
         )
         st.markdown(
-            "**Σκορ (0–100) = 100 × Σ βάρος × συνιστώσα.** Κάθε συνιστώσα μετράει 0–1 σε "
-            "σταθερή κλίμακα (όχι σε σχέση με τις άλλες περιοχές), άρα το ίδιο σκορ σημαίνει "
+            "**Βαθμολογία (0–100) = 100 × Σ βάρος × συνιστώσα.** Κάθε συνιστώσα μετράει από 0 έως "
+            "1 σε σταθερή κλίμακα (όχι σε σχέση με τις άλλες περιοχές), άρα η ίδια βαθμολογία σημαίνει "
             "το ίδιο πράγμα κάθε εβδομάδα. Όπου λείπει στοιχείο (ενοίκιο, τάση) η συνιστώσα "
             "παίρνει ουδέτερο 0,5 και αναφέρεται ως κίνδυνος.\n\n"
-            "| Συνιστώσα | Βάρος | Κλίμακα (0 → 1) |\n|---|---|---|\n" + rows + "\n\n"
+            "| Συνιστώσα | Βάρος | Κλίμακα (από 0 έως 1) |\n|---|---|---|\n" + rows + "\n\n"
             "**Τύποι**\n"
             "- Μικτή απόδοση = 12 × διάμεσο ζητούμενο ενοίκιο €/τ.μ./μήνα ÷ διάμεση "
             "ζητούμενη τιμή πώλησης €/τ.μ. (πριν από έξοδα, φόρους, κενά).\n"
             "- Τάση από Ιούλιο = διάμεση €/τ.μ. αγγελιών που εμφανίζονται 16–31/10 ÷ "
             "διάμεση αρχική €/τ.μ. αγγελιών που πρωτοεμφανίστηκαν τον Ιούλιο − 1. "
-            f"Χρειάζονται ≥{ai.MIN_TREND} αγγελίες σε κάθε ομάδα, αλλιώς «—».\n"
+            f"Χρειάζονται τουλάχιστον {ai.MIN_TREND} αγγελίες σε κάθε ομάδα, αλλιώς «—».\n"
             "- Καλό απόθεμα = διαμερίσματα έως 30 ετών, από 1ο όροφο, κάτω από τη διάμεση "
             "τιμή της ηλικιακής τους κατηγορίας στην ίδια περιοχή.\n"
             "- Προσιτότητα: σε σχέση με τη διάμεση ζητούμενη €/τ.μ. όλων των πρόσφατων "
             "αγγελιών από τις 15 αναζητήσεις ΒΑ Αθήνας.\n"
             f"- Πρόσφατες αγγελίες = εμφανίστηκαν στην τελευταία σάρωση "
-            f"(≤{queries.FRESH_DAYS} ημέρες πριν από την πιο πρόσφατη). Περιοχή με "
-            f"λιγότερες από {ai.MIN_FRESH} δεν αξιολογείται. Ισόγεια, ημιτελή και "
+            f"(έως {queries.FRESH_DAYS} μέρες πριν από την πιο πρόσφατη). Περιοχή με "
+            f"λιγότερες από {ai.MIN_FRESH} δεν αξιολογείται. Ισόγεια, υπό κατασκευή και "
             "ύποπτες αγγελίες δεν μετράνε.\n\n"
-            f"**Εμπιστοσύνη** — {CONF_HIGH}: ≥{HIGH_LISTINGS} αγγελίες και "
-            f"≥{HIGH_RENT_SAMPLES} δείγματα ενοικίου. {CONF_LOW}: χωρίς ενοίκιο, "
-            f"<{ai.SMALL_SAMPLE} αγγελίες ή <{ai.FEW_RENT_SAMPLES} δείγματα ενοικίου. "
+            f"**Εμπιστοσύνη** — {CONF_HIGH}: τουλάχιστον {HIGH_LISTINGS} αγγελίες και "
+            f"{HIGH_RENT_SAMPLES} δείγματα ενοικίου. {CONF_LOW}: χωρίς ενοίκιο, "
+            f"λιγότερες από {ai.SMALL_SAMPLE} αγγελίες ή {ai.FEW_RENT_SAMPLES} δείγματα ενοικίου. "
             f"{CONF_MID}: όλα τα άλλα — και πάντα όταν ο αριθμός δειγμάτων του ενοικίου "
             "δεν έχει καταγραφεί («δείγματα: —»).\n\n"
             "**Τι δεν μπορούν να πουν τα δεδομένα**\n"
@@ -385,20 +386,20 @@ def _method() -> None:
             "υπογεγραμμένα μισθωτήρια.\n"
             f"- **Τάση €/τ.μ.** = διάμεση πρώτη ζητούμενη €/τ.μ. των αγγελιών που "
             f"πρωτοεμφανίστηκαν τον τελευταίο μήνα ÷ τον ίδιο δείκτη 6 μήνες πριν − 1, "
-            f"με ≥ {ai.MIN_MONTH} αγγελίες σε κάθε μήνα· αλλιώς «δεν υπάρχει αρκετό "
+            f"με τουλάχιστον {ai.MIN_MONTH} αγγελίες σε κάθε μήνα· αλλιώς «δεν υπάρχει αρκετό "
             "ιστορικό». Δείχνει αγγελίες που είναι ακόμα ενεργές (όσες πουλήθηκαν δεν "
             "μετράνε) και τις νέες αγγελίες κάθε μήνα, όχι τα ίδια διαμερίσματα.\n"
             f"- **Ρευστότητα** = ποσοστό αγγελιών που εξαφανίστηκαν σε 30 και 60 μέρες από "
             f"την πρώτη φορά που τις είδαμε. Μετράει μόνο όταν οι σαρώσεις είναι τακτικές "
-            f"(κενό ≤ {ai.GAP_MAX} μέρες), με ≥ {ai.MIN_LIQ} αγγελίες· {ai.LIQUIDITY_THRESHOLDS}. "
+            f"(κενό έως {ai.GAP_MAX} μέρες), με τουλάχιστον {ai.MIN_LIQ} αγγελίες· {ai.LIQUIDITY_THRESHOLDS}. "
             "«Εξαφανίστηκε» δεν σημαίνει «πουλήθηκε»: μπορεί να αποσύρθηκε ή να ανανεώθηκε.\n"
             "- **Προσφορά ανά αγγελία ενοικίασης** = αγγελίες πώλησης ÷ αγγελίες ενοικίασης "
             "πίσω από το διάμεσο ενοίκιο της περιοχής.\n"
-            f"- **Μετρό Γραμμή 4**: {SOURCE_NOTE} Ο ορίζοντας είναι εκτίμηση, όχι ημερομηνία "
+            f"- **Μετρό Γραμμή 4**: {SOURCE_NOTE_GR} Ο ορίζοντας είναι εκτίμηση, όχι ημερομηνία "
             "παράδοσης· η σύνδεση με αγγελία γίνεται μόνο από το όνομα της γειτονιάς.\n"
-            "- Οι ημέρες στην αγορά μετρούν από τότε που είδαμε πρώτη φορά την αγγελία· "
+            "- Οι μέρες στην αγορά μετρούν από τότε που είδαμε πρώτη φορά την αγγελία· "
             "μέχρι να γίνονται τακτικές εβδομαδιαίες σαρώσεις δεν είναι αξιόπιστες και δεν "
-            "μπαίνουν στο σκορ.\n"
+            "μπαίνουν στη βαθμολογία.\n"
             "- Η τάση συγκρίνει ζητούμενες τιμές αγγελιών που είναι ακόμα ενεργές· όσες "
             "πουλήθηκαν ή αποσύρθηκαν από τον Ιούλιο δεν μετράνε.\n"
             "- Μόνο μία πηγή (XE.gr): μέρος της αγοράς, όχι κάθε αγγελία."
@@ -437,7 +438,7 @@ def _card(rank: int | None, x: ai.AreaInsight, *, key: str) -> None:
                 "Ρευστότητα",
                 ai.liquidity_text(x) + (f" ({ai.LIQUIDITY_THRESHOLDS})" if x.liquidity else ""),
             ),
-            ("Προσφορά πώλησης ανά αγγελία ενοικίασης", supply_line(x)),
+            ("Προσφορά ανά αγγελία ενοικίασης", supply_line(x)),
             ("Σταθμός", ", ".join(x.stations) if x.stations else "κανένας στις γειτονιές"),
         ]
         if x.line4:
@@ -475,11 +476,13 @@ def _table(insights: list[ai.AreaInsight]) -> None:
         column_config={
             "Περιοχή": cc.TextColumn(pinned=True),
             "€/τ.μ. (όλα)": cc.NumberColumn("€/τ.μ.", help="Διάμεση ζητούμενη τιμή πώλησης"),
-            "Μικτή απόδοση": cc.NumberColumn("Απόδοση", help="12 × ενοίκιο €/τ.μ. ÷ τιμή €/τ.μ."),
+            "Μικτή απόδοση": cc.NumberColumn(
+                "Μικτή απόδοση", help="12 × ενοίκιο €/τ.μ. ÷ τιμή €/τ.μ."
+            ),
             "Πρόσφατες αγγελίες": cc.NumberColumn("Αγγελίες"),
         },
     )
-    st.caption("Κλικ σε επικεφαλίδα για ταξινόμηση. «—» = δεν υπάρχει αρκετό δείγμα.")
+    st.caption("Πάτα σε επικεφαλίδα για ταξινόμηση. «—» = δεν υπάρχει αρκετό δείγμα.")
 
 
 def _map(insights: list[ai.AreaInsight], listings: list[dict]) -> None:
@@ -525,8 +528,8 @@ def _map(insights: list[ai.AreaInsight], listings: list[dict]) -> None:
         pickable=True,
     )
     tooltip = {
-        "html": "<b>{area}</b><br/>Σκορ <b>{score}</b> · εμπιστοσύνη {conf}<br/>"
-        "Ζητούμενη {ppm} · ενοίκιο {rent}/μήνα<br/>Μικτή απόδοση {yld} · {n} αγγελίες"
+        "html": "<b>{area}</b><br/>Βαθμολογία <b>{score}</b> · εμπιστοσύνη {conf}<br/>"
+        "Τιμή {ppm} · ενοίκιο (εκτίμηση) {rent}/μήνα<br/>Μικτή απόδοση {yld} · {n} αγγελίες"
         "<br/><i>{prec}</i>",
         "style": {"fontSize": "12px", "maxWidth": "280px"},
     }
@@ -541,7 +544,7 @@ def _map(insights: list[ai.AreaInsight], listings: list[dict]) -> None:
     )
     st.caption(
         "Ένα σημείο ανά περιοχή (διάμεση θέση αγγελιών με ακριβή θέση, αλλιώς το κέντρο "
-        "της περιοχής). Χρώμα = σκορ (κόκκινο χαμηλό → πράσινο υψηλό), μέγεθος = "
+        "της περιοχής). Χρώμα = βαθμολογία (κόκκινο: χαμηλή, πράσινο: υψηλή), μέγεθος = "
         "πλήθος αγγελιών."
     )
 
@@ -560,7 +563,7 @@ def page_areas(listings: list[dict]) -> None:
     shown = [x for x in ranked if is_ne(x.area)] if ne_only else ranked
     if not shown:
         st.info(
-            f"Καμία περιοχή δεν έχει ακόμα ≥{ai.MIN_FRESH} πρόσφατες αγγελίες για "
+            f"Καμία περιοχή δεν έχει ακόμα τουλάχιστον {ai.MIN_FRESH} πρόσφατες αγγελίες για "
             "αξιόπιστη σύγκριση."
         )
         return

@@ -84,13 +84,13 @@ def test_buyer_card_status_unknowns_and_photos():
     from scout.ui.buyer import card_html
 
     unchecked = card_html({**BUYER, "floor": None, "year_built": None}, {})
-    assert 'hg-st-unk">Δεν έχει ελεγχθεί ακόμα η σελίδα της αγγελίας<' in unchecked
+    assert 'hg-st-unk">Δεν έχει ελεγχθεί ακόμα<' in unchecked
     assert "όροφος: δεν δηλώνεται" in unchecked and "έτος: δεν δηλώνεται" in unchecked
     assert "Λίγα παρόμοια" in unchecked
     shell = card_html(
         {**BUYER, "is_unfinished": True, "page_checked": True, "few_photos": True}, {}
     )
-    assert 'hg-st-bad">Υπό κατασκευή<' in shell and "≤2 φωτογραφίες" in shell
+    assert 'hg-st-bad">Υπό κατασκευή<' in shell and "Το πολύ 2 φωτογραφίες" in shell
     assert "Ελέγχθηκε" not in shell.split("<details>")[0]  # under construction wins
     norent = card_html({**BUYER, "area_m2": None, "est_monthly_rent": None}, {})
     assert "Ενοίκιο: χωρίς εκτίμηση" in norent

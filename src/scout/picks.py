@@ -216,8 +216,8 @@ def gr_num(x: float) -> str:
 
 
 CHECKED = "Ελέγχθηκε η περιγραφή{when} — δεν αναφέρει κατασκευή σε εξέλιξη"
-UNCHECKED = "Δεν έχει ελεγχθεί ακόμα η σελίδα της αγγελίας"
-FEW_PHOTOS = "≤2 φωτογραφίες — συχνά μόνο render ή λογότυπο"
+UNCHECKED = "Δεν έχει ελεγχθεί ακόμα"
+FEW_PHOTOS = "Το πολύ 2 φωτογραφίες — συχνά μόνο ψηφιακή απεικόνιση ή λογότυπο"
 EXCERPT_CHARS = 300
 
 
@@ -318,13 +318,13 @@ def _build(
     if cmp:
         pct = round(abs(cmp["pct"]) * 100)
         rel = (
-            f"όσο τα {cmp['n']} παρόμοια"
+            f"όσο τα παρόμοια ({cmp['n']})"
             if pct < 2
-            else f"{pct} % {'κάτω' if cmp['pct'] < 0 else 'πάνω'} από {cmp['n']} παρόμοια"
+            else f"{pct} % {'κάτω' if cmp['pct'] < 0 else 'πάνω'} από τα παρόμοια ({cmp['n']})"
         )
         lines.append(f"Τιμή {_eur(ppm)}/τ.μ. — {rel}")
     else:
-        lines.append(f"Τιμή {_eur(ppm)}/τ.μ. — λιγότερα από 5 παρόμοια για σύγκριση")
+        lines.append(f"Τιμή {_eur(ppm)}/τ.μ. — λιγότερα από 5 παρόμοια (δεν συγκρίνεται)")
     if st_name:
         lines.append(f"Σταθμός {st_name} — από το όνομα της γειτονιάς")
     lines.append(
@@ -333,16 +333,24 @@ def _build(
             for x in (
                 f"Κτίριο {d.get('year_built') or '—'}"
                 + (f", ανακαίνιση {d['renovated_year']}" if d.get("renovated_year") else ""),
-                f"{d['floor']:g}ος όροφος" if d.get("floor") is not None else "",
+                (
+                    (f"{d['floor']:g}ος όροφος" if d["floor"] else "Ισόγειο")
+                    if d.get("floor") is not None
+                    else ""
+                ),
                 f"{d['area_m2']:g} τ.μ.",
-                f"{d['bedrooms']} υπνοδωμάτια" if d.get("bedrooms") else "",
+                (
+                    (f"{d['bedrooms']} υπνοδωμάτι{'ο' if d['bedrooms'] == 1 else 'α'}")
+                    if d.get("bedrooms")
+                    else ""
+                ),
             )
             if x
         )
     )
     offer_line = (
-        (f"{dom} μέρες στην αγορά → ξεκίνα" if dom else "Προσφορά: ξεκίνα")
-        + f" από ~{_eur(offer)}"
+        (f"{dom} {'μέρα' if dom == 1 else 'μέρες'} στην αγορά · " if dom else "")
+        + f"Προσφορά: ξεκίνα από ~{_eur(offer)}"
         + (" (ιδιώτης πωλητής)" if d.get("is_private_seller") else "")
     )
     lines.append(offer_line)
@@ -354,9 +362,11 @@ def _build(
     if too_cheap:
         risks.append("Ασυνήθιστα φθηνό για τα παρόμοια — έλεγξε τ.μ., κατάσταση, νομικά.")
     if where != d.get("neighborhood"):
-        risks.append(f"Ενοίκιο από την ευρύτερη περιοχή «{where}» — λίγα στοιχεία για τη γειτονιά.")
+        risks.append(
+            f"Ενοίκιο (εκτίμηση) από την ευρύτερη περιοχή «{where}» — λίγα στοιχεία για τη γειτονιά."
+        )
     if cmp and cmp["n"] < 8:
-        risks.append(f"Μόνο {cmp['n']} παρόμοια για σύγκριση — μικρό δείγμα.")
+        risks.append(f"Παρόμοια ({cmp['n']}): μικρό δείγμα για σύγκριση.")
     if not d.get("energy_class"):
         risks.append("Η ενεργειακή κλάση δεν δηλώνεται — ζήτα το πιστοποιητικό.")
     return Pick(
@@ -475,7 +485,9 @@ class Relax:
     @property
     def text(self) -> str:
         return f"{self.label} (+{self.added}" + (
-            f", {self.added_checked} ελεγμένες)" if "checked_only" not in self.changes else ")"
+            f", {self.added_checked} με ελεγμένη περιγραφή)"
+            if "checked_only" not in self.changes
+            else ")"
         )
 
 
@@ -520,7 +532,7 @@ def relaxations(
     if bedrooms is not None:
         options.append(("Χωρίς όρο υπνοδωματίων", {"bedrooms": None}))
     if checked_only:
-        options.append(("Μόνο ελεγμένες: όχι", {"checked_only": False}))
+        options.append(("Χωρίς όρο ελεγμένης περιγραφής", {"checked_only": False}))
     out = []
     for label, changes in options:
         more = {k: v for k, v in ids(**changes).items() if k not in base}

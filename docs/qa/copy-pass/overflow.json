@@ -1,0 +1,172 @@
+{
+  "00-first-load-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 2964
+  },
+  "01-find-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 2964
+  },
+  "02-areas-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 4247
+  },
+  "03-search-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 5197
+  },
+  "04-map-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [
+      "INPUT. right=479"
+    ],
+    "pageHeight": 3160
+  },
+  "05-favs-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 844
+  },
+  "06-saved-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 844
+  },
+  "07-compare-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 1647
+  },
+  "08-detail-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 2537
+  },
+  "10-find-rejected-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 3080
+  },
+  "11-area-listings-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 5452
+  },
+  "01-find-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 2215
+  },
+  "02-areas-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 3146
+  },
+  "03-search-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 4007
+  },
+  "04-map-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 2377
+  },
+  "05-favs-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 800
+  },
+  "06-saved-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 800
+  },
+  "07-compare-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 1295
+  },
+  "08-detail-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 1774
+  },
+  "10-find-rejected-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 2357
+  },
+  "11-area-listings-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 4205
+  }
+}

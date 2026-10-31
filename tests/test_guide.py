@@ -92,7 +92,7 @@ def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env):  # noqa: F
     assert at.session_state["guide"]["where"] == "best"
     assert f"**{added}** αγγελίες" in _text(at)
     cards = _cards(at)
-    assert cards and "Δεν έχει ελεγχθεί ακόμα η σελίδα της αγγελίας" in _text(at)
+    assert cards and "Δεν έχει ελεγχθεί ακόμα" in _text(at)
     at.button(key=cards[0]).click().run()
     ok(at, "drop")
     assert cards[0] not in _cards(at)

@@ -93,7 +93,10 @@ def test_table_frame_is_numeric_and_sortable():
 def test_coverage_line():
     rows = [flat(last_seen=datetime(2026, 10, 30, 23))]
     line = areas.coverage_line([_insight()] * 23, rows)
-    assert line == "Ζητούμενες τιμές XE.gr έως 30/10 · 23 περιοχές με ≥20 πρόσφατες αγγελίες"
+    assert (
+        line
+        == "Ζητούμενες τιμές XE.gr έως 30/10 · 23 περιοχές με τουλάχιστον 20 πρόσφατες αγγελίες"
+    )
 
 
 def test_area_points_prefer_exact_then_own_centroid():
@@ -114,7 +117,7 @@ def test_ranking_feeds_the_page_helpers():
 
 
 def test_card_texts_show_n_over_m_and_unchecked():
-    assert areas.uc_text(_insight(uc_unfinished=33, uc_checked=51)) == "33/51 ελεγμένα"
+    assert areas.uc_text(_insight(uc_unfinished=33, uc_checked=51)) == "33/51 με ελεγμένη περιγραφή"
     assert "δεν έχει ελεγχθεί" in areas.uc_text(_insight())
     assert areas.confidence_text(_insight(n_fresh=150, rent_samples=40)) == ("Υψηλή (n=150)")
     assert "n=—" not in areas.confidence_text(_insight(rent_samples=None))
