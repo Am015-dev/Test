@@ -86,8 +86,8 @@ def test_table_frame_is_numeric_and_sortable():
     df = areas.table_frame([_insight(), _insight(area="Γαλάτσι", rent_samples=None)])
     assert df["Μικτή απόδοση"].iloc[0] == pytest.approx(5.13)
     assert df["€/τ.μ. (όλα)"].dtype.kind == "f"
-    assert df["Δείγματα ενοικίου"].isna().iloc[1]
-    assert areas._TABLE_FORMAT["Δείγματα ενοικίου"](df["Δείγματα ενοικίου"].iloc[1]) == "—"
+    assert df["Αγγελίες ενοικίασης"].isna().iloc[1]
+    assert areas._TABLE_FORMAT["Αγγελίες ενοικίασης"](df["Αγγελίες ενοικίασης"].iloc[1]) == "—"
 
 
 def test_coverage_line():
@@ -95,7 +95,7 @@ def test_coverage_line():
     line = areas.coverage_line([_insight()] * 23, rows)
     assert (
         line
-        == "Ζητούμενες τιμές XE.gr έως 30/10 · 23 περιοχές με τουλάχιστον 20 πρόσφατες αγγελίες"
+        == "Τιμές που ζητούν στο XE.gr έως 30/10. 23 περιοχές έχουν τουλάχιστον 20 πρόσφατες αγγελίες"
     )
 
 
@@ -117,17 +117,25 @@ def test_ranking_feeds_the_page_helpers():
 
 
 def test_card_texts_show_n_over_m_and_unchecked():
-    assert areas.uc_text(_insight(uc_unfinished=33, uc_checked=51)) == "33/51 με ελεγμένη περιγραφή"
+    assert (
+        areas.uc_text(_insight(uc_unfinished=33, uc_checked=51))
+        == "33 από τα 51 νεόδμητα που ελέγξαμε"
+    )
     assert "δεν έχει ελεγχθεί" in areas.uc_text(_insight())
-    assert areas.confidence_text(_insight(n_fresh=150, rent_samples=40)) == ("Υψηλή (150 αγγελίες)")
-    assert areas.confidence_text(_insight(rent_samples=None)) == "Μέτρια (δείγμα ενοικίου άγνωστο)"
+    assert areas.confidence_text(_insight(n_fresh=150, rent_samples=40)) == (
+        "Υψηλή, με 150 αγγελίες"
+    )
+    assert (
+        areas.confidence_text(_insight(rent_samples=None))
+        == "Μέτρια: δεν ξέρουμε από πόσες αγγελίες βγαίνει το ενοίκιο"
+    )
 
 
 def test_new_vs_old_text():
     x = _insight(n_new=51, ppm_new=4000.0, n_old=275, ppm_old=2500.0, new_premium=0.6)
     assert (
         areas.new_old_text(x)
-        == "4.000 €/τ.μ. (51 αγγελίες) έναντι 2.500 €/τ.μ. (275 αγγελίες), +60 %"
+        == "τα νεόδμητα ζητούν 60 % περισσότερα: 4.000 €/τ.μ., ενώ τα παλιά 2.500 €/τ.μ. Μετρήσαμε 51 νεόδμητα και 275 παλιά"
     )
     assert "3 και 275 αγγελίες" in areas.new_old_text(_insight(n_new=3, n_old=275))
 
@@ -152,17 +160,19 @@ def test_yield_text_shows_old_and_new():
 
 def test_trend_line_prefers_six_months_then_july_and_says_when_missing():
     six = _insight(trend_pct_6m=0.041, trend_6m_n=(15, 22))
-    assert areas.trend_line(six).startswith("+4,1 % σε 6 μήνες")
-    assert "15 και 22 αγγελίες" in areas.trend_line(six)
-    assert areas.trend_line(_insight()).startswith("+1,0 % από τον Ιούλιο")
+    assert areas.trend_line(six).startswith("ανέβηκε 4,1 % σε 6 μήνες")
+    assert "15 αγγελίες τότε, 22 τώρα" in areas.trend_line(six)
+    assert areas.trend_line(_insight()).startswith("ανέβηκε 1,0 % από τον Ιούλιο")
     none = areas.trend_line(_insight(trend_pct=None, trend_early_n=4))
-    assert none.startswith("δεν υπάρχει αρκετό ιστορικό") and "4 και 120 αγγελίες" in none
+    assert none.startswith("δεν το ξέρουμε ακόμα") and "4 και 120 αγγελίες" in none
 
 
 def test_supply_line_shows_both_counts_or_says_unknown():
     x = _insight(n_fresh=120, rent_samples=30, supply_per_rent=4.0)
-    assert areas.supply_line(x) == "4,0 (120 πώλησης / 30 ενοικίασης)"
-    assert areas.supply_line(_insight()).startswith("άγνωστη")
+    assert areas.supply_line(x) == (
+        "εδώ για κάθε σπίτι που νοικιάζεται πωλούνται 4,0 (30 ενοικιάσεις, 120 πωλήσεις)"
+    )
+    assert areas.supply_line(_insight()).startswith("δεν την ξέρουμε ακόμα")
 
 
 def test_render_checks_prints_label_verdict_and_value(monkeypatch):

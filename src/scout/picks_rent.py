@@ -129,7 +129,7 @@ class RentPick:
     station: str = ""
     over_budget: int = 0  # € above the stated budget (inside the band), 0 when within
     score: int = 0  # rent-value score 0–100 (module docstring)
-    score_basis: str = ""  # «τιμή έναντι παρόμοιων 52/70 + φρεσκάδα 30/30»
+    score_basis: str = ""  # «52 από 70 για την τιμή … και 30 από 30 για …»
     relaxed: str = ""  # what it is outside of, in the user's words; "" = strict
     tier: int = 0  # 0 strict · 1 near (one answer) · 2 «ευρύτερα» (two or more)
 
@@ -145,12 +145,12 @@ class RentPick:
     def comps_line(self) -> str:
         """«Παρόμοια ενοίκια (12): 8 % κάτω» or why it cannot be compared."""
         if self.vs_area_pct is None:
-            return f"Παρόμοια ενοίκια: λιγότερα από {MIN_COMPS} (δεν συγκρίνεται)"
+            return f"Παρόμοια ενοίκια: λιγότερα από {MIN_COMPS}, δεν συγκρίνουμε"
         pct = round(abs(self.vs_area_pct) * 100)
         if pct < 2:
-            return f"Παρόμοια ενοίκια ({self.comps_n}): όσο τα παρόμοια"
+            return "Παρόμοια ενοίκια: όσο και τα άλλα"
         side = "κάτω" if self.vs_area_pct < 0 else "πάνω"
-        return f"Παρόμοια ενοίκια ({self.comps_n}): {pct} % {side}"
+        return f"Παρόμοια ενοίκια: {pct} % {side}"
 
 
 def _day(v) -> str | None:
@@ -163,11 +163,11 @@ DOM_BASIS = {"listed": "από την ημερομηνία αγγελίας", "s
 def freshness(d: dict) -> str:
     dom = d.get("days_on_market")
     if dom is None:
-        return "Μέρες στην αγορά: άγνωστο"
+        return "Μέρες στην αγορά: δεν το ξέρουμε"
     basis = DOM_BASIS.get(d.get("dom_basis") or "")
     out = f"{days(dom)} στην αγορά" + (f" ({basis})" if basis else "")
     if d.get("relisted_on"):
-        out += f" · ξαναδημοσιεύτηκε {_day(d['relisted_on'])}"
+        out += f" · ξαναμπήκε στις {_day(d['relisted_on'])}"
     return out
 
 
@@ -178,29 +178,31 @@ def fresh_verdict(d: dict) -> str:
     """The short freshness check: re-posted, new, long on the market, or the days."""
     dom = d.get("days_on_market")
     if d.get("relisted_on"):
-        return f"ξαναδημοσιεύτηκε {_day(d['relisted_on'])} — ίδιο σπίτι, νέα αγγελία"
+        return f"ξαναμπήκε στις {_day(d['relisted_on'])}: ίδιο σπίτι, νέα αγγελία"
     if dom is None:
-        return "άγνωστο"
+        return "δεν το ξέρουμε"
     if dom <= 14:
         return f"νέα αγγελία ({days(dom)})"
     if dom >= STALE_DAYS:
-        return f"{days(dom)} στην αγορά — ρώτα γιατί δεν έχει νοικιαστεί"
+        return f"{days(dom)} στην αγορά. Ρώτα γιατί δεν έχει νοικιαστεί ακόμα"
     return f"{days(dom)} στην αγορά"
 
 
 def _checks(d: dict, p: RentPick) -> list[tuple[str, str]]:
     if p.vs_area_pct is None:
-        price = f"λιγότερα από {MIN_COMPS} παρόμοια ενοίκια (δεν συγκρίνεται)"
+        price = f"δεν το ξέρουμε: βρήκαμε λιγότερα από {MIN_COMPS} παρόμοια ενοίκια"
     else:
         price = (
-            f"{gr_num(p.rent_per_m2)} έναντι {gr_num(p.comps_ppm)} €/τ.μ., διάμεσο "
-            f"{p.comps_n} αγγελιών ({p.comps_where})"
+            f"{gr_num(p.rent_per_m2)} €/τ.μ. τον μήνα. Τα διπλανά ζητούν συνήθως "
+            f"{gr_num(p.comps_ppm)} €/τ.μ. ({p.comps_n} αγγελίες, {p.comps_where})"
         )
     seller = d.get("is_private_seller")
     who = (
         "Ιδιώτης"
         if seller
-        else ("Μεσιτικό γραφείο — ρώτα την αμοιβή του μεσίτη" if seller is False else "άγνωστο")
+        else (
+            "Μεσιτικό γραφείο. Ρώτα πόση είναι η αμοιβή του" if seller is False else "δεν το γράφει"
+        )
     )
     energy = d.get("energy_class")
     return [
@@ -209,7 +211,7 @@ def _checks(d: dict, p: RentPick) -> list[tuple[str, str]]:
         ("Ιδιώτης ή μεσιτικό", who),
         (
             "Ενεργειακή κλάση",
-            f"{energy}" if energy else "δεν δηλώνεται — ζήτα το πιστοποιητικό (ΠΕΑ)",
+            f"{energy}" if energy else "δεν τη γράφει. Ζήτα το πιστοποιητικό (ΠΕΑ)",
         ),
     ]
 
@@ -237,9 +239,9 @@ def value_score(vs_area_pct: float | None, d: dict) -> tuple[int, str]:
         x = (STALE_DAYS - dom) / (STALE_DAYS - NEW_DAYS)
         fresh = FRESH_PTS * min(max(x, 0.0), 1.0)
     basis = (
-        f"τιμή έναντι παρόμοιων {round(value)}/{VALUE_PTS}"
-        + (" (χωρίς παρόμοια)" if vs_area_pct is None else "")
-        + f" + φρεσκάδα {round(fresh)}/{FRESH_PTS}"
+        f"{round(value)} από {VALUE_PTS} για την τιμή σε σχέση με τα παρόμοια"
+        + (" (δεν έχει παρόμοια, παίρνει τους μισούς)" if vs_area_pct is None else "")
+        + f" και {round(fresh)} από {FRESH_PTS} για το πόσο καινούργια είναι η αγγελία"
     )
     return round(value + fresh), basis
 
@@ -262,19 +264,19 @@ def _build(d: dict, index: tuple[dict, dict], budget: int) -> RentPick:
     p.checks = _checks(d, p)
     p.score, p.score_basis = value_score(vs, d)
     if vs is not None and vs < 0 and not p.too_cheap:
-        p.reasons.append(f"{round(-vs * 100)} % κάτω από τα παρόμοια ενοίκια ({p.comps_n})")
+        p.reasons.append(f"{round(-vs * 100)} % φθηνότερο από τα {p.comps_n} παρόμοια ενοίκια")
     if p.dom is not None and p.dom <= 14:
         p.reasons.append(f"νέα αγγελία ({days(p.dom)})")
     if p.station:
         p.reasons.append(p.station)
     if p.too_cheap:
         p.risks.append(
-            "Πολύ κάτω από τα παρόμοια — έλεγξε ότι είναι ολόκληρο σπίτι και ότι η αγγελία υπάρχει."
+            "Πολύ κάτω από τα παρόμοια. Έλεγξε ότι είναι ολόκληρο σπίτι και ότι η αγγελία ισχύει."
         )
     if p.over_budget:
         p.risks.append(f"{eur(p.over_budget)} πάνω από το ποσό σου.")
     if cmp and cmp[1] < 8:
-        p.risks.append(f"Παρόμοια ενοίκια ({cmp[1]}): μικρό δείγμα για σύγκριση.")
+        p.risks.append(f"Παρόμοια ενοίκια ({cmp[1]}): λίγα για σίγουρη σύγκριση.")
     p.risks = p.risks[:3]
     return p
 

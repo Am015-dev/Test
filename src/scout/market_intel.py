@@ -85,6 +85,7 @@ def _floor_band(floor: float | None) -> int | None:
 
 
 FLOOR_LABEL = ("ισόγειο/υπόγειο", "1ος–2ος", "3ος+")
+SPOKEN_FLOOR = ("στο ισόγειο ή υπόγειο", "στον 1ο ή 2ο όροφο", "από τον 3ο όροφο και πάνω")
 
 
 def _usable(d: dict) -> bool:
@@ -150,15 +151,19 @@ class Intel:
 
     @staticmethod
     def _label(m: tuple, a: int, s: int | None, f: int | None) -> str:
-        parts = [m[0] + (" · μονοκατοικίες/μεζονέτες" if m[1] == "house" else ""), AGE_BANDS[a][2]]
+        parts = ["μονοκατοικίες ή μεζονέτες" if m[1] == "house" else "διαμερίσματα"]
         if s is not None:
             lo, hi = SIZE_BANDS[s]
-            parts.append(
-                f"έως {hi} τ.μ." if lo == 0 else f"{lo}+ τ.μ." if hi > 999 else f"{lo}–{hi} τ.μ."
+            parts[0] += (
+                f" έως {hi} τ.μ."
+                if lo == 0
+                else f" πάνω από {lo} τ.μ." if hi > 999 else f" {lo}–{hi} τ.μ."
             )
         if f is not None:
-            parts.append(FLOOR_LABEL[f])
-        return " · ".join(parts)
+            parts.append(SPOKEN_FLOOR[f])
+        age = AGE_BANDS[a][2].replace("46+ ετών", "πάνω από 45 ετών")
+        parts += [f"σε κτίρια {age}", f"στην περιοχή {m[0]}"]
+        return ", ".join(parts)
 
     # ---- same flat, several listings -----------------------------------------------------
 

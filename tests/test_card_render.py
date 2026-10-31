@@ -80,10 +80,11 @@ def test_buyer_card_has_the_five_fixed_lines_in_greek():
         == "3ος όροφος · κτίριο 2018 · Περισσός · Σταθμός ΗΣΑΠ Περισσός (από το όνομα της γειτονιάς)"
     )
     assert l3 == (
-        "Ελέγχθηκε η περιγραφή — δεν αναφέρει κατασκευή σε εξέλιξη" " · Φωτογραφίες: δεν ελέγχθηκαν"
+        "Ελέγχθηκε η περιγραφή: δεν λέει ότι χτίζεται ακόμα"
+        " · Φωτογραφίες: δεν τις έχουμε δει ακόμα"
     )
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
-    assert l5 == "Παρόμοια (12): 13 % κάτω"
+    assert l5 == "Παρόμοια: 13 % κάτω"
 
 
 def test_buyer_card_status_unknowns_and_photos():
@@ -93,14 +94,14 @@ def test_buyer_card_status_unknowns_and_photos():
     # the photo clause is its own neutral chip (C6), never inside the status tone
     assert (
         'hg-st-unk">Δεν έχει ελεγχθεί ακόμα</span><span class="hg-sep" aria-hidden="true"> · '
-        '</span><span class="hg-st hg-st-neu">Φωτογραφίες: δεν ελέγχθηκαν<'
+        '</span><span class="hg-st hg-st-neu">Φωτογραφίες: δεν τις έχουμε δει ακόμα<'
     ) in unchecked
     assert "όροφος: δεν δηλώνεται" in unchecked and "έτος: δεν δηλώνεται" in unchecked
     assert "Λίγα παρόμοια" in unchecked
     shell = card_html(
         {**BUYER, "is_unfinished": True, "page_checked": True, "few_photos": True}, {}
     )
-    assert 'hg-st-bad">Υπό κατασκευή<' in shell and "Το πολύ 2 φωτογραφίες" in shell
+    assert 'hg-st-bad">Υπό κατασκευή<' in shell and "Έως 2 φωτογραφίες" in shell
     assert "Ελέγχθηκε" not in shell.split("<details>")[0]  # under construction wins
     norent = card_html({**BUYER, "area_m2": None, "est_monthly_rent": None}, {})
     assert "Ενοίκιο: χωρίς εκτίμηση" in norent
@@ -112,8 +113,8 @@ def test_buyer_card_every_number_has_its_basis_one_tap_away_and_the_score():
     html = card_html(BUYER, {"cmp": CMP, "score": 81})
     head, basis = html.split("<details>", 1)
     assert "12 × 900 € ÷ 245.000 € = 4,4 %" in basis  # the yield
-    assert "× 78 τ.μ." in basis and "αγγελίες ενοικίασης στο XE" in basis  # the rent
-    assert "12 αγγελίες (L), διάμεσος 3.600 €/τ.μ." in basis  # the comparables
+    assert "αυτό έχει 78 τ.μ." in basis and "τα διπλανά ζητούν συνήθως" in basis  # the rent
+    assert "Παρόμοια: 12 L. Ζητούν συνήθως 3.600 €/τ.μ." in basis  # the comparables
     # C7: the score right of the price, its basis one tap away; never «Σκορ»
     assert 'hg-rating">Βαθμολογία 81<' in head.split("hg-l2")[0]
     assert "Βαθμολογία 81 από 100: 60 %" in basis and "Σκορ" not in html
@@ -128,18 +129,18 @@ def test_near_match_chip_and_the_same_score_as_advise():
 
     html = card_html(BUYER, {"cmp": CMP, "relaxed": "ποσό +18 %"}, compact=True)
     l3 = html.split('class="hg-l3">')[1].split("</div>")[0]
-    assert '<span class="hg-st hg-st-neu">Έξω από: ποσό +18 %</span>' in l3
+    assert '<span class="hg-st hg-st-neu">Ξεφεύγει: ποσό +18 %</span>' in l3
     want = nl_search.advise(BUYER, CMP["pct"])["score"]
     assert f">Βαθμολογία {want}<" in html
     plain = card_html(BUYER, {"cmp": CMP}, compact=True)
-    assert "Έξω από" not in plain
+    assert "Ξεφεύγει" not in plain
 
 
 def test_too_cheap_is_a_question_not_a_bonus():
     from scout.ui.buyer import comps_text
 
     assert comps_text({"cmp": {**CMP, "pct": -0.45}}).endswith(
-        "45 % κάτω — έλεγξε γιατί (τ.μ., κατάσταση, νομικά)"
+        "45 % κάτω. Πολύ φθηνό, έλεγξε γιατί"
     )
 
 
@@ -170,7 +171,7 @@ def test_compact_card_shows_at_most_five_lines_and_hides_the_rest_one_tap_away()
     assert re.fullmatch(r"1\. 245\.000 € Βαθμολογία \d{1,3} · 78 τ\.μ\. · 3\.141 €/τ\.μ\.", l1)
     assert l3 == "Ελέγχθηκε η περιγραφή"  # the short glossary term; the sentence is inside
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
-    assert l5 == "Παρόμοια (12): 13 % κάτω"
+    assert l5 == "Παρόμοια: 13 % κάτω"
     inside = html.split("<details>", 1)[1]
     for fact in (
         *more,
@@ -178,9 +179,9 @@ def test_compact_card_shows_at_most_five_lines_and_hides_the_rest_one_tap_away()
         "Ιδιώτης",
         "Ενεργειακή κλάση A+",
         "Μείωση από 260.000 €",
-        "δεν αναφέρει κατασκευή σε εξέλιξη",
+        "δεν γράφει ότι χτίζεται ακόμα",
         "12 × 900 € ÷ 245.000 € = 4,4 %",
-        "διάμεσος 3.600 €/τ.μ.",
+        "Ζητούν συνήθως 3.600 €/τ.μ.",
     ):
         assert fact in inside, fact
     assert "hg-more" not in html

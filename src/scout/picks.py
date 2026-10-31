@@ -246,13 +246,13 @@ class Pick:
     def loan_line(self) -> str:
         """'Δόση ~1.110 €/μήνα → λείπουν 120 €' (or 'μένουν'), the «με δάνειο» answer."""
         left = (
-            f"μένουν {_eur(self.cashflow)}"
+            f"Το ενοίκιο την καλύπτει και περισσεύουν {_eur(self.cashflow)} τον μήνα."
             if self.cashflow >= 0
-            else f"λείπουν {_eur(-self.cashflow)}"
+            else f"Το ενοίκιο δεν φτάνει: λείπουν {_eur(-self.cashflow)} τον μήνα."
         )
         return (
-            f"Δόση ~{_eur(self.instalment)}/μήνα (δάνειο {round(LTV * 100)} %, "
-            f"{gr_num(RATE * 100).replace(',0', '')} %, {YEARS} έτη) → {left}"
+            f"Δόση ~{_eur(self.instalment)}/μήνα (δάνειο {round(LTV * 100)} %, επιτόκιο "
+            f"{gr_num(RATE * 100).replace(',0', '')} %, {YEARS} χρόνια). {left}"
         )
 
     def sort_key(self) -> tuple:
@@ -285,23 +285,23 @@ def gr_num(x: float) -> str:
     return f"{x:.1f}".replace(".", ",")
 
 
-CHECKED = "Ελέγχθηκε η περιγραφή{when} — δεν αναφέρει κατασκευή σε εξέλιξη"
+CHECKED = "Ελέγχθηκε η περιγραφή{when}: δεν λέει ότι χτίζεται ακόμα"
 UNCHECKED = "Δεν έχει ελεγχθεί ακόμα"
-FEW_PHOTOS = "Το πολύ 2 φωτογραφίες — συχνά μόνο ψηφιακή απεικόνιση ή λογότυπο"
+FEW_PHOTOS = "Έως 2 φωτογραφίες, συχνά μόνο σχέδιο ή λογότυπο"
 EXCERPT_CHARS = 300
 PHOTO_KINDS = {
-    "photo": "πραγματικές",
-    "render": "σχέδια ή ψηφιακή απεικόνιση",
-    "plan": "σχέδια ή ψηφιακή απεικόνιση",
+    "photo": "αληθινές",
+    "render": "σχέδια, όχι αληθινές",
+    "plan": "σχέδια, όχι αληθινές",
     "site": "εργοτάξιο",
-    "stock": "κοινές με άλλες αγγελίες του μεσίτη",
+    "stock": "ίδιες με άλλες αγγελίες του μεσίτη",
 }
 BAD_PHOTO_KINDS = frozenset({"render", "plan", "site", "stock"})
 
 
 def photo_line(d: dict) -> str:
     """'Φωτογραφίες: πραγματικές' etc. from the photo check; «δεν ελέγχθηκαν» when none."""
-    return f"Φωτογραφίες: {PHOTO_KINDS.get(d.get('photo_kind') or '', 'δεν ελέγχθηκαν')}"
+    return f"Φωτογραφίες: {PHOTO_KINDS.get(d.get('photo_kind') or '', 'δεν τις έχουμε δει ακόμα')}"
 
 
 def status_line(d: dict) -> str:
@@ -366,12 +366,12 @@ def _build(
     area = area_name(d.get("neighborhood"))
     n_area, dom_mean, dom_sd = (stats or {}).get(area, (0, None, None))
     safe = [
-        ("ελέγχθηκε η σελίδα", checked),
+        ("ελέγξαμε την αγγελία", checked),
         ("πάνω από 2 φωτογραφίες", (d.get("photo_count") or 0) > 2),
-        ("δηλώνει ενεργειακή κλάση", bool(d.get("energy_class"))),
+        ("γράφει ενεργειακή κλάση", bool(d.get("energy_class"))),
         (f"{cmp['n'] if cmp else 0} παρόμοια", bool(cmp and cmp["n"] >= MANY_COMPS)),
         (f"{n_area} αγγελίες στην περιοχή", n_area >= ESTABLISHED),
-        ("σταθερός χρόνος πώλησης στην περιοχή", bool(dom_mean and dom_sd <= dom_mean)),
+        ("στην περιοχή πουλάνε σε σταθερό χρόνο", bool(dom_mean and dom_sd <= dom_mean)),
     ]
     fact = (area_facts or {}).get(area)
     prem = getattr(fact, "new_premium", None)
@@ -380,7 +380,7 @@ def _build(
         (st_name or "", bool(st_name), STATION_PTS),
         (f"Γραμμή 4: {l4}" if l4 else "", bool(l4), LINE4_PTS),
         (
-            f"νεόδμητα +{round(prem * 100)} % στην περιοχή" if prem is not None else "",
+            f"εδώ το νεόδμητο ζητά μόνο {round(prem * 100)} % παραπάνω" if prem is not None else "",
             prem is not None and prem <= LOW_PREMIUM,
             LOW_PREMIUM_PTS,
         ),
@@ -398,23 +398,28 @@ def _build(
     rank = score(parts, "yield")
     inst = instalment(d["price"])
     lines = [
-        f"Ενοίκιο (εκτίμηση) ~{_eur(_r(rent, 10))}/μήνα ({gr_num(per_m2)} €/τ.μ. × "
-        f"{d['area_m2']:g} τ.μ." + (", +10 % νεόδμητο" if new_premium > 1 else "") + ")",
-        f"Μικτή απόδοση {gr_pct(gross)} · Καθαρή ~{gr_pct(net)}",
+        f"Ενοίκιο (εκτίμηση) ~{_eur(_r(rent, 10))}/μήνα: τα διπλανά ζητούν {gr_num(per_m2)} "
+        f"€/τ.μ. × {d['area_m2']:g} τ.μ."
+        + (", και 10 % παραπάνω γιατί είναι νεόδμητο" if new_premium > 1 else ""),
+        f"Μικτή απόδοση {gr_pct(gross)}. Καθαρή απόδοση ~{gr_pct(net)}, αφού βγάλεις έναν "
+        "μήνα χωρίς ενοικιαστή, φόρο, συντήρηση και ΕΝΦΙΑ",
     ]
     ppm = d.get("price_per_m2") or d["price"] / d["area_m2"]
     if cmp:
         pct = round(abs(cmp["pct"]) * 100)
         rel = (
-            f"όσο τα παρόμοια ({cmp['n']})"
+            f"όσο ζητούν και τα {cmp['n']} παρόμοια σπίτια της γειτονιάς"
             if pct < 2
-            else f"{pct} % {'κάτω' if cmp['pct'] < 0 else 'πάνω'} από τα παρόμοια ({cmp['n']})"
+            else f"{pct} % {'κάτω' if cmp['pct'] < 0 else 'πάνω'} από όσο ζητούν τα {cmp['n']} "
+            "παρόμοια σπίτια της γειτονιάς"
         )
-        lines.append(f"Τιμή {_eur(ppm)}/τ.μ. — {rel}")
+        lines.append(f"Τιμή {_eur(ppm)}/τ.μ., {rel}")
     else:
-        lines.append(f"Τιμή {_eur(ppm)}/τ.μ. — λιγότερα από 5 παρόμοια (δεν συγκρίνεται)")
+        lines.append(
+            f"Τιμή {_eur(ppm)}/τ.μ. Βρήκαμε λιγότερα από 5 παρόμοια, άρα δεν τη συγκρίνουμε"
+        )
     if st_name:
-        lines.append(f"Σταθμός {st_name} — από το όνομα της γειτονιάς")
+        lines.append(f"Σταθμός {st_name}")
     lines.append(
         " · ".join(
             x
@@ -437,26 +442,32 @@ def _build(
         )
     )
     offer_line = (
-        (f"{dom} {'μέρα' if dom == 1 else 'μέρες'} στην αγορά · " if dom else "")
+        (f"{dom} {'μέρα' if dom == 1 else 'μέρες'} στην αγορά. " if dom else "")
         + f"Προσφορά: ξεκίνα από ~{_eur(offer)}"
-        + (" (ιδιώτης πωλητής)" if d.get("is_private_seller") else "")
+        + (" (πουλά ιδιώτης)" if d.get("is_private_seller") else "")
     )
     lines.append(offer_line)
     risks = []
     if few:
         risks.append(FEW_PHOTOS)
     if built == year:
-        risks.append("Έτος κατασκευής φέτος: βεβαιώσου ότι έχει παραδοθεί και έχει άδεια.")
+        risks.append(
+            f"Γράφει έτος κατασκευής {year}, δηλαδή φέτος. Βεβαιώσου ότι έχει παραδοθεί και έχει άδεια."
+        )
     if too_cheap:
-        risks.append("Ασυνήθιστα φθηνό για τα παρόμοια — έλεγξε τ.μ., κατάσταση, νομικά.")
+        risks.append(
+            "Πολύ φθηνότερο από τα άλλα σπίτια της γειτονιάς. Έλεγξε τα τ.μ., την κατάσταση "
+            "και τα νομικά."
+        )
     if where != d.get("neighborhood"):
         risks.append(
-            f"Ενοίκιο (εκτίμηση) από την ευρύτερη περιοχή «{where}» — λίγα στοιχεία για τη γειτονιά."
+            f"Το ενοίκιο βγαίνει από όλη την περιοχή «{where}», γιατί η γειτονιά έχει λίγες "
+            "αγγελίες ενοικίασης."
         )
     if cmp and cmp["n"] < 8:
-        risks.append(f"Παρόμοια ({cmp['n']}): μικρό δείγμα για σύγκριση.")
+        risks.append(f"Παρόμοια ({cmp['n']}): λίγα για σίγουρη σύγκριση.")
     if not d.get("energy_class"):
-        risks.append("Η ενεργειακή κλάση δεν δηλώνεται — ζήτα το πιστοποιητικό.")
+        risks.append("Δεν γράφει ενεργειακή κλάση. Ζήτα το πιστοποιητικό.")
     return Pick(
         listing=d,
         rank_score=rank,
