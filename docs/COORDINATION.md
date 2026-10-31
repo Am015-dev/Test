@@ -206,3 +206,119 @@ Integration contract: W8's guide page calls `maplist.render(...)` (W9) and
 entry is `guide.TITLE`; `account.current_user()` returns the profile name or None and
 `account.storage()` the per-user store the others read/write favourites and answers through.
 Until W10 lands, others use `shortlist.*` as today.
+
+---
+
+# Round 4 — "buy or rent, professional finish" (2026-10-31, 18:00)
+
+Round 3 shipped the guided flow, the connected map, the grounded assistant, accounts and
+four portals. The owner then used it and asked for: **renting as an option**, the review's
+suggestions (short cards by default, real station distance, weekly rents with their date, a
+photo check, a phone-friendly compare) and a **professional finish**. Everything above still
+holds: phone-first at 390 px, Greek only, one glossary, no decoration, every number with its
+basis within one tap, «άγνωστο» instead of a guess, draft PR + gate green (`pytest` with
+`GAUNTLET` unset, `ruff`, `black`) + screenshots, message the coordinator, touch only your files.
+
+Schema additions in this round are authorised by the owner's request (renting + photo check):
+`listing.listing_type`, `listing.photo_kind`, `listing.photo_checked_at`, `listing.furnished`,
+`listing.available_from`. Add them with `db._ensure_columns` (idempotent forward migration,
+see `.claude/skills/db-schema-change`), never by hand.
+
+## Contracts (binding; whoever owns the file implements, everyone else codes against them)
+
+### C1 — rental listings are first-class rows (W16, `models.py`, `db.py`, `pipeline.py`, `collectors/xe.py`, `rent_comps.py`, `ui/queries.py`, `scoring.py`)
+- `Listing.listing_type: Literal["sale","rent"] = "sale"`; column `listing_type TEXT NOT NULL DEFAULT 'sale'`, indexed with `status`.
+- The XE collector yields FULL rental cards (same fields as sale cards: price = monthly rent,
+  area_m2, floor, year_built, bedrooms, neighborhood, url, source_id, image_url, listed_date,
+  is_private_seller, plus `furnished: bool|None`, `available_from: date|None` when the card
+  says so). Golden Home / RE/MAX rentals are optional this round.
+- The pipeline stores rentals in the same `listing` table with `listing_type="rent"`, same
+  dedup/history/retire rules, **per area** like sales. Rentals are never scored, never in sale
+  market stats, never in comps of sale flats; `scoring.score` returns `excluded` with reason
+  `rent` for them, or the pipeline skips scoring for them (choose one, document it).
+- Rent comps (`rent_comp`) are recomputed every run from the stored rentals of the last 60
+  days (not from a one-off scrape), with `samples` and `updated_at` filled, so the UI can print
+  «ενοίκια έως ΗΗ/ΜΜ, N αγγελίες» next to every yield.
+- `queries.load_listings(..., kind="sale")` keeps today's behaviour (sale only). New
+  `queries.load_rent_listings()` returns rental dicts with the same keys as sale dicts plus
+  `rent_per_m2`, `furnished`, `available_from`, `days_on_market`/`dom_basis`/`relisted_on`,
+  `is_fresh`, `page_checked` (False until a rental page is ever read).
+- `daily.yml`: no new step; the collect step scrapes rentals for the same 15 areas. Budget:
+  about one extra minute per area.
+
+### C2 — the rent guide (W17, new `ui/rent_guide.py`, new `picks_rent.py`, ≤ 30 changed lines in `ui/guide.py`)
+- Guide step 0 (before today's step 1): «Τι ψάχνεις;» → «Να αγοράσω» · «Να νοικιάσω», big
+  buttons, remembered in `st.session_state["guide"]["mode"]` and in the profile store under
+  `guide.mode`. The pill stays «Οδηγός»; the progress line counts the mode's own steps.
+- Rent steps: 1 «Πόσο τον μήνα;» chips 400 / 600 / 800 / 1.000 / 1.300 / 1.600 € + «Άλλο
+  ποσό»; 2 «Πόσα υπνοδωμάτια;» chips 1 / 2 / 3+ / αδιάφορο; 3 «Πού;» (same three choices as
+  buying); 4 «Τι σπίτι;» → «Επιπλωμένο» toggle, «Νεόδμητο / έως 20 ετών / Οτιδήποτε»; 5 «Η
+  πρότασή μου».
+- `picks_rent.find(rentals, budget_month, bedrooms, near_rail, areas, max_age, furnished,
+  top)` → `RentPick(listing, rent_per_m2, vs_area_pct, dom, checks, reasons, risks)` sorted by
+  value (rent €/τ.μ. against the area's rental median, same neighbourhood first), then
+  freshness. Band: rent ≤ budget × 1.10, say so. `relaxations(...)` with exact counts like
+  the buy flow.
+- Rent result card (phone): rent · τ.μ. · €/τ.μ.; floor · year · area · station text; «Παρόμοια
+  ενοίκια (N): X % κάτω/πάνω»; days on market with basis; «Επιπλωμένο»/«Διαθέσιμο από»;
+  buttons «Άνοιγμα στο XE.gr», «Λεπτομέρειες», «Αγαπημένο». Four checks per rental: Τιμή
+  έναντι παρόμοιων · Φρεσκάδα (days, re-posted) · Ιδιώτης ή μεσιτικό · Ενεργειακή κλάση.
+- Assistant: `assistant.facts_for` must accept rental dicts (W17 adds a `mode: "rent"` key
+  to `answers`; W11's module is frozen, so W17 may add a thin `rent_facts()` in
+  `rent_guide.py` that calls `assistant.brief/panel` with `facts["listings"]` built from
+  `RentPick`s). Rules text for renters: no yield talk; what to ask the landlord (deposit,
+  charges, contract length, energy certificate).
+
+### C3 — short cards, compare, finish (W18, `ui/buyer.py` card helpers, `ui/guide.py` `_card` only, `ui/app.py` compare + header, `ui/theme.py`, `ui/components.py`)
+- `buyer.card_html(d, adv, compact=True)`: five lines max — price · τ.μ. · €/τ.μ.; floor ·
+  year · area · station; status badge; rent + gross yield (or rent + €/τ.μ. for rentals);
+  one comparison line. Everything else behind the existing «Από πού βγαίνουν» expander.
+  The guide result and the search use the compact card by default; the listing page uses
+  the full one. Buttons on a card: two («Λεπτομέρειες», «Αγαπημένο»); the guide adds
+  «Εγκρίνω» / «Δεν μου κάνει» as the second row only on the first ten.
+- Compare page: pick two flats (favourites first), then a two-column table with at most
+  eight rows (price, €/τ.μ., τ.μ., floor, year, rent, gross yield, station), each cell one
+  value, then the two cards compact. Works at 390 px without horizontal scroll.
+- Finish: one header line «Σκάουτ ακινήτων» with the data line under it, consistent spacing
+  and font sizes across pages (theme.py), no English anywhere a user reads, consistent
+  singular/plural, no empty states without a sentence and a next step. Keep the pills.
+
+### C4 — real station distance (W19, `enrich.py`, `picks.py` `station*` helpers, `tests`)
+- Today every listing has `metro_distance_m`, but 75 % are computed from the AREA CENTROID
+  (`location_precision="approx"`), so «684 μ.» is fiction for them. Rule: distance is shown
+  only when `location_precision == "exact"`; otherwise the station comes from the
+  neighbourhood name as today, labelled «(από το όνομα της γειτονιάς)».
+- `picks.station_text(d)` → «Μετρό Άγιος Δημήτριος · 450 μ.» (exact) or «ΗΣΑΠ Περισσός
+  (γειτονιά)» (name) or "". `picks.near_rail(d)` → True when exact distance ≤ 800 m, else
+  when the neighbourhood name carries a station, as today. Station names in Greek
+  (`nearest_metro` today holds Latin names like `Holargos`: map them).
+- Station table: all Line 1/2/3 stations + the suburban railway stops inside the covered
+  municipalities, with coordinates, in one data file with its source and date.
+
+### C5 — photo check (W20, new `scripts/check_photos.py`, `collectors/xe.py` image URLs, `models.py` columns `photo_kind`, `photo_checked_at`, `ui` text via `picks.status_line`)
+- For new-build sale listings in the 15 weekly areas whose page was read, fetch up to three
+  listing images (the JSON-LD list) and classify them with the Claude API (vision, cheapest
+  model) into `photo` / `render` / `plan` / `site` / `stock`; store the majority as
+  `photo_kind` with `photo_checked_at`. Deterministic pre-filters first: fewer than three
+  images → no call; identical images across listings of the same agent → `stock`.
+- The weekly workflow gets one step after the page check, `continue-on-error`, capped at
+  15 min, that runs ONLY when `secrets.ANTHROPIC_API_KEY` is present; the owner must add
+  that secret to the repository for it to run (say so in the PR).
+- UI: `picks.status_line` and the card status badge gain «Φωτογραφίες: πραγματικές» /
+  «σχέδια ή ψηφιακή απεικόνιση» / «εργοτάξιο» / «δεν ελέγχθηκαν»; `picks.find` sorts render /
+  plan / site below real photos (after the page-checked rule, before the score).
+
+## Ownership and order
+
+| WS | Owner files | Depends on | Merge order |
+|---|---|---|---|
+| W16 rent data | models, db, pipeline, collectors/xe (rent part), rent_comps, ui/queries, scoring, tests, daily.yml (comment only) | — | 1 |
+| W19 station distance | enrich, picks station helpers, data file, tests | — | 2 |
+| W20 photo check | scripts/check_photos.py, models (two columns), collectors/xe (image list), picks status/sort, daily.yml (one step), tests | — | 3 |
+| W18 cards/compare/finish | buyer card helpers, guide `_card`, app compare+header, theme, components, tests | — | 4 |
+| W17 rent guide | ui/rent_guide.py, picks_rent.py, guide.py (≤ 30 lines), tests | C1 contract (code against fixtures until merged) | 5 |
+
+Shared rules: fixtures for new parsers are real captured HTML; no network in tests; keep
+`tests/test_copy.py` green (extend its allowlist only for portal names); screenshots at
+390×844 of every new screen into `docs/qa/<ws>/`; the message to the coordinator carries the
+head SHA, the gate numbers and anything outside your files.
