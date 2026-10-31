@@ -87,9 +87,22 @@ def test_steps_order_any_age_last():
     assert picks.near_steps(None, False, None, None) == [("price", 1), ("price", 2)]
 
 
-def test_nothing_is_loosened_twice_and_hard_rules_stay():
+def test_hard_rules_and_the_widest_band_stay():
     ids = {p.listing["id"] for p in run()}
-    assert not ids & {8, 9, 10}
+    assert not ids & {8, 9, 10}  # +40 %, +50 %, ground floor: never shown
+
+
+def test_third_tier_names_every_answer_it_fails_and_nothing_repeats():
+    rows = [*ROWS, flat(11, 360_000, year=1985, hood="Γαλάτσι (Λαμπρινή)")]  # +20 %, age, rail
+    got = run(rows)
+    tiers = [p.tier for p in got]
+    assert tiers == sorted(tiers)  # strict → near → ευρύτερα
+    wide = [p for p in got if p.tier == 2]
+    assert [(p.listing["id"], p.relaxed) for p in wide] == [
+        (11, "ποσό +20 %, κτίριο 1985, χωρίς όρο σταθμού")
+    ]
+    assert all(p.tier == 1 and "," not in p.relaxed for p in got if p.tier == 1)
+    assert len({p.listing["id"] for p in got}) == len(got)
 
 
 def test_strict_find_is_unchanged_by_default():
@@ -174,7 +187,8 @@ RENTALS = [rental(i, 700 + i * 10) for i in range(6)] + [
     rental(20, 950),  # +19 % over 800 → step 20 %
     rental(21, 1030),  # +29 % → step 30 %
     rental(22, 780, bedrooms=3),  # bedrooms
-    rental(23, 1100, bedrooms=3),  # two answers: never
+    rental(23, 1100, bedrooms=3),  # +38 % and bedrooms: past the widest band, never
+    rental(24, 1000, bedrooms=3),  # +25 % and bedrooms: «ευρύτερα»
 ]
 
 
@@ -187,8 +201,10 @@ def test_rent_near_matches_and_labels():
         10_020: "ποσό +19 %",
         10_021: "ποσό +29 %",
         10_022: "3 υπν.",
+        10_024: "ποσό +25 %, 3 υπν.",
     }
-    assert [p.score for p in near] == sorted((p.score for p in near), reverse=True)
+    one = [p for p in near if p.tier == 1]
+    assert [p.score for p in one] == sorted((p.score for p in one), reverse=True)
     assert len(picks_rent.find(RENTALS, 800, bedrooms=2, top=10**6)) == 6
 
 
@@ -238,7 +254,10 @@ def test_owner_answers_give_at_least_three_pages(published):
         listings, intel, rents, 160_000, max_age=10, near_rail=True, top=10**6, near=True
     )
     near = [p for p in got if p.relaxed]
-    assert len(got) >= 3 * picks.PAGE
+    assert len(got) > 57  # pages past strict + near: the list does not run out
+    assert len({id(p.listing) for p in got}) == len(got)  # nothing repeats across tiers
+    assert [p.tier for p in got] == sorted(p.tier for p in got)
+    assert all(p.listing["price"] <= 160_000 * 1.30 for p in got)
     assert near and all(p.relaxed for p in got[len(got) - len(near) :])
     # The newer flats one station rule away come before the old blocks of «any age».
     first = near[0].relaxed

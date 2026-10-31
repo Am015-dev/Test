@@ -20,7 +20,9 @@ bedrooms off; last, any building age. Each step keeps its best ``picks.NEAR_MIN`
 all near matches are then sorted by ``score`` (smaller loosening first on a tie), after every
 strict one — and only when the strict matches are fewer than ``picks.NEAR_MIN``. Each carries
 ``relaxed`` («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»).
-«Επιπλωμένο» is not loosened (C7 does not list it).
+Then «ευρύτερα» (``tier=2``): every remaining rental within rent × 1,30 that fails two or
+more answers, by ``score``, no cap; ``relaxed`` names them all. «Επιπλωμένο» is not loosened
+(C7 does not list it).
 
 Rent-value score («Βαθμολογία», 0–100, ``RentPick.score``): value 0–70 from ``vs_area_pct``
 (20 % under the comparables = 70, equal = 35, 20 % over = 0; no comparables = 35; more than
@@ -128,7 +130,8 @@ class RentPick:
     over_budget: int = 0  # € above the stated budget (inside the band), 0 when within
     score: int = 0  # rent-value score 0–100 (module docstring)
     score_basis: str = ""  # «τιμή έναντι παρόμοιων 52/70 + φρεσκάδα 30/30»
-    relaxed: str = ""  # near match: the one loosened answer; "" = strict
+    relaxed: str = ""  # what it is outside of, in the user's words; "" = strict
+    tier: int = 0  # 0 strict · 1 near (one answer) · 2 «ευρύτερα» (two or more)
 
     @property
     def too_cheap(self) -> bool:
@@ -345,6 +348,7 @@ def find(
     index = _index or comps_index(rentals)
     strict: list[RentPick] = []
     loose: dict[tuple[str, int], list[RentPick]] = {}
+    wide: list[RentPick] = []
     for d in rentals:
         if not usable(d):
             continue
@@ -353,9 +357,14 @@ def find(
         miss = _misses(d, budget_month, year, bedrooms, near_rail, areas, max_age)
         if not miss:
             strict.append(_build(d, index, budget_month))
-        elif near and len(miss) == 1 and miss[0][1]:
+        elif not near or not all(step for _, step, _ in miss):
+            continue  # past rent × 1,30, or not asked for
+        elif len(miss) > 1:
+            label = ", ".join(x[2] for x in miss)
+            wide.append(replace(_build(d, index, budget_month), relaxed=label, tier=2))
+        else:
             answer, step, label = miss[0]
-            p = replace(_build(d, index, budget_month), relaxed=label)
+            p = replace(_build(d, index, budget_month), relaxed=label, tier=1)
             loose.setdefault((answer, step), []).append(p)
     strict.sort(key=RentPick.sort_key)
     out = strict
@@ -368,6 +377,7 @@ def find(
             ranked += [(-p.score, i, p) for p in best]
         ranked.sort(key=lambda x: x[:2])
         out += [p for *_, p in ranked]
+        out += sorted(wide, key=lambda p: (-p.score, p.sort_key()))  # «ευρύτερα», no cap
     return out[:top]
 
 

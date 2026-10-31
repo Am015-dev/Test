@@ -597,16 +597,16 @@ METHOD = f"""
 """
 
 
-def counts_line(exact: int, near: int, what: str) -> str:
-    """C7's result sentence with both counts (rentals)."""
-    tail = "(ένας όρος χαλαρωμένος, γραμμένος σε κάθε κάρτα)"
-    noun = "κοντινή" if near == 1 else "κοντινές"
+def counts_line(exact: int, near: int, what: str, wide: int = 0) -> str:
+    """C7's result sentence with the three counts (rentals)."""
+    rest = guide.tier_text(near, wide)
     if exact:
+        joint = ", " if near and wide else " και "
         return (
-            f"**{exact}** {buyer._noun(exact)} ενοικίασης {what} ακριβώς όπως ζήτησες "
-            f"και **{near}** {noun} {tail}."
+            f"**{buyer._num(exact)}** {buyer._noun(exact)} ενοικίασης {what} ακριβώς όπως ζήτησες"
+            f"{joint}{rest}. Σε κάθε κάρτα γράφω τι δεν ταιριάζει."
         )
-    return f"Καμία ακριβώς όπως ζήτησες ({what})· **{near}** {noun} {tail}."
+    return f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}. Σε κάθε κάρτα γράφω τι δεν ταιριάζει."
 
 
 def card_more(p: picks_rent.RentPick) -> list[str]:
@@ -743,7 +743,8 @@ def _results(r: dict, rows: list[dict]) -> None:
     review = guide._review()
     every, dropped = guide.arrange(found, review)
     exact = [p for p in every if not p.relaxed]
-    near = len(every) - len(exact)
+    near = sum(p.tier == 1 for p in every)
+    wide = sum(p.tier == 2 for p in every)
     what = f"έως {eur(budget * (1 + picks_rent.BUDGET_BAND))}/μήνα (το ποσό σου + 10 %)" + (
         ", κοντά σε σταθμό" if where == "rail" else ""
     )
@@ -757,8 +758,8 @@ def _results(r: dict, rows: list[dict]) -> None:
     else:
         if sentence := recommend(exact or every):
             st.markdown(sentence)
-        if near:
-            st.markdown(counts_line(len(exact), near, what))
+        if near or wide:
+            st.markdown(counts_line(len(exact), near, what, wide))
         else:
             st.markdown(f"**{len(every)}** {buyer._noun(len(every))} ενοικίασης {what}.")
         if relax:
@@ -784,7 +785,7 @@ def _results(r: dict, rows: list[dict]) -> None:
                     on_click=_more,
                     width="stretch",
                 )
-        st.caption(f"Βλέπεις {len(visible)} από {len(every)}.")
+        st.caption(f"Βλέπεις {buyer._num(len(visible))} από {buyer._num(len(every))}.")
         _panel(facts)
     if dropped:
         _dropped(dropped)

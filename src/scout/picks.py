@@ -44,7 +44,9 @@ together by the usual sort (page read, photos, ``rank_score``), the smaller loos
 on a tie, and sort after every strict match. Near matches are added only when the strict
 matches are fewer than ``NEAR_MIN``. Each carries ``relaxed``, the loosened answer in
 the user's words («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»).
-A listing that fails two answers is never shown — nothing is loosened twice on one candidate.
+Then a third tier, «ευρύτερα» (``tier=2``): every remaining flat within budget × 1,30 that
+fails two or more answers, by the usual sort, with no cap; ``relaxed`` names all of them
+(«ποσό +22 %, κτίριο 1985, χωρίς όρο σταθμού»). A listing appears once, in one tier.
 
 The buyer score (``buyer_score``) on every pick is the 0–100 score of ``nl_search.advise``,
 the same number the map colour and the search advice use.
@@ -235,7 +237,8 @@ class Pick:
     goal: str = "yield"
     offer_line: str = ""
     buyer_score: int = 0  # 0–100, ``nl_search.advise`` (the score on every card)
-    relaxed: str = ""  # near match: the one loosened answer («ποσό +18 %»); "" = strict
+    relaxed: str = ""  # what it is outside of, in the user's words; "" = strict
+    tier: int = 0  # 0 strict · 1 near (one answer) · 2 «ευρύτερα» (two or more answers)
 
     @property
     def loan_line(self) -> str:
@@ -580,6 +583,7 @@ def find(
     lo = budget * (1 - BUDGET_BAND)
     strict: list[Pick] = []
     loose: dict[tuple[str, int], list[Pick]] = {}
+    wide: list[Pick] = []
     for d in listings:
         if not d.get("is_fresh", True) or d.get("excluded") or d.get("is_suspect"):
             continue
@@ -590,16 +594,19 @@ def find(
         if checked_only and not d.get("page_checked"):
             continue
         miss = _misses(d, budget, year, max_age, near_rail, areas, bedrooms)
-        if miss and not (near and len(miss) == 1 and miss[0][1]):
-            continue
+        if miss and not (near and all(step for _, step, _ in miss)):
+            continue  # past the widest price step (budget × 1,30), or not asked for
         if id(d) not in memo:
             memo[id(d)] = _build(d, intel, rents, year, stats, area_facts)
         if (p := memo[id(d)]) is None:
             continue
         p = replace(p, rank_score=score(p.parts, goal), loan=loan, goal=goal)
-        if miss:
+        if len(miss) > 1:
+            label = ", ".join(x[2] for x in miss)
+            wide.append(replace(p, relaxed=label, tier=2))
+        elif miss:
             answer, step, label = miss[0]
-            loose.setdefault((answer, step), []).append(replace(p, relaxed=label))
+            loose.setdefault((answer, step), []).append(replace(p, relaxed=label, tier=1))
         else:
             strict.append(p)
     # One flat per building/listing group: skip near-identical units of the same block.
@@ -627,6 +634,7 @@ def find(
             ranked += [(p.sort_key(), -i, p) for p in unique(loose.get(step, []), NEAR_MIN)]
         ranked.sort(key=lambda x: x[:2], reverse=True)
         out += [p for *_, p in ranked]
+        out += unique(wide)  # «ευρύτερα»: every remaining flat in the band, no cap
     return out[:top]
 
 

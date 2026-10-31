@@ -448,19 +448,33 @@ def coverage(listings: list[dict]) -> str:
 # ---- verdicts (✓ / ✗) ----------------------------------------------------------------------
 
 
-def counts_line(exact: int, near: int, what: str, checked: int) -> str:
-    """C7's result sentence with both counts: «**4** αγγελίες ακριβώς όπως ζήτησες και **31**
-    κοντινές (…)» or «Καμία ακριβώς όπως ζήτησες· **31** κοντινές (…)»."""
-    tail = "(ένας όρος χαλαρωμένος, γραμμένος σε κάθε κάρτα)"
-    noun = "κοντινή" if near == 1 else "κοντινές"
+def tier_text(near: int, wide: int) -> str:
+    """«**55** κοντινές (ένας όρος χαλαρωμένος) και **410** ευρύτερα (περισσότεροι όροι)»."""
+    parts = []
+    if near:
+        noun = "κοντινή" if near == 1 else "κοντινές"
+        parts.append(f"**{buyer._num(near)}** {noun} (ένας όρος χαλαρωμένος)")
+    if wide:
+        noun = "ευρύτερη" if wide == 1 else "ευρύτερα"
+        parts.append(f"**{buyer._num(wide)}** {noun} (περισσότεροι όροι)")
+    return " και ".join(parts)
+
+
+def counts_line(exact: int, near: int, what: str, checked: int, wide: int = 0) -> str:
+    """C7's result sentence with the three counts: «**2** αγγελίες … ακριβώς όπως ζήτησες,
+    **55** κοντινές (…) και **410** ευρύτερα (…)», or «Καμία ακριβώς όπως ζήτησες· …». What
+    each card is outside of is written on the card."""
+    rest = tier_text(near, wide)
     if exact:
-        head = (
-            f"**{exact}** {buyer._noun(exact)} {what} ακριβώς όπως ζήτησες "
-            f"και **{near}** {noun} {tail}."
-        )
+        joint = ", " if near and wide else " και "
+        head = f"**{buyer._num(exact)}** {buyer._noun(exact)} {what} ακριβώς όπως ζήτησες{joint}{rest}."
     else:
-        head = f"Καμία ακριβώς όπως ζήτησες ({what})· **{near}** {noun} {tail}."
-    return head + f" Ελέγχθηκε η περιγραφή σε **{checked}** από όλες."
+        head = f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}."
+    return (
+        head
+        + " Σε κάθε κάρτα γράφω τι δεν ταιριάζει."
+        + f" Ελέγχθηκε η περιγραφή σε **{checked}** από όλες."
+    )
 
 
 def arrange(
@@ -794,8 +808,9 @@ def assistant_facts(
 
 
 NEAR_NOTE = (
-    "Listings with exact_match=false are near matches: one of the buyer's answers was "
-    "loosened (named in relaxed). Never call them exact matches."
+    "Listings with exact_match=false do not match every answer of the buyer: relaxed names "
+    "the answer(s) they are outside of (one = near match, several = wider). Never call them "
+    "exact matches."
 )
 
 
@@ -868,7 +883,8 @@ def _results(g: dict, listings: list[dict]) -> None:
     review = _review()
     every, dropped = arrange(found, review)
     exact = [p for p in every if not p.relaxed]
-    near = len(every) - len(exact)
+    near = sum(p.tier == 1 for p in every)
+    wide = sum(p.tier == 2 for p in every)
     lo, hi = budget * (1 - picks.BUDGET_BAND), budget * (1 + picks.BUDGET_BAND)
     what = f"{buyer.eur(lo)}–{buyer.eur(hi)}, {age_text(g.get('age'))}" + (
         ", κοντά σε σταθμό" if where == "rail" else ""
@@ -888,8 +904,8 @@ def _results(g: dict, listings: list[dict]) -> None:
         if sentence := recommend(exact or every, area_facts, rules["goal"], budget):
             st.markdown(sentence)
         checked = sum(p.checked for p in every)
-        if near:
-            st.markdown(counts_line(len(exact), near, what, checked))
+        if near or wide:
+            st.markdown(counts_line(len(exact), near, what, checked, wide))
         elif len(every) == 1:
             tail = (
                 "Ελέγχθηκε η περιγραφή της."
@@ -937,7 +953,7 @@ def _results(g: dict, listings: list[dict]) -> None:
                     on_click=_more,
                     width="stretch",
                 )
-        st.caption(f"Βλέπεις {len(visible)} από {len(every)}.")
+        st.caption(f"Βλέπεις {buyer._num(len(visible))} από {buyer._num(len(every))}.")
         _assistant_panel(facts)
     if dropped:
         _dropped(dropped)

@@ -246,9 +246,9 @@ def test_near_matches_follow_with_their_label_counts_and_score(env, monkeypatch)
     at = walk(fresh(FIND), budget="guide-b200", where="rail", age="10")
     ok(at, "near")
     text = _text(at)
-    m = re.search(r"Καμία ακριβώς όπως ζήτησες \([^)]*\)· \*\*(\d+)\*\* κοντινέ?[ςή]", text)
+    m = re.search(r"Καμία ακριβώς όπως ζήτησες \([^)]*\)· (.*?)\. Σε κάθε κάρτα", text)
     assert m, text[-2000:]
-    near = int(m.group(1))
+    near = sum(int(n) for n in re.findall(r"\*\*(\d+)\*\*", m.group(1)))
     cards = [m.value for m in at.markdown if 'class="hg-card"' in m.value]
     assert cards and len(cards) == min(near, picks.PAGE)
     assert all(">Βαθμολογία " in c for c in cards)
@@ -258,9 +258,13 @@ def test_near_matches_follow_with_their_label_counts_and_score(env, monkeypatch)
 
 
 def test_counts_line_wording():
-    line = guide.counts_line(4, 31, "140.800 €–179.200 €, νεόδμητο", 3)
-    assert line.startswith("**4** αγγελίες 140.800 €–179.200 €, νεόδμητο ακριβώς όπως ζήτησες")
-    assert "και **31** κοντινές (ένας όρος χαλαρωμένος, γραμμένος σε κάθε κάρτα)." in line
+    line = guide.counts_line(2, 55, "140.800 €–179.200 €, νεόδμητο", 3, 410)
+    assert line.startswith(
+        "**2** αγγελίες 140.800 €–179.200 €, νεόδμητο ακριβώς όπως ζήτησες, **55** κοντινές "
+        "(ένας όρος χαλαρωμένος) και **410** ευρύτερα (περισσότεροι όροι)."
+    )
+    assert "**1.286** ευρύτερα" in guide.counts_line(0, 5, "x", 0, 1286)
+    assert "και **31** κοντινές (ένας όρος χαλαρωμένος)." in guide.counts_line(4, 31, "x", 0)
     assert guide.counts_line(0, 1, "x", 0).startswith(
         "Καμία ακριβώς όπως ζήτησες (x)· **1** κοντινή"
     )
