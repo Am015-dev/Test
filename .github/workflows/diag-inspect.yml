@@ -12,7 +12,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e . -q
-      - run: python diag/inspect.py
+      - run: python diag/fetch_pages.py
         env:
           SCRAPE_REQUEST_MIN_S: "3"
           SCRAPE_REQUEST_MAX_S: "5"
