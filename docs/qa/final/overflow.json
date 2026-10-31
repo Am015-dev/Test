@@ -1,0 +1,210 @@
+{
+  "a1-guide-step1-budget": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 844
+  },
+  "a2-guide-step2-goal": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 884
+  },
+  "a3-guide-step3-where": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 844
+  },
+  "a4-guide-step4-kind": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 844
+  },
+  "a5-guide-result": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 7107
+  },
+  "a6-guide-ten-more": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 13165
+  },
+  "a7-guide-chip-reopened": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 844
+  },
+  "b1-map-card-under-map": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [
+      "INPUT. right=479"
+    ],
+    "pageHeight": 5275
+  },
+  "b2-map-after-next": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [
+      "INPUT. right=479"
+    ],
+    "pageHeight": 5255
+  },
+  "b3-map-after-tap-point": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [
+      "INPUT. right=479"
+    ],
+    "pageHeight": 5275
+  },
+  "c1-areas-decision": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 5210
+  },
+  "c2-areas-first-card-open": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 5210
+  },
+  "d0-search": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 5248
+  },
+  "d1-listing-page": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 2537
+  },
+  "e0-sidebar-no-token-real-config": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": []
+  },
+  "e1-sidebar-signed-out": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": []
+  },
+  "e2-sidebar-login-form": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": []
+  },
+  "e3-sidebar-after-new-profile": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": []
+  },
+  "e4-signed-in-home": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": []
+  },
+  "f0-search-default": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": []
+  },
+  "f1-search-filtered": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 6232
+  },
+  "g1-guide-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 800
+  },
+  "g2-areas-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 3649
+  },
+  "h0-first-load": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 844
+  },
+  "h1-favourites": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 844
+  },
+  "h2-compare": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 1599
+  }
+}
