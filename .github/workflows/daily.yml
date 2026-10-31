@@ -39,7 +39,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 175     # above the sum of the step caps so publish is never cancelled
+    timeout-minutes: 200     # above the sum of the step caps so publish is never cancelled
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -62,16 +62,17 @@ jobs:
 
       - name: Collect the weekly areas (best-effort, time-boxed)
         if: ${{ !inputs.pages_only }}
-        # ~6 min per area at polite pacing; 15 areas ≈ 80 min. Public repo: free minutes.
-        timeout-minutes: 110
+        # ~6 min per area at polite pacing for XE, ~1 min Golden Home, ~2 min RE/MAX (one
+        # listing-page visit per in-band card for the build year); 15 areas ≈ 135 min.
+        timeout-minutes: 140
         continue-on-error: true
         env:
           SCRAPE_DETAIL_PAGES: "false"
           SCRAPE_REQUEST_MIN_S: "4"
           SCRAPE_REQUEST_MAX_S: "7"
-          # Plain-HTTP portals to read (docs/SOURCES.md). Golden Home verified on the runner
-          # 2026-10-31 (run 41220363373); unknown names are ignored, never fatal.
-          SOURCES: xe,greenacres,goldenhome
+          # Plain-HTTP portals to read (docs/SOURCES.md). Golden Home and RE/MAX verified on
+          # the runner 2026-10-31 (runs 41220363373, 41223215713); unknown names are ignored.
+          SOURCES: xe,greenacres,goldenhome,remax
           AREAS: ${{ inputs.areas || env.WEEKLY_AREAS }}
         run: python scripts/run_daily.py --shards 5 --areas "$AREAS"
 
