@@ -129,7 +129,7 @@ class RentPick:
     station: str = ""
     over_budget: int = 0  # € above the stated budget (inside the band), 0 when within
     score: int = 0  # rent-value score 0–100 (module docstring)
-    score_basis: str = ""  # «τιμή έναντι παρόμοιων 52/70 + φρεσκάδα 30/30»
+    score_basis: str = ""  # «52 από 70 για την τιμή … και 30 από 30 για …»
     relaxed: str = ""  # what it is outside of, in the user's words; "" = strict
     tier: int = 0  # 0 strict · 1 near (one answer) · 2 «ευρύτερα» (two or more)
 
@@ -239,9 +239,9 @@ def value_score(vs_area_pct: float | None, d: dict) -> tuple[int, str]:
         x = (STALE_DAYS - dom) / (STALE_DAYS - NEW_DAYS)
         fresh = FRESH_PTS * min(max(x, 0.0), 1.0)
     basis = (
-        f"τιμή έναντι παρόμοιων {round(value)}/{VALUE_PTS}"
-        + (" (χωρίς παρόμοια)" if vs_area_pct is None else "")
-        + f" + φρεσκάδα {round(fresh)}/{FRESH_PTS}"
+        f"{round(value)} από {VALUE_PTS} για την τιμή σε σχέση με τα παρόμοια"
+        + (" (δεν έχει παρόμοια, παίρνει τους μισούς)" if vs_area_pct is None else "")
+        + f" και {round(fresh)} από {FRESH_PTS} για το πόσο καινούργια είναι η αγγελία"
     )
     return round(value + fresh), basis
 

@@ -129,11 +129,11 @@ def test_near_match_chip_and_the_same_score_as_advise():
 
     html = card_html(BUYER, {"cmp": CMP, "relaxed": "ποσό +18 %"}, compact=True)
     l3 = html.split('class="hg-l3">')[1].split("</div>")[0]
-    assert '<span class="hg-st hg-st-neu">Έξω από: ποσό +18 %</span>' in l3
+    assert '<span class="hg-st hg-st-neu">Ξεφεύγει: ποσό +18 %</span>' in l3
     want = nl_search.advise(BUYER, CMP["pct"])["score"]
     assert f">Βαθμολογία {want}<" in html
     plain = card_html(BUYER, {"cmp": CMP}, compact=True)
-    assert "Έξω από" not in plain
+    assert "Ξεφεύγει" not in plain
 
 
 def test_too_cheap_is_a_question_not_a_bonus():

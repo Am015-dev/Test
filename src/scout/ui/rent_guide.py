@@ -609,9 +609,9 @@ def counts_line(exact: int, near: int, what: str, wide: int = 0) -> str:
         joint = ", " if near and wide else " και "
         return (
             f"**{buyer._num(exact)}** {buyer._noun(exact)} ενοικίασης {what} ακριβώς όπως ζήτησες"
-            f"{joint}{rest}. Σε κάθε κάρτα γράφω τι δεν ταιριάζει."
+            f"{joint}{rest}. Σε κάθε κάρτα γράφουμε τι δεν ταιριάζει."
         )
-    return f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}. Σε κάθε κάρτα γράφω τι δεν ταιριάζει."
+    return f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}. Σε κάθε κάρτα γράφουμε τι δεν ταιριάζει."
 
 
 def card_more(p: picks_rent.RentPick) -> list[str]:
@@ -770,8 +770,8 @@ def _results(r: dict, rows: list[dict]) -> None:
         if relax:
             _relax(
                 relax,
-                f"Μόνο {len(exact)} ακριβώς όπως ζήτησες. Κάνε μόνιμο έναν όρο λιγότερο "
-                "(σε παρένθεση πόσες προστίθενται):",
+                f"Μόνο {len(exact)} ακριβώς όπως ζήτησες. Βγάλε έναν όρο για να δεις "
+                "περισσότερες (σε παρένθεση πόσες προστίθενται):",
             )
         facts = rent_facts(every, r, rows)
         if any(p.relaxed for p in every[:10]):

@@ -390,5 +390,7 @@ def test_rent_card_has_the_value_score_its_basis_and_the_near_chip():
     assert p.relaxed == "ποσό +15 %"
     html = buyer.card_html(p.listing, rent_guide.card_adv(p), False, compact=True)
     assert f">Βαθμολογία {p.score}<" in html.split("hg-l2")[0]
-    assert f"Βαθμολογία {p.score} από 100: τιμή έναντι παρόμοιων" in html
-    assert f"Έξω από: {p.relaxed}" in html
+    assert (
+        f"Βαθμολογία {p.score} από 100: " in html and "για την τιμή σε σχέση με τα παρόμοια" in html
+    )
+    assert f"Ξεφεύγει: {p.relaxed}" in html
