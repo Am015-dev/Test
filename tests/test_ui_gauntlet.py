@@ -624,7 +624,7 @@ def test_compare_opens_with_favourites_and_shows_yield(env):
     at = fresh("Σύγκριση")
     ok(at, "compare")
     picked = [at.selectbox(key="compare_a").value, at.selectbox(key="compare_b").value]
-    assert len(set(picked)) == 2 and all(v.startswith("★ ") for v in picked)
+    assert len(set(picked)) == 2 and all(v.endswith(" · αγαπημένο") for v in picked)
     table = next(m.value for m in at.markdown if m.value.startswith("| | Α | Β |"))
     assert all(
         f"| {f} |" in table for f in ("Ενοίκιο (εκτίμηση)", "Μικτή απόδοση", "Καθαρή απόδοση")
