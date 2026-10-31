@@ -319,7 +319,7 @@ def test_pipeline_excludes_ground_floor(in_memory_db):
 def test_pipeline_stores_rent_comp_sample_counts(in_memory_db, monkeypatch):
     """rent_comp.samples used to be 0 for every pipeline-scraped area: the counts were
     computed but never passed to save_rent_comps, so the UI could not say what n a rent
-    median rests on."""
+    median rests on. Comps now come from the stored rentals (collect_rentals)."""
     import scout.enrich as enrich
     from scout.models import RentCompRow
     from scout.pipeline import run
@@ -330,11 +330,10 @@ def test_pipeline_stores_rent_comp_sample_counts(in_memory_db, monkeypatch):
     monkeypatch.setattr(enrich.requests, "get", no_net)
 
     class RentingCollector(FakeCollector):
-        def collect_rent_rows(self):
+        def collect_rentals(self):
             hoods = ["Ano Cholargos"] * 4 + ["Tsakos"] * 2
             return [
-                {"rent": 1000 + 50 * i, "area_m2": 80, "neighborhood": h}
-                for i, h in enumerate(hoods)
+                {**_raw(f"r{i}", 1000 + 50 * i), "neighborhood": h} for i, h in enumerate(hoods)
             ]
 
     run(

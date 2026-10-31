@@ -12,6 +12,7 @@ import re
 
 import pytest
 
+from .test_rent_guide import rent_env  # noqa: F401  (pytest fixture: rentals + fake assistant)
 from .test_ui_gauntlet import PAGES, env, fresh  # noqa: F401, F811  (env is a pytest fixture)
 
 # Latin-alphabet words of 4+ letters that may appear. Everything else must be Greek.
@@ -109,11 +110,12 @@ def _click(at, prefix: str):
 
 
 def _guide_step(n: int):
-    """The guide page after answering its first ``n`` questions with the first option."""
+    """The guide page after «Να αγοράσω» and its first ``n`` questions (first option)."""
 
     def run(env):
         at = fresh(PAGES[0])
-        for prefix in ("guide-b", "guide-g-", "guide-w-", "guide-show")[:n]:
+        _click(at, "guide-mode-buy")
+        for prefix in ("guide-b2", "guide-g-", "guide-w-", "guide-show")[:n]:
             _click(at, prefix)
         return at
 
@@ -145,11 +147,40 @@ def _saved_search(env):
 
 @pytest.mark.parametrize(
     "state",
-    [_guide_step(n) for n in (1, 2, 3, 4)]
+    [_guide_step(n) for n in (0, 1, 2, 3, 4)]
     + [_search_example_with_advice, _favourite_and_details, _saved_search],
 )
 def test_copy_in_interaction_states(env, state):  # noqa: F811
     at = state(env)
+    assert not at.exception, [e.value for e in at.exception]
+    problems = _problems(state.__name__, visible_strings(at))
+    assert not problems, "\n".join(sorted(set(problems)))
+
+
+def _rent_step(n: int, answers=("guide-rb8", "guide-rbd-any", "guide-rw-best", "guide-rshow")):
+    """The guide after «Να νοικιάσω» and its first ``n`` rent ``answers``; with all four, the
+    result with one card's details open (or, when nothing matches, the relaxations)."""
+
+    def run():
+        at = fresh(PAGES[0])
+        _click(at, "guide-mode-rent")
+        for prefix in answers[:n]:
+            _click(at, prefix)
+        if n == 4 and any((b.key or "").startswith("rent-det-") for b in at.button):
+            _click(at, "rent-det-")
+        return at
+
+    run.__name__ = f"_rent_after_{n}_answers" + ("" if answers[0] == "guide-rb8" else "_strict")
+    return run
+
+
+@pytest.mark.parametrize(
+    "state",
+    [_rent_step(n) for n in (0, 1, 2, 3, 4)]
+    + [_rent_step(4, ("guide-rb400", "guide-rbd-3", "guide-rw-rail", "guide-rshow"))],
+)
+def test_copy_in_rent_states(rent_env, state):  # noqa: F811
+    at = state()
     assert not at.exception, [e.value for e in at.exception]
     problems = _problems(state.__name__, visible_strings(at))
     assert not problems, "\n".join(sorted(set(problems)))

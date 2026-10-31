@@ -321,7 +321,9 @@ def _lifecycle(stamp: tuple) -> list[dict]:
                     "first_seen": r.first_seen,
                     "last_seen": r.last_seen,
                 }
-                for r in session.scalars(select(ListingRow)).all()
+                for r in session.scalars(
+                    select(ListingRow).where(ListingRow.listing_type == "sale")
+                ).all()
             ]
     except Exception:  # liquidity then reads «άγνωστη»; the page must still render
         return []

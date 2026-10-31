@@ -10,6 +10,9 @@ Optional neighbours (other workstreams), each imported lazily and skipped when a
 ``ui.maplist.render(listings, key)`` (map toggle), ``ui.assistant.brief(facts)`` /
 ``panel(facts, key)`` (investor note, «Ρώτα με»), ``ui.account.storage()`` (answers kept in
 the profile; otherwise this session only).
+
+Step 0 «Τι ψάχνεις;» picks the mode (``g["mode"]``, saved as ``guide.mode``): «Να νοικιάσω»
+runs ``ui.rent_guide``; «Πίσω» on step 1 and the first answer chip reopen step 0.
 """
 
 from __future__ import annotations
@@ -48,6 +51,7 @@ AGES = {"10": "Νεόδμητο (έως 10 ετών)", "20": "Έως 20 ετών
 BEDS = {"any": "Όσα να 'ναι", "1": "1", "2": "2", "3": "3+"}
 MIN_AREA = 20  # an area is offered as a chip with at least this many active listings
 DEFAULTS = {
+    "mode": None,  # "buy" | "rent"; None = step 0 «Τι ψάχνεις;»
     "step": 1,
     "budget": None,
     "loan": False,
@@ -155,7 +159,10 @@ def _resync() -> None:
 def go(step: int) -> None:
     _resync()
     g = state()
-    g["step"] = max(1, min(STEPS, step))
+    if step < 1:
+        g["mode"] = None  # step 0; the buy answers and step stay
+    else:
+        g["step"] = min(STEPS, step)
     _save(g)
 
 
@@ -215,7 +222,7 @@ def _finish_step4() -> None:
 def _chip_jump() -> None:
     pick = st.session_state.get("guide_chips")
     st.session_state["guide_chips"] = None
-    for i, label in enumerate(answer_chips(state()), start=1):
+    for i, label in enumerate(answer_chips(state())):
         if label == pick:
             go(i)
 
@@ -263,6 +270,7 @@ def answer_chips(g: dict) -> list[str]:
         f" · {beds}{'+' if beds >= 3 else ''} υπν." if beds is not None else ""
     )
     return [
+        "να αγοράσω",
         (thousands(g["budget"]) if g.get("budget") else "ποσό;")
         + (" · με δάνειο" if g.get("loan") else ""),
         GOAL_CHIP.get(g.get("goal") or "", "στόχος;"),
@@ -494,8 +502,7 @@ def _more() -> None:
 def _progress(step: int) -> None:
     with st.container(key="guide-progress"):
         c = st.columns([1, 2], vertical_alignment="center")
-        if step > 1:
-            c[0].button("Πίσω", key="guide-back", on_click=go, args=(step - 1,))
+        c[0].button("Πίσω", key="guide-back", on_click=go, args=(step - 1,))
         c[1].markdown(f"**Βήμα {step} από {STEPS}**")
     st.progress(step / STEPS)
 
@@ -625,47 +632,47 @@ METHOD = """
 
 
 def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> None:
+    """The compact card (five lines, C3): everything else — the title, net yield, loan,
+    offer, the risks to check and the listing's own words — sits in «Από πού βγαίνουν».
+    Two buttons; «Εγκρίνω» / «Δεν μου κάνει» as a second row on the first ten only (and on
+    any card already approved, so it can be undone). ``has_map`` is kept for the caller: the
+    map is the «Χάρτης» toggle above the list."""
     d = p.listing
-    e = html.escape
     shown = {**d, "est_monthly_rent": p.rent, "rent_estimated": True, "listed_rent": None}
+    more = [d["title"]] if d.get("title") else []
+    more.append(f"Καθαρή απόδοση ~{picks.gr_pct(p.net)}")
+    if p.loan:
+        more.append(p.loan_line)
+    why = p.reasons.get(p.goal) if p.goal in ("safety", "growth") else None
+    if why:
+        more.append(f"{GOAL_CHIP[p.goal].capitalize()}: " + " · ".join(why))
+    more.append(
+        f"Πρώτη προσφορά ~{buyer.eur(p.offer)}"
+        + (" (ιδιώτης πωλητής)" if d.get("is_private_seller") else "")
+    )
+    more += [f"Έλεγξε: {r}" for r in p.risks]
+    if p.excerpt:
+        more.append(f"Τι λέει η αγγελία: «{p.excerpt}»")
     with st.container(border=True, key=f"pick-{d['id']}"):
-        st.markdown(f"**{i}. {e(d.get('title') or '')}**" + (" · το ενέκρινες" if approved else ""))
-        st.markdown(buyer.card_html(shown, adv), unsafe_allow_html=True)
-        lines = [f"Καθαρή απόδοση ~{picks.gr_pct(p.net)}"]
-        if p.loan:
-            lines.append(p.loan_line)
-        why = p.reasons.get(p.goal) if p.goal in ("safety", "growth") else None
-        if why:
-            lines.append(f"{GOAL_CHIP[p.goal].capitalize()}: " + " · ".join(why))
-        lines.append(
-            f"Πρώτη προσφορά ~{buyer.eur(p.offer)}"
-            + (" (ιδιώτης πωλητής)" if d.get("is_private_seller") else "")
-        )
         st.markdown(
-            '<div class="hg-card">' + "".join(f"<div>{e(x)}</div>" for x in lines) + "</div>",
+            buyer.card_html(shown, adv, compact=True, lead=f"{i}.", more=more),
             unsafe_allow_html=True,
         )
-        if p.risks:
-            st.markdown(
-                '<div class="hg-card"><b>Έλεγξε</b><ul style="margin:2px 0 0;padding-left:1.1rem">'
-                + "".join(f"<li>{e(r)}</li>" for r in p.risks)
-                + "</ul></div>",
-                unsafe_allow_html=True,
-            )
-        if p.excerpt:
-            with st.expander("Τι λέει η αγγελία"):
-                st.markdown(e(p.excerpt))
         key = shortlist.lkey(d)
+        star, toggle, args, kind = buyer._star_action(d)
         cols = st.columns(2)
-        src = SOURCES.get(d.get("source") or "xe", (d.get("source") or "").upper())
-        cols[0].link_button(f"Άνοιγμα στο {src}", d["url"], width="stretch")
-        cols[1].button(
+        cols[0].button(
             "Λεπτομέρειες",
             key=f"pick-det-{d['id']}",
             on_click=buyer.open_detail,
             args=(d["id"],),
             width="stretch",
         )
+        cols[1].button(
+            star, key=f"pick-fav-{d['id']}", on_click=toggle, args=args, type=kind, width="stretch"
+        )
+        if i > picks.PAGE and not approved:
+            return
         cols = st.columns(2)
         if approved:
             cols[0].button(
@@ -691,14 +698,6 @@ def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> No
             args=(key, "no"),
             width="stretch",
         )
-        if has_map:
-            st.button(
-                "Στον χάρτη",
-                key=f"pick-map-{d['id']}",
-                on_click=_on_map,
-                args=(d["id"],),
-                width="stretch",
-            )
 
 
 def _relax(options: list[picks.Relax], intro: str) -> None:
@@ -881,6 +880,11 @@ def page(listings: list[dict]) -> None:
     buyer._show_flash()
     st.markdown(CSS, unsafe_allow_html=True)
     g = state()
+    st.markdown(f"## {TITLE}")
+    if g.get("mode") != "buy":
+        from scout.ui import rent_guide
+
+        return rent_guide.page(g) if g.get("mode") == "rent" else rent_guide.mode_step(g)
     step = int(g.get("step") or 1)
     if step > 1 and not g.get("budget"):
         step = 1
@@ -888,7 +892,6 @@ def page(listings: list[dict]) -> None:
         step = 2
     if step > 3 and (not g.get("where") or (g["where"] == "areas" and not g.get("areas"))):
         step = 3
-    st.markdown(f"## {TITLE}")
     _progress(step)
     if step == 1:
         _step1(g)

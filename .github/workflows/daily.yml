@@ -39,7 +39,9 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 220     # above the sum of the step caps so publish is never cancelled
+    # Above the step caps (collect 160 + pages 40 + photos 15 + stations 5 + rescore 15 =
+    # 235 min) plus install/restore/publish, so publish is never cancelled.
+    timeout-minutes: 250
     env:
       # secrets cannot be tested in a step `if`; expose only whether the key exists
       HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
@@ -67,7 +69,10 @@ jobs:
         if: ${{ !inputs.pages_only }}
         # ~6 min per area at polite pacing for XE, ~1 min Golden Home, ~2 min RE/MAX (one
         # listing-page visit per in-band card for the build year); 15 areas ≈ 135 min.
-        timeout-minutes: 140
+        # XE rentals ride in the same per-area run (XeCollector.collect_rentals, ≤ 5 rental
+        # pages, no listing pages): ~1 min per area (runner run 41229898436: 145 rentals for
+        # Χολαργός in under a minute), so ≈ 135 + 15 = 150 min; capped at 160.
+        timeout-minutes: 160
         continue-on-error: true
         env:
           SCRAPE_DETAIL_PAGES: "false"

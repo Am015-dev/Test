@@ -18,10 +18,17 @@ def _text(at) -> str:
 
 
 def _cards(at) -> list[str]:
+    return [b.key for b in at.button if b.key and b.key.startswith("pick-det-")]
+
+
+def _verdict_rows(at) -> list[str]:
     return [b.key for b in at.button if b.key and b.key.startswith("pick-no-")]
 
 
 def walk(at, budget="guide-b250", goal="yield", where="best", age="any"):
+    assert "### Τι ψάχνεις;" in _text(at) and "Βήμα" not in _text(at)
+    at.button(key="guide-mode-buy").click().run()
+    assert at.session_state["guide"]["mode"] == "buy"
     assert "Βήμα 1 από 5" in _text(at) and "Πόσα θες να βάλεις;" in _text(at)
     at.toggle(key="guide_loan").set_value(True).run()
     at.button(key=budget).click().run()
@@ -44,6 +51,7 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     at = walk(fresh(FIND))
     chips = at.button_group(key="guide_chips")
     assert list(chips.options) == [
+        "να αγοράσω",
         "250 χιλ. · με δάνειο",
         "απόδοση",
         "όπου βγαίνει",
@@ -65,6 +73,10 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     ok(at, "more")
     after = _cards(at)
     assert after[: picks.PAGE] == first and len(after) == min(2 * picks.PAGE, total)
+    # two buttons per card; «Εγκρίνω» / «Δεν μου κάνει» only on the first ten (C3)
+    assert len(_verdict_rows(at)) == picks.PAGE
+    assert sum(b.key.startswith("pick-fav-") for b in at.button if b.key) == len(after)
+    assert not any(b.label in ("Στον χάρτη", "Άνοιγμα στο XE.gr") for b in at.main.button)
     # a chip reopens its question; answering it lands back on the result
     at.button_group(key="guide_chips").set_value("απόδοση").run()
     ok(at, "chip")
@@ -96,7 +108,7 @@ def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env, monkeypatch
     assert f"**{added}** αγγελίες" in _text(at)
     cards = _cards(at)
     assert cards and "Δεν έχει ελεγχθεί ακόμα" in _text(at)
-    at.button(key=cards[0]).click().run()
+    at.button(key=cards[0].replace("pick-det-", "pick-no-")).click().run()
     ok(at, "drop")
     assert cards[0] not in _cards(at)
     assert any(e.label == "Απέρριψες 1" for e in at.expander)
@@ -122,6 +134,7 @@ def test_loan_maths_on_a_synthetic_listing():
 def test_answer_chips_and_relax_mapping():
     g = {**guide.DEFAULTS, "budget": 300_000, "goal": "growth", "where": "rail", "bedrooms": 3}
     assert guide.answer_chips(g) == [
+        "να αγοράσω",
         "300 χιλ.",
         "ανατίμηση",
         "κοντά σε μετρό",
@@ -129,6 +142,7 @@ def test_answer_chips_and_relax_mapping():
     ]
     g = {**g, "where": "areas", "areas": ["Γαλάτσι"], "age": None, "bedrooms": None, "loan": True}
     assert guide.answer_chips(g) == [
+        "να αγοράσω",
         "300 χιλ. · με δάνειο",
         "ανατίμηση",
         "Γαλάτσι",

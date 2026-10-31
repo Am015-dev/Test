@@ -3,6 +3,17 @@
 Fail-soft throughout: one bad listing (or one dead portal) logs and is skipped;
 the run continues. Idempotent: running twice in a day adds no duplicate history
 rows (the upsert appends history only on real change).
+
+Rentals. A collector with ``collect_rentals()`` (XE) also yields full rental cards
+(``listing_type="rent"``, price = monthly rent). They are stored in the same ``listing``
+table, per area, under the same upsert/history rules, and retired in their own pass
+(``mark_unseen_as_gone(listing_type="rent")``), so a failed rental search never retires
+sales and vice versa. Rentals are kept out of everything sale-side by ONE mechanism:
+``scoring.score`` returns them excluded with reason ``"rent"`` (score 0, never an
+opportunity), and they are never passed to the sale market stats, the hedonic valuation
+or the sale dedup. After the rentals are stored, ``rent_comp`` is recomputed for the area
+from every rental seen in the last ``rent_comps.WINDOW_DAYS`` days
+(``rent_comps.recompute_from_stored``), and the sale yields use those medians.
 """
 
 from __future__ import annotations
@@ -30,7 +41,7 @@ from .enrich import gross_yield as _gross_yield
 from .finance import net_yield as _net_yield_after_costs
 from .models import Listing, ListingRow, PriceHistoryRow
 from .normalize import normalize
-from .rent_comps import OVERALL_KEY, compute_rent_comps_with_counts, load_rent_comps
+from .rent_comps import OVERALL_KEY, load_rent_comps
 from .rent_comps import rent_for as rent_comps_for
 from .scoring import compute_market_stats, score
 from .valuation import fit_and_apply_by_area
@@ -53,31 +64,54 @@ def _collect_all(collectors: Iterable[Collector]) -> list[dict]:
     return raws
 
 
-def _fetch_rent_comps(
-    collectors: Iterable[Collector],
-) -> tuple[dict[str, float], dict[str, int]]:
-    """Scrape the area's rental market from any collector that supports it and reduce it
-    to (neighbourhood → median €/m²/month, neighbourhood → sample count). Fail-soft:
-    returns ({}, {}) on any failure so yield falls back to sale-listing rents / the
-    configured baseline. The counts are stored so the UI can say how many rentals a
-    median rests on."""
-    rows: list[dict] = []
+def _collect_rentals(collectors: Iterable[Collector]) -> tuple[list[dict], set[str]]:
+    """Rental cards from every collector that has ``collect_rentals``. Fail-soft per
+    collector. Returns the raws and the sources that were asked (a source that raised is
+    left out, so its stored rentals are not retired)."""
+    raws: list[dict] = []
+    asked: set[str] = set()
     for collector in collectors:
-        fetch = getattr(collector, "collect_rent_rows", None)
+        fetch = getattr(collector, "collect_rentals", None)
         if not callable(fetch):
             continue
         try:
-            rows.extend(fetch())
+            got = [{**raw, "listing_type": "rent"} for raw in fetch()]
         except Exception as exc:
-            logger.warning("rent comps: %s failed: %s", collector.source, exc)
-    comps, counts = compute_rent_comps_with_counts(rows)
-    if comps:
-        logger.info(
-            "rent comps: %d neighbourhoods, overall %.1f €/m²/mo",
-            len(comps) - 1,
-            comps.get("__overall__", 0.0),
-        )
-    return comps, counts
+            logger.warning("rentals: %s failed: %s", collector.source, exc)
+            continue
+        raws.extend(got)
+        asked.add(collector.source)
+        logger.info("%s: collected %d raw rentals", collector.source, len(got))
+    return raws, asked
+
+
+def _enrich_all(listings: list[Listing], rent_per_m2, use_network: bool) -> list[Listing]:
+    """Enrich each listing (fail-soft, SAVEPOINT per listing). ``rent_per_m2(lst)`` gives
+    the €/m²/month the sale yield is estimated from. Rentals keep their own €/m² (=
+    monthly rent per m²) and get no rent estimate or yield: they are not investments."""
+    enriched: list[Listing] = []
+    with session_scope() as session:
+        for lst in listings:
+            is_rent = lst.listing_type == "rent"
+            try:
+                # SAVEPOINT per listing: enrich_listing writes the geocode cache via
+                # session.flush(); a failed flush (e.g. a duplicate-query race) would
+                # otherwise poison the whole session. Isolating it here means one bad
+                # geocode can't crash enrichment for the rest of the batch.
+                with session.begin_nested():
+                    result = enrich_listing(
+                        lst,
+                        median_rent_per_m2=None if is_rent else rent_per_m2(lst),
+                        session=session,
+                        use_network=use_network,
+                    )
+            except Exception as exc:
+                logger.warning("enrich failed for %s: %s", lst.dedup_key, exc)
+                result = lst
+            if is_rent:
+                result.est_monthly_rent = result.gross_yield = result.net_yield = None
+            enriched.append(result)
+    return enriched
 
 
 def run(
@@ -128,52 +162,50 @@ def run(
     # to normalize — never wipes its previously-collected listings.
     active_sources = {lst.source for lst in listings}
 
-    # 1b. Real rent comparables: scrape the area's RENTAL market so gross yield uses an
-    # actual local €/m²/month median per neighbourhood, not a flat guess. Fail-soft.
-    rent_comps: dict[str, float] = {}
-    if use_network:
-        rent_comps, rent_counts = _fetch_rent_comps(collectors)
-        # Persist them so a later rescore (which never scrapes) applies real rent too.
-        if rent_comps:
-            from .rent_comps import save_rent_comps
+    # 1b. Rentals: full rental cards, stored like sales (see the module docstring).
+    rent_raws, _ = _collect_rentals(collectors)
+    rentals: list[Listing] = []
+    for raw in rent_raws:
+        lst = normalize(raw, now=now)
+        if lst is not None and lst.listing_type == "rent":
+            lst.search_area = effective_area
+            rentals.append(lst)
+    rent_sources = {lst.source for lst in rentals}
+    rentals = _enrich_all(rentals, lambda _lst: None, use_network)
+    rent_stored, rent_gone = _store_rentals(rentals, rent_sources, effective_area, now, strategy)
 
-            try:
-                save_rent_comps(effective_area, rent_comps, rent_counts)
-            except Exception as exc:  # persistence must never break a run
-                logger.warning("rent comps: persist failed for %s: %s", effective_area, exc)
+    # 1c. Rent comps from the STORED rentals of the last 60 days (this run's included), so
+    # the yield uses a real local €/m²/month median per neighbourhood. When the area has no
+    # recent rentals the comps stored earlier stand (fail-soft, never wiped).
+    from .rent_comps import recompute_from_stored
+
+    rent_comps: dict[str, float] = {}
+    try:
+        rent_comps = recompute_from_stored(effective_area, now=now)
+    except Exception as exc:  # comps must never break a run
+        logger.warning("rent comps: recompute failed for %s: %s", effective_area, exc)
+    if not rent_comps:
+        try:
+            rent_comps = load_rent_comps().get(effective_area, {})
+        except Exception:
+            rent_comps = {}
 
     # 2. Enrich (network steps degrade gracefully). Fail-soft per listing.
-    enriched: list[Listing] = []
-    with session_scope() as session:
-        # Fallback rent comps from any sale listings that stated a rent (rare).
-        prelim_stats = compute_market_stats(listings)
-        for lst in listings:
-            try:
-                # Prefer the real rental-market median for this neighbourhood/area so the
-                # rent ESTIMATE tracks the local market (not a flat guess). It is still an
-                # estimate for this listing — honesty is set from its own listed_rent only.
-                median_rent = rent_comps_for(rent_comps, lst.neighborhood)
-                if not median_rent:
-                    n_stats = prelim_stats.by_neighborhood.get(lst.neighborhood or "")
-                    median_rent = n_stats.median_rent_per_m2 if n_stats else None
-                # Fall back to the configured baseline so yield is always computable.
-                if not median_rent:
-                    median_rent = strategy.search.est_rent_eur_per_m2
-                # SAVEPOINT per listing: enrich_listing writes the geocode cache via
-                # session.flush(); a failed flush (e.g. a duplicate-query race) would
-                # otherwise poison the whole session. Isolating it here means one bad
-                # geocode can't crash enrichment for the rest of the batch.
-                with session.begin_nested():
-                    result = enrich_listing(
-                        lst,
-                        median_rent_per_m2=median_rent,
-                        session=session,
-                        use_network=use_network,
-                    )
-                enriched.append(result)
-            except Exception as exc:
-                logger.warning("enrich failed for %s: %s", lst.dedup_key, exc)
-                enriched.append(lst)
+    # Fallback rent comps from any sale listings that stated a rent (rare).
+    prelim_stats = compute_market_stats(listings)
+
+    def _sale_rent(lst: Listing) -> float:
+        # Prefer the real rental-market median for this neighbourhood/area so the rent
+        # ESTIMATE tracks the local market (not a flat guess). It is still an estimate for
+        # this listing — honesty is set from its own listed_rent only.
+        median_rent = rent_comps_for(rent_comps, lst.neighborhood)
+        if not median_rent:
+            n_stats = prelim_stats.by_neighborhood.get(lst.neighborhood or "")
+            median_rent = n_stats.median_rent_per_m2 if n_stats else None
+        # Fall back to the configured baseline so yield is always computable.
+        return median_rent or strategy.search.est_rent_eur_per_m2
+
+    enriched = _enrich_all(listings, _sale_rent, use_network)
 
     # 3. Dedup (cheapest canonical per physical property) — used ONLY so market stats
     # count each flat once. Every portal's listing is still stored: the fuzzy match here
@@ -272,6 +304,7 @@ def run(
                     observed_at=now,
                     active_sources=active_sources,
                     area=effective_area,
+                    listing_type="sale",
                 )
         except Exception as exc:
             logger.warning("retirement pass failed: %s", exc)
@@ -283,9 +316,58 @@ def run(
         "deduped": len(canonical),
         "stored": stored,
         "marked_gone": gone,
+        "rentals": len(rentals),
+        "rentals_stored": rent_stored,
+        "rentals_gone": rent_gone,
+        "rent_comps": len(rent_comps),
     }
     logger.info("pipeline run summary: %s", summary)
     return summary
+
+
+def _store_rentals(
+    rentals: list[Listing],
+    rent_sources: set[str],
+    area: str,
+    now: datetime,
+    strategy: Strategy,
+) -> tuple[int, int]:
+    """Upsert rentals with history (SAVEPOINT each) and retire this area's unseen rentals
+    from the portals that returned rentals. Every rental is "scored" through
+    ``scoring.score``, which excludes it with reason ``"rent"``. Returns (stored, gone)."""
+    stored = gone = 0
+    seen: set[tuple[str, str]] = set()
+    empty_stats = compute_market_stats([])
+    with session_scope() as session:
+        for lst in rentals:
+            try:
+                with session.begin_nested():
+                    lst.search_area = area
+                    row = upsert_listing_with_history(session, lst, observed_at=now)
+                    seen.add((lst.source, lst.source_id))
+                    scored = score(lst, empty_stats, strategy)
+                    row.score = scored.score
+                    row.is_opportunity = scored.is_opportunity
+                    row.excluded = scored.excluded
+                    row.exclusion_reason = scored.exclusion_reason
+                    row.negotiation_score = 0.0
+                stored += 1
+            except Exception as exc:
+                logger.warning("store failed for rental %s: %s", lst.dedup_key, exc)
+        try:
+            with session.begin_nested():
+                gone = mark_unseen_as_gone(
+                    session,
+                    seen,
+                    observed_at=now,
+                    active_sources=rent_sources,
+                    area=area,
+                    listing_type="rent",
+                )
+        except Exception as exc:
+            logger.warning("rental retirement pass failed: %s", exc)
+            gone = 0
+    return stored, gone
 
 
 def run_for_area(
@@ -329,7 +411,13 @@ def rescore_all(strategy: Strategy | None = None, chunk: int = 2000) -> int:
     with Session(get_engine(), expire_on_commit=False) as session:
         # Active rows only: gone listings must not skew the medians the UI scores
         # against (the pipeline computes stats over active/canonical listings).
-        rows = session.scalars(select(ListingRow).where(ListingRow.status == "active")).all()
+        # Sale rows only: rentals are never scored (their exclusion was set at store time)
+        # and must not enter the sale medians or the valuation fit.
+        rows = session.scalars(
+            select(ListingRow).where(
+                ListingRow.status == "active", ListingRow.listing_type == "sale"
+            )
+        ).all()
         listings = [_row_to_listing(r) for r in rows]
         # Refit the hedonic model PER AREA over the current active set so the
         # undervaluation signal (and the Fair value / Value gap the UI shows) reflect the
