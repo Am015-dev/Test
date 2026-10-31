@@ -31,7 +31,7 @@ from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
 from ..config import Strategy, get_settings
 from .base import USER_AGENT, Collector
-from .parse_helpers import parse_float, parse_floor, parse_int
+from .parse_helpers import card_image_url, parse_float, parse_floor, parse_int
 
 logger = logging.getLogger(__name__)
 
@@ -199,8 +199,6 @@ class RemaxCollector(Collector):
         area_m2 = parse_float(text(self.SEL_M2))  # "92m2" (the ² is a <sup>)
         title = f"{category} {area_m2:g} τ.μ." if category and area_m2 else category
         hood = self._neighborhood(text(self.SEL_SUBAREA), text(self.SEL_PATH))
-        img = tree.css_first(self.SEL_IMAGE)
-        img_src = img.attributes.get("src") if img else None
 
         return {
             "source": self.source,
@@ -214,5 +212,5 @@ class RemaxCollector(Collector):
             "neighborhood": hood,
             "address": hood,
             "photo_count": parse_int(text(self.SEL_PHOTOS)),
-            "image_url": urljoin(self.BASE, img_src) if img_src else None,
+            "image_url": card_image_url(tree.css(self.SEL_IMAGE), self.BASE, "remax.gr"),
         }

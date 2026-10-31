@@ -28,14 +28,13 @@ import random
 import re
 import time
 from collections.abc import Iterator
-from html import unescape
 
 import requests
 from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
 from ..config import Strategy, get_settings
 from .base import USER_AGENT, Collector
-from .parse_helpers import parse_float, parse_int
+from .parse_helpers import card_image_url, parse_float, parse_int
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +52,6 @@ _COORDS_RE = re.compile(
 # Residential types worth keeping (the URL's 3rd path segment). Drop business-premises,
 # land, parking, etc. — this tool is about homes to let.
 _RESIDENTIAL_TYPES = {"apartment", "house", "luxury-property", "property"}
-# A property photo URL sitting in the card (carousel slides / img src).
-_IMG_RE = re.compile(
-    r"https://[a-z0-9.\-/_]*green-acres\.com/[^\"'&\s]+\.(?:jpg|jpeg|webp|png)", re.I
-)
 
 
 class GreenAcresCollector(Collector):
@@ -68,6 +63,8 @@ class GreenAcresCollector(Collector):
     SEL_LOCATION = ".announce-localisation"
     SEL_AREA = 'div[title="Living area"]'
     SEL_BEDROOMS = 'div[title="Bedrooms"]'
+    # The carousel's slides, first photo first (the agency logo is ``img.company-logo``).
+    SEL_IMAGE = "img.announce-card-img"
 
     @staticmethod
     def _slug(area: str) -> str:
@@ -178,9 +175,6 @@ class GreenAcresCollector(Collector):
         location = text(self.SEL_LOCATION)  # "Chalandri (Attica)"
         neighborhood = location.split("(")[0].strip() if location else None
 
-        m_img = _IMG_RE.search(unescape(html))
-        image_url = m_img.group(0) if m_img else None
-
         return {
             "source": self.source,
             "source_id": advert_id,
@@ -192,7 +186,7 @@ class GreenAcresCollector(Collector):
             "neighborhood": neighborhood,
             "address": neighborhood,
             "property_type": property_type,
-            "image_url": image_url,
+            "image_url": card_image_url(tree.css(self.SEL_IMAGE), self.BASE, "green-acres.com"),
         }
 
     def _enrich_from_detail(self, session: requests.Session, raw: dict) -> None:

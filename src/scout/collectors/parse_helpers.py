@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterable
+from urllib.parse import urljoin, urlsplit
 
 # Greek floor labels -> numeric floor. ground=0, semi-basement=-1, mezzanine=0.5.
 _FLOOR_WORD_MAP = {  # prefixes: XE cards abbreviate ("Ισόγ.", "Υπόγ.", "Ημιυπ.")
@@ -157,3 +159,43 @@ def clean_description(text: str | None, limit: int = DESCRIPTION_MAX_CHARS) -> s
         return None
     collapsed = " ".join(text.split())
     return collapsed[:limit] or None
+
+
+# Lazy-loading carousels keep the real URL in a data attribute and put a placeholder (or
+# nothing) in ``src``, so the data attributes are read before ``src``.
+_IMG_ATTRS = ("data-src", "data-lazy-src", "data-original", "src")
+# A portal's own "no photo" stand-in is not a photo: XE's
+# ``.../static/images/icons/placeholder_real_estate-….jpg``, Golden Home's
+# ``/img/site/goldenhome_default.png``, RE/MAX's ``associate-blank-medium.png``.
+_PLACEHOLDER_RE = re.compile(
+    r"placeholder|_default\.|/default[-_.]|no[-_]?(?:image|photo)|blank|/icons?/", re.I
+)
+
+
+def card_image_url(nodes: Iterable, base: str, host: str) -> str | None:
+    """The first ``<img>`` in ``nodes`` with an absolute https URL on the portal's own
+    ``host`` (e.g. ``xe.gr`` also matches ``blob.cdn.xe.gr``); relative URLs are resolved
+    against ``base``. Inline ``data:`` URIs, other hosts (ad networks, agency logo
+    services) and the portal's "no photo" placeholder are skipped. None when the card has
+    no such image."""
+    for node in nodes:
+        for attr in _IMG_ATTRS:
+            url = portal_photo_url(node.attributes.get(attr), base, host)
+            if url:
+                return url
+    return None
+
+
+def portal_photo_url(value: str | None, base: str, host: str) -> str | None:
+    """``value`` as an absolute https URL on the portal's own ``host`` (or a subdomain),
+    resolved against ``base``; None for another host, plain http, or a placeholder."""
+    if not value:
+        return None
+    url = urljoin(base, value.strip())
+    parts = urlsplit(url)
+    name = (parts.hostname or "").lower()
+    if parts.scheme != "https" or not (name == host or name.endswith("." + host)):
+        return None
+    if _PLACEHOLDER_RE.search(parts.path):
+        return None
+    return url
