@@ -167,20 +167,24 @@ _RENDER_RE = re.compile(
 _AVAILABLE_RE = re.compile(r"Διαθέσιμο από:\s*(\d{1,2})/(\d{1,2})/(\d{4})")
 
 
-# Rental-card facts. Accent-stripped, lower-cased text. "μη επιπλωμένο" / "χωρίς έπιπλα" /
-# "ανεπίπλωτο" say unfurnished; "επιπλωμένο" / "με έπιπλα" say furnished; silence = None.
+# Rental-card facts. Accent-stripped, lower-cased text. A non-negated "επιπλωμένο" /
+# "με έπιπλα" says furnished — it wins over "ανεπίπλωτο", which ads also use to compare
+# ("τιμές αντίστοιχες με τα ανεπίπλωτα", seen on a real XE card). Otherwise "μη
+# επιπλωμένο" / "χωρίς έπιπλα" / "ανεπίπλωτο" say unfurnished; silence = None.
 _UNFURNISHED_RE = re.compile(r"\b(?:μη|οχι)\s+επιπλωμεν|χωρις\s+επιπλ|ανεπιπλωτ|unfurnished")
-_FURNISHED_RE = re.compile(r"επιπλωμεν|\bμε\s+επιπλ|\bfurnished")
+_FURNISHED_RE = re.compile(r"(?<![α-ω])επιπλωμεν|\bμε\s+επιπλ|(?<!un)furnished")
+_FURNISHED_NEG_RE = re.compile(r"\b(?:μη|οχι)\s+$")
 _AVAILABLE_FROM_RE = re.compile(r"διαθεσιμο\s+απο:?\s*(\d{1,2})/(\d{1,2})/(\d{2,4})")
 
 
 def parse_furnished(text: str | None) -> bool | None:
     """True / False when a rental's text says (un)furnished, None when it is silent."""
     norm = _strip_accents(text or "").lower()
+    for m in _FURNISHED_RE.finditer(norm):
+        if not _FURNISHED_NEG_RE.search(norm[max(0, m.start() - 6) : m.start()]):
+            return True
     if _UNFURNISHED_RE.search(norm):
         return False
-    if _FURNISHED_RE.search(norm):
-        return True
     return None
 
 

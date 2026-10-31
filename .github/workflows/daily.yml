@@ -64,6 +64,9 @@ jobs:
         if: ${{ !inputs.pages_only }}
         # ~6 min per area at polite pacing for XE, ~1 min Golden Home, ~2 min RE/MAX (one
         # listing-page visit per in-band card for the build year); 15 areas ≈ 135 min.
+        # XE rentals ride in the same per-area run (XeCollector.collect_rentals, ≤ 5 rental
+        # pages, no listing pages): ~1 min per area (runner run 41229898436: 145 rentals for
+        # Χολαργός in under a minute), so ≈ 150 min in all.
         timeout-minutes: 140
         continue-on-error: true
         env:
