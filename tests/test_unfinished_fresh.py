@@ -175,3 +175,21 @@ def test_building_age_rejects_implausible_years():
 
 def test_freshness_empty_set_is_noop():
     queries._annotate_freshness([])  # no crash
+
+
+def test_scoring_cuts_unfinished_and_off_plan_hard():
+    from datetime import date
+
+    from scout.config import load_strategy
+    from scout.scoring import compute_market_stats, score
+
+    from .conftest import make_listing
+
+    strategy = load_strategy()
+    base = make_listing(year_built=2012, floor=2.0)
+    stats = compute_market_stats([base])
+    normal = score(base, stats, strategy).score
+    shell = score(base.model_copy(update={"is_unfinished": True}), stats, strategy)
+    off_plan = score(base.model_copy(update={"year_built": date.today().year}), stats, strategy)
+    assert shell.score <= normal * 0.3 and not shell.is_opportunity
+    assert off_plan.score < normal * 0.75 and not off_plan.is_opportunity

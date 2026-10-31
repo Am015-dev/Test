@@ -314,3 +314,36 @@ def test_pipeline_excludes_ground_floor(in_memory_db):
         row = s.scalar(select(ListingRow))
         assert row.excluded
         assert row.exclusion_reason == "ground/low floor"
+
+
+def test_pipeline_stores_rent_comp_sample_counts(in_memory_db, monkeypatch):
+    """rent_comp.samples used to be 0 for every pipeline-scraped area: the counts were
+    computed but never passed to save_rent_comps, so the UI could not say what n a rent
+    median rests on."""
+    import scout.enrich as enrich
+    from scout.models import RentCompRow
+    from scout.pipeline import run
+
+    def no_net(*a, **k):
+        raise enrich.requests.RequestException("no network in tests")
+
+    monkeypatch.setattr(enrich.requests, "get", no_net)
+
+    class RentingCollector(FakeCollector):
+        def collect_rent_rows(self):
+            hoods = ["Ano Cholargos"] * 4 + ["Tsakos"] * 2
+            return [
+                {"rent": 1000 + 50 * i, "area_m2": 80, "neighborhood": h}
+                for i, h in enumerate(hoods)
+            ]
+
+    run(
+        strategy=Strategy(),
+        collectors=[RentingCollector(Strategy(), [_raw("a", 200_000)])],
+        use_network=True,
+        observed_at=datetime(2026, 6, 1),
+        area="Cholargos",
+    )
+    with sessionmaker(bind=in_memory_db, future=True)() as s:
+        rows = {r.neighborhood: r.samples for r in s.scalars(select(RentCompRow)).all()}
+    assert rows == {None: 6, "Ano Cholargos": 4}  # Tsakos: 2 < 3, no own median

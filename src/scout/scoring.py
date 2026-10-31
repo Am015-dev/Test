@@ -15,6 +15,7 @@ from __future__ import annotations
 import statistics
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import date
 
 from .config import Strategy
 from .models import Listing, ScoredListing
@@ -89,6 +90,10 @@ class MarketStats:
             ):
                 return a.median_net_yield
         return None
+
+
+UNFINISHED_FACTOR = 0.25  # ημιτελές / υπό κατασκευή
+OFF_PLAN_FACTOR = 0.6  # build year this year or later: often still a shell
 
 
 def _clamp01(x: float) -> float:
@@ -459,6 +464,15 @@ def score(
     ref = strategy.scoring_reference
     final *= energy_liability_multiplier(listing.energy_class, ref)
 
+    # 2c. Unfinished / under-construction stock needs more money and months of work before it
+    # can be lived in or rented: cut it hard. A build year of this year or later usually means
+    # an off-plan sale (still a shell), so it is cut too, less.
+    off_plan = bool(listing.year_built and listing.year_built >= date.today().year)
+    if listing.is_unfinished:
+        final *= UNFINISHED_FACTOR
+    elif off_plan:
+        final *= OFF_PLAN_FACTOR
+
     # 3. Opportunity flag. A genuine opportunity must clear the €/m² bar AND not be an
     # energy liability — flagging a renovation-mandated energy-H flat as an "opportunity"
     # is exactly the mistake that made the results look amateurish.
@@ -469,6 +483,7 @@ def score(
         energy = energy_class_score(listing.energy_class)
         energy_in_scale = (listing.energy_class or "").strip().upper() in _ENERGY_SCORE
         is_opp = ppm2 < threshold and (not energy_in_scale or energy > 0.12)
+        is_opp = is_opp and not (listing.is_unfinished or off_plan)
 
     return ScoredListing(
         listing=listing,

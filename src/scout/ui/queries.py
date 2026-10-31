@@ -18,7 +18,7 @@ from ..db import session_scope
 from ..deal import advise as _advise_deal
 from ..investment import deal_grade as _deal_grade
 from ..investment import yield_on_offer as _yield_on_offer
-from ..models import HealthReportRow, ListingRow, PriceHistoryRow
+from ..models import HealthReportRow, ListingRow, PriceHistoryRow, RentCompRow
 from ..recommendation import recommend as _recommend
 from ..regions import region_of
 from ..relative_value import annotate_relative_value
@@ -425,6 +425,21 @@ def load_price_history(listing_id: int) -> list[tuple[datetime, int]]:
             .order_by(PriceHistoryRow.observed_at)
         ).all()
         return [(r.observed_at, r.price) for r in rows]
+
+
+def load_rent_comp_rows() -> list[dict]:
+    """Every persisted rent comparable as ``{area, neighborhood, rent_per_m2, samples}``
+    (``samples`` 0 = count not recorded). Feeds ``area_insights.rank_areas``."""
+    with session_scope() as session:
+        return [
+            {
+                "area": r.area,
+                "neighborhood": r.neighborhood,
+                "rent_per_m2": r.rent_per_m2,
+                "samples": r.samples,
+            }
+            for r in session.scalars(select(RentCompRow)).all()
+        ]
 
 
 def set_watched(listing_id: int, watched: bool) -> None:

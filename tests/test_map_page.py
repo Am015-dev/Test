@@ -12,7 +12,7 @@ from scout.ui import components  # noqa: E402
 
 from .test_ui_gauntlet import env, fresh, ok  # noqa: E402,F401
 
-MAP = "🗺 Χάρτης"
+MAP = "Χάρτης"
 
 
 def _count(at) -> int:
