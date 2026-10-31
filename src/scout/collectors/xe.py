@@ -242,23 +242,17 @@ def parse_listed_date(html: str) -> datetime | None:
         return None
 
 
-# The page's embedded app state carries the listing's photo total as ``"image_count": N``
-# (HTML-escaped: ``&quot;image_count&quot;:4``). The JSON-LD ``image`` list holds the
-# listing's own photo URLs (``.../<uuid>-source.jpg?width=...``), one per photo.
-_IMAGE_COUNT_RE = re.compile(r'"image_count"\s*:\s*(\d+)')
+# The listing's own photos are the JSON-LD ``image`` list (``.../<uuid>-source.jpg?...``,
+# one file per photo, often repeated per format). XE's escaped ``"image_count"`` values are
+# NOT used: on real pages the first ones belong to the embedded "similar listings" (checked
+# on 12 live pages, Oct 2026 — e.g. 25 declared vs 2 own photos), so they only overstate.
 _SOURCE_IMG_RE = re.compile(r"/([0-9a-f-]{36})-source\.(?:jpe?g|webp|png)", re.IGNORECASE)
 
 
 def parse_photo_count(html: str) -> int | None:
-    """How many photos the listing has, or None when the page says nothing about it.
+    """Distinct photo files in the listing's own JSON-LD ``RealEstateListing.image`` list.
 
-    Two sources: XE's ``image_count`` and the distinct photo files in the listing's own
-    JSON-LD ``image`` list. The page also embeds "similar listings" with their own data, so
-    a stray ``image_count`` can belong to another ad; when both are present and the count is
-    smaller than the photos actually listed for THIS ad, the JSON-LD list wins (it may be
-    capped, so a larger ``image_count`` is kept)."""
-    m = _IMAGE_COUNT_RE.search(unescape(html))
-    declared = int(m.group(1)) if m else None
+    0 when the listing lists no photos; None when the page has no listing data at all."""
     listed: set[str] = set()
     has_listing = False
     for block in _LD_JSON_RE.findall(html):
@@ -275,12 +269,7 @@ def parse_photo_count(html: str) -> int | None:
                 found = _SOURCE_IMG_RE.search(url) if isinstance(url, str) else None
                 if found:
                     listed.add(found.group(1).lower())
-    if declared is None:
-        # A listing page that lists no photos has 0; None only when there is no listing data.
-        return len(listed) if has_listing else None
-    if listed and declared < len(listed):
-        return len(listed)
-    return declared
+    return len(listed) if has_listing else None
 
 
 def parse_detail_coordinates(html: str) -> tuple[float | None, float | None]:

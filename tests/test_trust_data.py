@@ -26,27 +26,30 @@ OFFPLAN = (FIXTURES / "xe_detail_offplan.html").read_text(encoding="utf-8")
 # --- parsers ----------------------------------------------------------------------------
 
 
-def test_photo_count_prefers_image_count_on_the_offplan_page():
+def test_photo_count_is_the_listings_own_jsonld_photos_not_stray_image_counts():
+    # the page's image_count values (25, 19, 6) are similar ads'; this ad lists 2 photos
+    # (3 URLs: one photo in two formats + one png)
+    assert "&quot;image_count&quot;:25" in OFFPLAN
     assert parse_photo_count(OFFPLAN) == 2
 
 
-def test_photo_count_falls_back_to_distinct_jsonld_photos():
-    # the older real fixture has no image_count; its JSON-LD lists 19 photos of its own,
-    # while the page holds ~240 photo URLs of "similar listings" that must not be counted
+def test_photo_count_ignores_a_larger_image_count_even_when_it_comes_first():
+    html = OFFPLAN.replace(
+        '<div id="app-state"', '<i data-x="{&quot;image_count&quot;:40}"></i><div id="app-state"'
+    )
+    assert parse_photo_count(html) == 2
+
+
+def test_photo_count_counts_distinct_jsonld_photos_on_the_older_real_page():
+    # the older real fixture's JSON-LD lists 19 photos of its own, while the page holds
+    # ~240 photo URLs of "similar listings" that must not be counted
     html = (FIXTURES / "xe_detail.html").read_text(encoding="utf-8")
-    assert "image_count" not in html
     assert parse_photo_count(html) == 19
 
 
-def test_photo_count_ignores_a_smaller_count_from_another_ad():
-    html = OFFPLAN.replace("&quot;image_count&quot;:2,", "", 1).replace(
-        "&quot;image_count&quot;:14", "&quot;image_count&quot;:1", 1
-    )
-    assert parse_photo_count(html) == 2  # this ad lists 2 distinct photos
-
-
-def test_photo_count_unknown_without_any_signal():
+def test_photo_count_unknown_without_listing_data():
     assert parse_photo_count("<html><body>τίποτα</body></html>") is None
+    assert parse_photo_count('<i data-x="{&quot;image_count&quot;:7}"></i>') is None
 
 
 def test_clean_description_collapses_whitespace_and_caps_length():
@@ -198,11 +201,8 @@ def test_new_builds_reread_writes_description_and_photo_count(mem_db, monkeypatc
 
 
 def test_listing_page_without_photos_counts_zero_not_unknown():
-    html = OFFPLAN.replace("&quot;image_count&quot;:2,", "", 1).replace(
-        "&quot;image_count&quot;:14", "", 1
-    )
-    start = html.index('"image":[')
-    html = html[:start] + '"image":[]' + html[html.index("]", start) + 1 :]
+    start = OFFPLAN.index('"image":[')
+    html = OFFPLAN[:start] + '"image":[]' + OFFPLAN[OFFPLAN.index("]", start) + 1 :]
     assert parse_photo_count(html) == 0
 
 
