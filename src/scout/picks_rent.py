@@ -18,9 +18,9 @@ exactly ONE answer. Steps (``picks.near_steps``): rent band 10 % → 20 % → 30
 budget; building age one step up (10 → 20); station rule off; chosen areas → all areas;
 bedrooms off; last, any building age. Each step keeps its best ``picks.NEAR_MIN`` by value;
 all near matches are then sorted by ``score`` (smaller loosening first on a tie), after every
-strict one. Each carries ``relaxed``
-(«ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»). «Επιπλωμένο» is
-not loosened (C7 does not list it).
+strict one — and only when the strict matches are fewer than ``picks.NEAR_MIN``. Each carries
+``relaxed`` («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»).
+«Επιπλωμένο» is not loosened (C7 does not list it).
 
 Rent-value score («Βαθμολογία», 0–100, ``RentPick.score``): value 0–70 from ``vs_area_pct``
 (20 % under the comparables = 70, equal = 35, 20 % over = 0; no comparables = 35; more than
@@ -359,7 +359,7 @@ def find(
             loose.setdefault((answer, step), []).append(p)
     strict.sort(key=RentPick.sort_key)
     out = strict
-    if near:
+    if near and len(out) < picks.NEAR_MIN:  # only to fill a thin list
         # Each step's best NEAR_MIN by value, then all near matches by score, the smaller
         # loosening first on a tie.
         ranked = []

@@ -113,6 +113,13 @@ def test_areas_and_bedrooms_are_loosened_last():
     ]
 
 
+def test_no_near_matches_after_a_long_strict_list():
+    rows = [flat(i, 280_000 + i * 500, year=1990 + i) for i in range(30)]  # distinct blocks
+    rows += [flat(100, 350_000)]  # +17 %: would be a near match
+    got = run(rows, max_age=None)
+    assert len(got) == 30 and all(not p.relaxed for p in got)
+
+
 def test_each_step_keeps_at_most_three_pages():
     # 40 off-station flats in distinct blocks: the station step contributes NEAR_MIN.
     rows = [flat(i, 280_000 + i * 500, hood="Γαλάτσι (Λαμπρινή)", year=1990 + i) for i in range(36)]
@@ -185,6 +192,12 @@ def test_rent_near_matches_and_labels():
     assert len(picks_rent.find(RENTALS, 800, bedrooms=2, top=10**6)) == 6
 
 
+def test_rent_long_strict_list_has_no_near_matches():
+    rows = [rental(i, 700 + i, hood=f"Χαλάνδρι ({i})") for i in range(30)] + [rental(99, 950)]
+    got = picks_rent.find(rows, 800, top=10**6, near=True)
+    assert len(got) == 30 and not any(p.relaxed for p in got)
+
+
 def test_rent_value_score_and_basis():
     cheap, dear = rental(1, 600), rental(2, 900)
     s_cheap, basis = picks_rent.value_score(-0.20, {"days_on_market": 5})
@@ -234,3 +247,12 @@ def test_owner_answers_give_at_least_three_pages(published):
     station = [i for i, p in enumerate(near) if p.relaxed == "χωρίς όρο σταθμού" and p.checked]
     old = [i for i, p in enumerate(near) if p.relaxed.startswith("κτίριο 19")]
     assert station and old and max(station) < min(old)
+
+
+def test_owner_like_long_list_has_no_near_matches(published):
+    listings, rents = published
+    intel = market_intel.build(listings)
+    got = picks.find(
+        listings, intel, rents, 250_000, max_age=None, near_rail=False, top=10**6, near=True
+    )
+    assert len(got) >= picks.NEAR_MIN and not any(p.relaxed for p in got)

@@ -41,7 +41,8 @@ smallest first: price band 12 % → 20 % → 30 % over the budget; building age 
 (10 → 20); station rule off; chosen areas → all areas; bedrooms off; and last, any building
 age. Every step keeps its best ``NEAR_MIN`` (3 × ``PAGE``); all near matches are then ranked
 together by the usual sort (page read, photos, ``rank_score``), the smaller loosening first
-on a tie, and sort after every strict match. Each carries ``relaxed``, the loosened answer in
+on a tie, and sort after every strict match. Near matches are added only when the strict
+matches are fewer than ``NEAR_MIN``. Each carries ``relaxed``, the loosened answer in
 the user's words («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»).
 A listing that fails two answers is never shown — nothing is loosened twice on one candidate.
 
@@ -618,7 +619,7 @@ def find(
         return kept
 
     out = unique(strict)
-    if near:
+    if near and len(out) < NEAR_MIN:  # near matches fill a thin list, never trail a long one
         # Every step contributes its best NEAR_MIN; then one ranking over all near matches,
         # the smaller loosening first on a tie.
         ranked = []
