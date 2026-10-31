@@ -1,0 +1,47 @@
+{
+  "guide-result": {
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "cards": 10,
+    "thumbs": 10,
+    "photos": 0,
+    "photosLoaded": 0,
+    "noPhoto": 10,
+    "clsWhilePhotosLoad": 0,
+    "clsPageSwap": 0.0303,
+    "boxSizes": [
+      "96×72"
+    ],
+    "boxesStable": true
+  },
+  "search": {
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "cards": 12,
+    "thumbs": 12,
+    "photos": 3,
+    "photosLoaded": 3,
+    "noPhoto": 9,
+    "clsWhilePhotosLoad": 0,
+    "clsPageSwap": 0.0246,
+    "boxSizes": [
+      "96×72"
+    ],
+    "boxesStable": true
+  },
+  "listing": {
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "cards": 1,
+    "thumbs": 1,
+    "photos": 1,
+    "photosLoaded": 1,
+    "noPhoto": 0,
+    "clsWhilePhotosLoad": 0,
+    "clsPageSwap": 0,
+    "boxSizes": [
+      "324×243"
+    ],
+    "boxesStable": true
+  }
+}

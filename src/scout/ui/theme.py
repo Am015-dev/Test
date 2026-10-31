@@ -72,6 +72,8 @@ _CSS = f"""
     /* Shape: cards 14, controls 10, chips 6, pills round; touch target 44. */
     --hg-r-card: 14px; --hg-r-control: 10px; --hg-r-chip: 6px; --hg-r-pill: 999px;
     --hg-target: 44px;
+    /* The compact card's photo: a fixed 4:3 box (height follows), so nothing shifts. */
+    --hg-thumb-w: 96px;
 }}
 
 /* ------------------------------------------------------------------ *
@@ -963,6 +965,21 @@ footer {{ visibility: hidden; height: 0; }}
 .hg-v-mid {{ color: var(--hg-warn-fg); }}
 .hg-v-warn {{ color: var(--hg-bad-fg); }}
 .hg-v-unk {{ color: var(--hg-muted); }}
+
+/* The card's photo (buyer.photo_html): a fixed 4:3 box left of line 1, full width on the
+ * listing page; a quiet neutral box when there is no photo or it fails to load. */
+.hg-card {{ display: flow-root; }}
+.hg-thumb {{ float: left; width: var(--hg-thumb-w); aspect-ratio: 4 / 3; margin: 0 var(--hg-s3) 0 0;
+    position: relative; overflow: hidden; border-radius: var(--hg-r-control);
+    background: var(--hg-neu-bg); }}
+.hg-thumb-hero {{ float: none; width: 100%; margin: 0 0 var(--hg-s2); }}
+.hg-thumb img {{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    display: block; }}
+.hg-thumb-none {{ display: none; }}
+.hg-thumb-empty .hg-thumb-none {{ display: flex; position: absolute; inset: 0; align-items: center;
+    justify-content: center; text-align: center; padding: var(--hg-s1);
+    font-size: var(--hg-fs-footnote); line-height: 1.25; color: var(--hg-muted); }}
+.hg-card details {{ clear: both; }}
 
 /* The compact card's text roles. */
 [data-testid="stMain"] .hg-card {{ font-size: var(--hg-fs-subhead); line-height: 1.45; }}
