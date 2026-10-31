@@ -95,7 +95,9 @@ def robots(session: requests.Session, base: str) -> RobotFileParser:
     return rp
 
 
-def analyse(name: str, url: str, r: requests.Response, rp: RobotFileParser, dump: bool) -> None:
+def analyse(
+    name: str, url: str, r: requests.Response, rp: RobotFileParser, dump: bool, grep: str = ""
+) -> None:
     html = r.text or ""
     host = urlparse(r.url).netloc
     links = {urljoin(r.url, h) for h in HREF_RE.findall(html)}
@@ -114,6 +116,10 @@ def analyse(name: str, url: str, r: requests.Response, rp: RobotFileParser, dump
     apis = sorted(set(API_RE.findall(html)))[:10]
     for a in apis:
         print(f"    api? {a}")
+    if grep:
+        hits = sorted({x for x in links if re.search(grep, x, re.I)})
+        for x in hits[:60]:
+            print(f"    grep {x}")
     if dump and html:
         blob = base64.b64encode(gzip.compress(html.encode("utf-8"))).decode()
         print(f"    DUMP-BEGIN {name} {len(blob)}")
@@ -128,6 +134,8 @@ def main() -> int:
     ap.add_argument("--links", action="store_true", help="list search-like homepage links")
     ap.add_argument("--dump", default="", help="portal names whose search HTML to dump b64")
     ap.add_argument("--url", action="append", default=[], help="name=url extra candidates")
+    ap.add_argument("--grep", default="", help="print page links matching this regex")
+    ap.add_argument("--no-home", action="store_true", help="skip the homepage fetch")
     args = ap.parse_args()
     only = {x for x in args.only.split(",") if x}
     dump = {x for x in args.dump.split(",") if x}
@@ -143,11 +151,10 @@ def main() -> int:
         session = requests.Session()
         session.headers.update(HEADERS)
         rp = robots(session, base)
-        home = get(session, base + "/")
-        if home is None:
-            continue
-        analyse(name + "-home", base + "/", home, rp, False)
-        if args.links:
+        home = None if args.no_home else get(session, base + "/")
+        if home is not None:
+            analyse(name + "-home", base + "/", home, rp, False)
+        if home is not None and args.links:
             host = urlparse(home.url).netloc
             seen = set()
             for h in HREF_RE.findall(home.text or ""):
@@ -162,7 +169,7 @@ def main() -> int:
                 continue
             r = get(session, url)
             if r is not None:
-                analyse(name, url, r, rp, name in dump)
+                analyse(name, url, r, rp, name in dump, args.grep)
     return 0
 
 

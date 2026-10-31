@@ -18,5 +18,12 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e . -q
-      - name: Survey portals
-        run: python diag/sources_probe.py --links
+      - name: Survey portals (search pages)
+        run: >-
+          python diag/sources_probe.py --no-home --only remax,goldenhome,era
+          --grep 'xolarg|cholarg|poliseis-katoikies|pwlisi/katoikies|/property/\d|akinit|ajax'
+          --dump remax,goldenhome
+          --url remax=https://www.remax.gr/poliseis-katoikies/101-athhna-boreia-proastia
+          --url goldenhome=https://goldenhome.gr/property/pwlisi/perioxi-athens-northern-suburbs
+          --url era=https://era.gr/wp-sitemap.xml
+          --url era=https://era.gr/akinita/
