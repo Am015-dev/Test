@@ -11,7 +11,7 @@ from __future__ import annotations
 import html
 import re
 import statistics
-from datetime import date
+from datetime import date, datetime
 
 import streamlit as st
 
@@ -214,6 +214,7 @@ CARD_CSS = """<style>
 .hg-st-bad { background: #FEE2E2; color: #991B1B; }
 .hg-st-ok { background: #DCFCE7; color: #166534; }
 .hg-st-unk { background: #FFEDD5; color: #9A3412; }
+.hg-st-neu { background: #E2E8F0; color: #334155; }
 .hg-nw { white-space: nowrap; }
 .hg-hidden { font-size: .8rem; line-height: 1.35; }
 .hg-st-photo { background: #FEF3C7; color: #92400E; }
@@ -365,6 +366,15 @@ def _is_rent(d: dict) -> bool:
     return d.get("listing_type") == "rent"
 
 
+def rent_chips(d: dict) -> list[str]:
+    """A rental's line 3: «Επιπλωμένο» / «Χωρίς έπιπλα» and «Διαθέσιμο από ΗΗ/ΜΜ», when the
+    ad says so."""
+    out = {True: ["Επιπλωμένο"], False: ["Χωρίς έπιπλα"]}.get(d.get("furnished"), [])
+    if isinstance(when := d.get("available_from"), (date, datetime)):
+        out.append(f"Διαθέσιμο από {when:%d/%m}")
+    return out
+
+
 def short_status(d: dict) -> tuple[str, str]:
     """(tone, glossary term) for the compact card's badge; the full sentence is one tap away."""
     if _unfinished(d):
@@ -411,11 +421,10 @@ def _extras(d: dict, adv: dict) -> list[str]:
 
 
 def _basis_lines(d: dict, adv: dict) -> list[str]:
-    lines = [status_basis(d)]
-    if _is_rent(d):
-        lines.append("Ενοίκιο: αυτό που ζητά η αγγελία, όχι συμβόλαιο.")
+    if _is_rent(d):  # no rental page is read, so no page-check sentence
+        lines = ["Ενοίκιο: αυτό που ζητά η αγγελία, όχι συμβόλαιο."]
     else:
-        lines.append(rent_basis(d))
+        lines = [status_basis(d), rent_basis(d)]
         if (gy := gross_yield(d)) is not None:
             lines.append(
                 f"Μικτή απόδοση = 12 × ενοίκιο ÷ τιμή = 12 × {eur(_r(_rent(d), 10))} ÷ "
@@ -457,24 +466,28 @@ def card_html(
         l2.append(e(d["neighborhood"]))
     if stn := picks.station_text(d):
         l2.append(f"Σταθμός {e(stn)}")
-    tone, text = short_status(d) if compact else status(d)
-    l3 = f'<span class="hg-st hg-st-{tone}">{text}</span>'
+    if rent_row:  # no rental page is read: line 3 = what a renter needs, or no line at all
+        tone, text = "neu", ""
+        l3 = " ".join(f'<span class="hg-st hg-st-neu">{e(x)}</span>' for x in rent_chips(d))
+    else:
+        tone, text = short_status(d) if compact else status(d)
+        l3 = f'<span class="hg-st hg-st-{tone}">{text}</span>'
     if d.get("few_photos"):
-        l3 += f' <span class="hg-st hg-st-photo">{picks.FEW_PHOTOS}</span>'
+        l3 = (l3 + f' <span class="hg-st hg-st-photo">{picks.FEW_PHOTOS}</span>').strip()
     extras = _extras(d, adv)
     mark = ' data-compact="1"' if compact else ""
     out = (
         f'<div class="hg-card"{mark} data-lid="{d.get("id")}">'
         f'<div class="hg-l1">{_join(l1)}</div>'
         f'<div class="hg-l2">{_join(l2)}</div>'
-        f'<div class="hg-l3">{l3}</div>'
-        f'<div class="hg-l4">{_rent_line(d)}</div>'
+        + (f'<div class="hg-l3">{l3}</div>' if l3 else "")
+        + f'<div class="hg-l4">{_rent_line(d)}</div>'
         f'<div class="hg-l5">{e(comps_text(adv))}</div>'
     )
     hidden: list[str] = []
     if compact:
-        full = status(d)[1]
-        hidden = [*(more or []), *extras] + ([full] if full != text else [])
+        full = "" if rent_row else status(d)[1]
+        hidden = [*(more or []), *extras] + ([full] if full and full != text else [])
     elif extras:
         out += f'<div class="hg-more">{_join([e(x) for x in extras])}</div>'
     if basis or hidden:
@@ -1188,20 +1201,31 @@ def page_shortlist(listings: list[dict]) -> None:
 def page_watchlist(listings: list[dict]) -> None:
     _css()
     _show_flash()
+    from scout.ui import rent_guide  # lazy: it imports this module
+
     keys = watch_keys()
     starred = [d for d in listings if shortlist.lkey(d) in keys]
-    st.markdown(f"## Αγαπημένα ({len(starred)})" if starred else "## Αγαπημένα")
+    rented = rent_guide.starred(keys)
+    n = len(starred) + len(rented)
+    st.markdown(f"## Αγαπημένα ({n})" if n else "## Αγαπημένα")
     if not st.session_state.get("watch_persisted"):
         st.caption(SESSION_ONLY)
-    if not starred:
+    if not n:
         st.info("Δεν έχεις αγαπημένα ακόμα. Πάτα «Αγαπημένο» σε μια αγγελία.")
         return
-    intel = market_intel.build(listings)
-    views = [(d, buyer_view(d, intel)) for d in starred]
-    views.sort(key=lambda v: SORTS[DEFAULT_SORT](100, v[1], v[0]))
-    st.caption("Σειρά: " + SORT_HELP[DEFAULT_SORT])
-    for d, adv in views:
-        result_card(d, adv, "w", [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)])
+    if starred:
+        if rented:
+            st.markdown("### Για αγορά")
+        intel = market_intel.build(listings)
+        views = [(d, buyer_view(d, intel)) for d in starred]
+        views.sort(key=lambda v: SORTS[DEFAULT_SORT](100, v[1], v[0]))
+        st.caption("Σειρά: " + SORT_HELP[DEFAULT_SORT])
+        for d, adv in views:
+            result_card(d, adv, "w", [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)])
+    if rented:
+        st.markdown("### Ενοίκια")
+        for p in rented:
+            rent_guide.card(None, p, "wrent")
 
 
 # ---- one listing ---------------------------------------------------------------------------

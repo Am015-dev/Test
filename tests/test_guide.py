@@ -26,6 +26,9 @@ def _verdict_rows(at) -> list[str]:
 
 
 def walk(at, budget="guide-b250", goal="yield", where="best", age="any"):
+    assert "### Τι ψάχνεις;" in _text(at) and "Βήμα" not in _text(at)
+    at.button(key="guide-mode-buy").click().run()
+    assert at.session_state["guide"]["mode"] == "buy"
     assert "Βήμα 1 από 5" in _text(at) and "Πόσα θες να βάλεις;" in _text(at)
     at.toggle(key="guide_loan").set_value(True).run()
     at.button(key=budget).click().run()
@@ -48,6 +51,7 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     at = walk(fresh(FIND))
     chips = at.button_group(key="guide_chips")
     assert list(chips.options) == [
+        "να αγοράσω",
         "250 χιλ. · με δάνειο",
         "απόδοση",
         "όπου βγαίνει",
@@ -130,6 +134,7 @@ def test_loan_maths_on_a_synthetic_listing():
 def test_answer_chips_and_relax_mapping():
     g = {**guide.DEFAULTS, "budget": 300_000, "goal": "growth", "where": "rail", "bedrooms": 3}
     assert guide.answer_chips(g) == [
+        "να αγοράσω",
         "300 χιλ.",
         "ανατίμηση",
         "κοντά σε μετρό",
@@ -137,6 +142,7 @@ def test_answer_chips_and_relax_mapping():
     ]
     g = {**g, "where": "areas", "areas": ["Γαλάτσι"], "age": None, "bedrooms": None, "loan": True}
     assert guide.answer_chips(g) == [
+        "να αγοράσω",
         "300 χιλ. · με δάνειο",
         "ανατίμηση",
         "Γαλάτσι",

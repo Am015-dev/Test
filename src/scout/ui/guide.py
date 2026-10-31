@@ -10,6 +10,9 @@ Optional neighbours (other workstreams), each imported lazily and skipped when a
 ``ui.maplist.render(listings, key)`` (map toggle), ``ui.assistant.brief(facts)`` /
 ``panel(facts, key)`` (investor note, «Ρώτα με»), ``ui.account.storage()`` (answers kept in
 the profile; otherwise this session only).
+
+Step 0 «Τι ψάχνεις;» picks the mode (``g["mode"]``, saved as ``guide.mode``): «Να νοικιάσω»
+runs ``ui.rent_guide``; «Πίσω» on step 1 and the first answer chip reopen step 0.
 """
 
 from __future__ import annotations
@@ -48,6 +51,7 @@ AGES = {"10": "Νεόδμητο (έως 10 ετών)", "20": "Έως 20 ετών
 BEDS = {"any": "Όσα να 'ναι", "1": "1", "2": "2", "3": "3+"}
 MIN_AREA = 20  # an area is offered as a chip with at least this many active listings
 DEFAULTS = {
+    "mode": None,  # "buy" | "rent"; None = step 0 «Τι ψάχνεις;»
     "step": 1,
     "budget": None,
     "loan": False,
@@ -155,7 +159,10 @@ def _resync() -> None:
 def go(step: int) -> None:
     _resync()
     g = state()
-    g["step"] = max(1, min(STEPS, step))
+    if step < 1:
+        g["mode"] = None  # step 0; the buy answers and step stay
+    else:
+        g["step"] = min(STEPS, step)
     _save(g)
 
 
@@ -215,7 +222,7 @@ def _finish_step4() -> None:
 def _chip_jump() -> None:
     pick = st.session_state.get("guide_chips")
     st.session_state["guide_chips"] = None
-    for i, label in enumerate(answer_chips(state()), start=1):
+    for i, label in enumerate(answer_chips(state())):
         if label == pick:
             go(i)
 
@@ -263,6 +270,7 @@ def answer_chips(g: dict) -> list[str]:
         f" · {beds}{'+' if beds >= 3 else ''} υπν." if beds is not None else ""
     )
     return [
+        "να αγοράσω",
         (thousands(g["budget"]) if g.get("budget") else "ποσό;")
         + (" · με δάνειο" if g.get("loan") else ""),
         GOAL_CHIP.get(g.get("goal") or "", "στόχος;"),
@@ -494,8 +502,7 @@ def _more() -> None:
 def _progress(step: int) -> None:
     with st.container(key="guide-progress"):
         c = st.columns([1, 2], vertical_alignment="center")
-        if step > 1:
-            c[0].button("Πίσω", key="guide-back", on_click=go, args=(step - 1,))
+        c[0].button("Πίσω", key="guide-back", on_click=go, args=(step - 1,))
         c[1].markdown(f"**Βήμα {step} από {STEPS}**")
     st.progress(step / STEPS)
 
@@ -873,6 +880,11 @@ def page(listings: list[dict]) -> None:
     buyer._show_flash()
     st.markdown(CSS, unsafe_allow_html=True)
     g = state()
+    st.markdown(f"## {TITLE}")
+    if g.get("mode") != "buy":
+        from scout.ui import rent_guide
+
+        return rent_guide.page(g) if g.get("mode") == "rent" else rent_guide.mode_step(g)
     step = int(g.get("step") or 1)
     if step > 1 and not g.get("budget"):
         step = 1
@@ -880,7 +892,6 @@ def page(listings: list[dict]) -> None:
         step = 2
     if step > 3 and (not g.get("where") or (g["where"] == "areas" and not g.get("areas"))):
         step = 3
-    st.markdown(f"## {TITLE}")
     _progress(step)
     if step == 1:
         _step1(g)

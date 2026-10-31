@@ -8,6 +8,7 @@ showed as raw <div> code). The collapse in listing_grid must prevent that.
 from __future__ import annotations
 
 import re
+from datetime import date
 
 from scout.ui.components import _card_html
 
@@ -176,7 +177,15 @@ def test_compact_card_status_and_rentals():
     rent = card_html(
         {**BUYER, "listing_type": "rent", "price": 800, "price_per_m2": None}, {}, compact=True
     )
-    l1, _l2, _l3, l4, _l5 = _lines(rent)
+    l1, _l2, l4, _l5 = _lines(rent)  # no page-check chip and, with nothing known, no line 3
     assert l1 == "800 €/μήνα · 78 τ.μ."
     assert l4 == "Ενοίκιο 800 €/μήνα · 10,3 €/τ.μ."
-    assert "Μικτή απόδοση" not in rent
+    assert "Μικτή απόδοση" not in rent and "ελεγχθεί" not in rent and "hg-l3" not in rent
+    furnished = card_html(
+        {**BUYER, "listing_type": "rent", "price": 800, "furnished": True,
+         "available_from": date(2026, 12, 1)}, {}, compact=True,
+    )  # fmt: skip
+    assert _lines(furnished)[2] == "Επιπλωμένο Διαθέσιμο από 01/12"
+    assert 'hg-st-neu">Επιπλωμένο<' in furnished and "ελεγχθεί" not in furnished
+    bare = card_html({**BUYER, "listing_type": "rent", "furnished": False}, {}, compact=True)
+    assert _lines(bare)[2] == "Χωρίς έπιπλα"
