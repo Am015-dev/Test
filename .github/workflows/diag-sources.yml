@@ -4,7 +4,7 @@
 name: diag-sources
 on:
   push:
-    branches: [ws/sources]
+    branches: [ws/sources, ws/sources-remax]
     paths:
       - diag/**
       - scripts/smoke_sources.py
@@ -18,7 +18,7 @@ on:
         default: "Cholargos"
       sources:
         description: "SOURCES for the smoke run"
-        default: "xe,goldenhome"
+        default: "xe,goldenhome,remax"
 permissions:
   contents: read
 jobs:
@@ -34,7 +34,7 @@ jobs:
       - name: Survey portals (robots.txt, homepage, search page)
         run: >-
           python diag/sources_probe.py
-          --url remax=https://www.remax.gr/
+          --url remax=https://www.remax.gr/pwliseis-agora-katoikies/1031-xolargos
           --url goldenhome=https://goldenhome.gr/property/pwlisi/katoikies/perioxi-holargos
           --url era=https://era.gr/
           --url noikaki=https://noikaki.gr/search
@@ -42,7 +42,7 @@ jobs:
         timeout-minutes: 30
         env:
           DATABASE_URL: sqlite:////tmp/smoke.db
-          SOURCES: ${{ inputs.sources || 'xe,goldenhome' }}
+          SOURCES: ${{ inputs.sources || 'xe,goldenhome,remax' }}
           SCRAPE_DETAIL_PAGES: "false"
           SCRAPE_REQUEST_MIN_S: "4"
           SCRAPE_REQUEST_MAX_S: "7"

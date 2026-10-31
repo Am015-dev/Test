@@ -15,7 +15,7 @@ and the smoke run listed at the bottom).
 | Portal | Search page from runner | Cards in raw HTML | JSON / API | robots.txt for search | Verdict |
 |---|---|---|---|---|---|
 | **goldenhome.gr** | 200, `/property/pwlisi/katoikies/perioxi-holargos`, 434 KB | yes — 30 `article.property-card` / page, price, m², floor, year, bedrooms, photo count | map GeoJSON in page (ids + prices, fuzzed coords) | allowed (disallows only `/api`, `/backend`, `/console`, `?sort=`, `OFFSET`) | **Implemented** (`GoldenHomeCollector`) |
-| remax.gr | 200 homepage (121 KB, 11 prices, `/property/<id>-polisi-…` links) | yes on the homepage; the sale search path was not found in this round (`/poliseis-katoikies/…` and `/pwliseis-katoikies/…` → 404) | none seen | allowed (disallows `/backend.php`, `/ftp`, `/property/createPDF`) | Reachable — next candidate; needs the sale search URL (try the `/search/` form or the `xml_sitemaps/el` index) |
+| **remax.gr** | 200, `/pwliseis-agora-katoikies/1031-xolargos`, 462 KB (URL scheme found in `xml_sitemaps/el/pwliseis-agora/katoikies.xml`) | yes — 15 `div.property-miniature` / page (`?Property_page=N`), price, m², floor, rooms, photo count; **no build year on the card** — read from the listing page («Έτος Κατασκευής») | none | allowed (disallows `/backend.php`, `/ftp`, `/property/createPDF`) | **Implemented** (`RemaxCollector`, 13 of the 15 weekly areas; Ψυχικό and Φιλοθέη are not in the sitemap) |
 | era.gr | 200 homepage (WordPress, 59 KB) | no — listings load via `admin-ajax` | WP AJAX endpoint, not probed | allowed (`/wp-admin/` only) | Not implemented: listings are JS/AJAX; would need the AJAX call reverse-engineered |
 | spitogatos.gr | **403** (919-byte block page) on home and search | — | — | robots.txt itself 403 | Blocked (WAF). Existing FlareSolverr path only |
 | indomio.gr | **403** (770-byte block page) on home and search | — | — | readable; disallows `/search-list`, `/search-map`, `*idmacroarea=`, `/dettaglio.php` | Blocked (WAF). Existing FlareSolverr path only |
@@ -34,8 +34,11 @@ Already live before this survey: **XE.gr** (server-rendered HTML) and **Green-Ac
    on the card (no detail-page visits), per-area URLs for all 15 weekly areas, ~100 sale
    listings in Χολαργός alone. Off-plan flats show a future build year on the card; the
    collector flags those `is_unfinished` so they are never passed off as new builds.
-2. **RE/MAX — next.** Reachable and server-rendered; one more probe round to find the sale
-   search URL (`diag/sources_probe.py --only remax --links --grep …`).
+2. **RE/MAX — done** (runs 41221767513, 41221939367: `diag/remax_probe.py`). Cards lack the
+   build year, so each card inside the price/m² band gets one listing-page visit at the same
+   pacing (≈ 2 min for Χολαργός: 2 search pages + 15 listing pages). Missing page or row →
+   year unknown, never guessed. Enabled with `SOURCES=…,remax`; in the weekly run expect
+   roughly +2 min per area (≈ +30 min for the 15 areas; the collect step's cap is 110 min).
 3. Spitogatos / Indomio / spiti24 / plot / tospitimou answer 403 to a datacenter client.
    Only the optional self-hosted FlareSolverr path (already in `base.py`) can reach the first
    two; we do not run it by default and add no paid proxy.
@@ -83,3 +86,14 @@ word, no floor/year) used to *drop* the non-canonical copy before storage. On th
 that only shared «Χολαργός». `pipeline.run` now stores every portal's listing; dedup only
 decides which copy counts once in the market stats, and the UI groups copies with the stricter
 twins rule.
+
+### With RE/MAX (run 41223215713, `SOURCES=xe,goldenhome,remax`)
+
+| | XE.gr | Golden Home | RE/MAX |
+|---|---|---|---|
+| cards read | 11 pages | 68 cards / 3 pages | 29 cards / 2 pages (+15 listing pages for the year) |
+| raw → normalized → stored | 374 → 374 → 374 | 36 → 36 → 36 | 15 → 15 → 15 |
+| price / m² / floor / year / bedrooms / area / photos | 374/374/356/334/363/374/0 | 36/36/36/35/36/36/36 | 15/15/15/15/15/15/15 |
+
+**56 listings** (both sides counted) have a twin on another portal (38 with XE + Golden Home
+alone).
