@@ -141,7 +141,7 @@ def confidence_text(x: ai.AreaInsight) -> str:
     """Confidence word + what it rests on; says so when the rent sample count is unknown."""
     if confidence(x) == CONF_MID and x.rent_samples is None:
         return f"{CONF_MID}: δεν ξέρουμε από πόσες αγγελίες βγαίνει το ενοίκιο"
-    return f"{confidence(x)} ({ai.n_words(x.n_fresh)})"
+    return f"{confidence(x)}, με {ai.n_words(x.n_fresh)}"
 
 
 def new_old_text(x: ai.AreaInsight) -> str:
@@ -152,8 +152,8 @@ def new_old_text(x: ai.AreaInsight) -> str:
         )
     return (
         f"τα νεόδμητα ζητούν {gr_pct(abs(x.new_premium), 0)} "
-        f"{'περισσότερα' if x.new_premium >= 0 else 'λιγότερα'}: {gr_ppm(x.ppm_new)} αντί για "
-        f"{gr_ppm(x.ppm_old)} στα παλιά ({ai.n_words(x.n_new, x.n_old)})"
+        f"{'περισσότερα' if x.new_premium >= 0 else 'λιγότερα'}: {gr_ppm(x.ppm_new)}, ενώ τα "
+        f"παλιά {gr_ppm(x.ppm_old)} Μετρήσαμε {x.n_new} νεόδμητα και {x.n_old} παλιά"
     )
 
 
@@ -161,10 +161,10 @@ def trend_line(x: ai.AreaInsight) -> str:
     """Price trend of the area with its basis, or why there is none."""
     t = ai.exit_trend(x)
     if t is None:
-        return f"δεν το ξέρουμε ακόμα (έχουμε {ai.n_words(x.trend_early_n, x.trend_late_n)})"
+        return f"δεν το ξέρουμε ακόμα: έχουμε μόνο {ai.n_words(x.trend_early_n, x.trend_late_n)}"
     return (
         f"{'ανέβηκε' if t[0] >= 0 else 'έπεσε'} {gr_pct(abs(t[0]))} {t[1]}, μετρώντας τις νέες "
-        f"αγγελίες κάθε μήνα ({t[2]})"
+        f"αγγελίες κάθε μήνα: {t[2]}"
     )
 
 
@@ -213,7 +213,8 @@ def render_checks(checks: list[tuple[str, str, str]]) -> None:
     for label, value, verdict in checks:
         tone = _VERDICT_TONE.get(verdict, "unk")  # colours: theme.py .hg-v-* (status tokens)
         st.markdown(
-            f'**{label}:** <span class="hg-v hg-v-{tone}">{verdict}</span>  \n{value}',
+            f'**{label}:** <span class="hg-v hg-v-{tone}">{verdict}</span>  \n'
+            f"{value[:1].upper()}{value[1:]}",
             unsafe_allow_html=True,
         )
 
@@ -371,6 +372,9 @@ def _method() -> None:
             for k, w in ai.WEIGHTS.items()
         )
         st.markdown(
+            "Δίνουμε πόντους σε κάθε περιοχή για την απόδοση, την τιμή, τα σπίτια που "
+            "υπάρχουν, το περιθώριο για παζάρι και την τάση των τιμών, και τους προσθέτουμε. "
+            "Πιο πολύ μετράει η απόδοση.\n\n"
             "**Βαθμολογία (0–100) = 100 × Σ βάρος × συνιστώσα.** Κάθε συνιστώσα παίρνει τιμή "
             "από 0 έως 1 σε σταθερή κλίμακα, όχι σε σύγκριση με τις άλλες περιοχές. Έτσι η ίδια "
             "βαθμολογία σημαίνει το ίδιο κάθε εβδομάδα. Όπου λείπει κάτι (ενοίκιο, τάση), η "
@@ -449,7 +453,7 @@ def _card(rank: int | None, x: ai.AreaInsight, *, key: str) -> None:
         st.markdown(f"#### {rank}. {x.area}" if rank else f"##### {x.area}")
         st.markdown(x.why)
         rows = [
-            ("Τιμή", f"{gr_ppm(x.median_ppm)}, όσο ζητούν συνήθως ({x.n_fresh} αγγελίες)"),
+            ("Τιμή", f"{gr_ppm(x.median_ppm)} ζητούν συνήθως, σε {x.n_fresh} αγγελίες"),
             ("Νεόδμητα / παλιά", new_old_text(x)),
             (
                 "Ενοίκιο (εκτίμηση)",
@@ -483,7 +487,7 @@ def _card(rank: int | None, x: ai.AreaInsight, *, key: str) -> None:
         if x.reg_flags:
             rows.append(("Κανονιστικά", " · ".join(x.reg_flags)))
         rows.append(("Εμπιστοσύνη", confidence_text(x)))
-        st.markdown("\n".join(f"- **{k}:** {v}" for k, v in rows))
+        st.markdown("\n".join(f"- **{k}:** {v[:1].upper()}{v[1:]}" for k, v in rows))
         render_series(x)
         st.markdown("**Προσοχή**\n" + "\n".join(f"- {r}" for r in x.risks))
         st.button(

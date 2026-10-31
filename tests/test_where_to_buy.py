@@ -122,7 +122,9 @@ def test_card_texts_show_n_over_m_and_unchecked():
         == "33 από τα 51 νεόδμητα που ελέγξαμε"
     )
     assert "δεν έχει ελεγχθεί" in areas.uc_text(_insight())
-    assert areas.confidence_text(_insight(n_fresh=150, rent_samples=40)) == ("Υψηλή (150 αγγελίες)")
+    assert areas.confidence_text(_insight(n_fresh=150, rent_samples=40)) == (
+        "Υψηλή, με 150 αγγελίες"
+    )
     assert (
         areas.confidence_text(_insight(rent_samples=None))
         == "Μέτρια: δεν ξέρουμε από πόσες αγγελίες βγαίνει το ενοίκιο"
@@ -133,7 +135,7 @@ def test_new_vs_old_text():
     x = _insight(n_new=51, ppm_new=4000.0, n_old=275, ppm_old=2500.0, new_premium=0.6)
     assert (
         areas.new_old_text(x)
-        == "τα νεόδμητα ζητούν 60 % περισσότερα: 4.000 €/τ.μ. αντί για 2.500 €/τ.μ. στα παλιά (51 και 275 αγγελίες)"
+        == "τα νεόδμητα ζητούν 60 % περισσότερα: 4.000 €/τ.μ., ενώ τα παλιά 2.500 €/τ.μ. Μετρήσαμε 51 νεόδμητα και 275 παλιά"
     )
     assert "3 και 275 αγγελίες" in areas.new_old_text(_insight(n_new=3, n_old=275))
 

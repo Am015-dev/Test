@@ -636,7 +636,32 @@ def score_how(d: dict, adv: dict) -> list[str]:
     cmp = adv.get("cmp")
     age = nl_search.building_age(d)
     factor = nl_search.age_factor(age)
+    gy = gross_yield(d)
+    plus = [
+        w
+        for w, ok in (
+            ("την απόδοση", gy is not None and gy >= nl_search.YIELD_GOOD),
+            ("την τιμή σε σχέση με τα διπλανά", bool(cmp) and cmp["pct"] <= -0.05),
+            ("το καινούργιο κτίριο", factor >= 0.95 and age is not None),
+        )
+        if ok
+    ]
+    minus = [
+        w
+        for w, ok in (
+            ("τη χαμηλή απόδοση", gy is not None and gy < nl_search.YIELD_WEAK),
+            ("την τιμή σε σχέση με τα διπλανά", bool(cmp) and cmp["pct"] >= 0.05),
+            ("την ηλικία του κτιρίου", factor < 0.95),
+        )
+        if ok
+    ]
+    say = f"Βγαίνει {n} στα 100"
+    if plus:
+        say += ": κερδίζει από " + " και ".join(plus)
+    if minus:
+        say += (", χάνει από " if plus else ": χάνει από ") + " και ".join(minus)
     out = [
+        say + ".",
         f"Βαθμολογία {n} από 100. Είναι η ίδια στις κάρτες, στον χάρτη και στην αναζήτηση.",
         "Το 60 % είναι η βαθμολογία της ίδιας της αγγελίας"
         + (f" ({round(base)} από 100)" if base is not None else "")

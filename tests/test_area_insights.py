@@ -292,9 +292,9 @@ def test_why_is_a_filled_template_without_adjectives():
     rents = [rent("Cholargos", None, 11.2, 38), rent("Cholargos", "Χολαργός (Περισσός)", 11.2, 38)]
     (x,) = ai.rank_areas(rows, rents, year=YEAR)
     assert x.why == (
-        "Μικτή απόδοση 4,5 % (1η από 1 περιοχή). Ενοίκιο (εκτίμηση) 11,2 €/τ.μ. τον μήνα από 38 "
-        "αγγελίες ενοικίασης. Για νεόδμητο ζητούν 60 % περισσότερα από ένα παλιό (6 και 6 "
-        "αγγελίες). Σταθμός: ΗΣΑΠ Περισσός."
+        "Μικτή απόδοση 4,5 %, 1η από τις 1 περιοχή. Ενοίκιο (εκτίμηση) 11,2 €/τ.μ. τον μήνα από "
+        "38 αγγελίες ενοικίασης. Για νεόδμητο ζητούν 60 % περισσότερα από ένα παλιό. Σταθμός: "
+        "ΗΣΑΠ Περισσός."
     )
 
 
@@ -337,8 +337,10 @@ def test_decision_sentences_have_numbers_and_budget():
     )
     assert s[1].startswith("Αν θες να το πουλήσεις εύκολα αργότερα: Χολαργός.")
     assert s[2].startswith("Αν θες να ανέβει η αξία:")
-    assert s[3].startswith("Αν θες νεόδμητο κοντά σε σταθμό έως 300.000 €: Μαρούσι (ΗΣΑΠ Μαρούσι).")
-    assert "30 αγγελίες, από αυτές 30 με ελεγμένη περιγραφή" in s[3]
+    assert s[3].startswith(
+        "Αν θες νεόδμητο κοντά σε σταθμό έως 300.000 €: Μαρούσι, με σταθμό ΗΣΑΠ Μαρούσι."
+    )
+    assert "βρήκαμε 30 τέτοια σπίτια και τα 30 τα έχουμε ήδη ελέγξει" in s[3]
     assert all(any(ch.isdigit() for ch in line) for line in s)
 
 
@@ -487,7 +489,7 @@ def test_rank_areas_attaches_liquidity_from_lifecycle():
     x = ai.rank_areas(many(25), year=YEAR, lifecycle=life)[0]
     assert x.liquidity == "γρήγορη" and x.gone_60 == 0.5 and x.gone_n_60 == 40
     text = ai.liquidity_text(x)
-    assert text.startswith("γρήγορη: το 50 % κατέβηκε μέσα σε 60 μέρες (από 40 αγγελίες)")
+    assert text.startswith("γρήγορη: το 50 % από 40 αγγελίες κατέβηκε μέσα σε 60 μέρες")
     assert "τουλάχιστον 35 %" in ai.LIQUIDITY_THRESHOLDS
     assert "κάτω από 15 %" in ai.LIQUIDITY_THRESHOLDS
 
@@ -552,7 +554,7 @@ def test_decision_liquidity_uses_gone_share_when_known():
         if t.startswith("Αν θες να το πουλήσεις εύκολα αργότερα")
     )
     assert s.startswith(
-        "Αν θες να το πουλήσεις εύκολα αργότερα: Χολαργός. Η αγορά είναι γρήγορη: το 40 % κατέβηκε μέσα σε 60 μέρες (από 40 αγγελίες)"
+        "Αν θες να το πουλήσεις εύκολα αργότερα: Χολαργός. Η αγορά είναι γρήγορη: το 40 % από 40 αγγελίες κατέβηκε μέσα σε 60 μέρες"
     )
 
 
@@ -620,7 +622,7 @@ def test_price_check_good_when_below_comps_and_warns_when_too_cheap_or_dear():
 
 def test_price_check_unknown_without_comps():
     c = ai.investor_checks(_subject(), None, None)[0]
-    assert c[2] == ai.UNKNOWN and "αρκετά παρόμοια σπίτια (θέλουμε 5)" in c[1]
+    assert c[2] == ai.UNKNOWN and "λιγότερα από 5 παρόμοια σπίτια" in c[1]
 
 
 def test_yield_check_shows_rent_and_price_and_verdict_bands():
@@ -680,4 +682,4 @@ def test_exit_check_uses_trend_and_line4():
     assert "Άλσος Βεΐκου, Γαλάτσι, Ελικώνος" in ai.investor_checks(other, None, x)[5][1]
     x.trend_pct_6m, x.trend_pct = None, None
     unk = ai.investor_checks(d, None, x)[5]
-    assert unk[2] == ai.UNKNOWN and "δεν ξέρουμε ακόμα πώς κινούνται οι τιμές" in unk[1]
+    assert unk[2] == ai.UNKNOWN and "Δεν ξέρουμε ακόμα πώς κινούνται οι τιμές" in unk[1]
