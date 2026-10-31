@@ -45,9 +45,10 @@ together by the usual sort (page read, photos, ``rank_score``), the smaller loos
 on a tie, and sort after every strict match. Near matches are added only when the strict
 matches are fewer than ``NEAR_MIN``. Each carries ``relaxed``, the loosened answer in
 the user's words («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»).
-Then a third tier, «ευρύτερα» (``tier=2``): every remaining flat within budget × 1,30 that
-fails two or more answers, by the usual sort, with no cap; ``relaxed`` names all of them
-(«ποσό +22 %, κτίριο 1985, χωρίς όρο σταθμού»). A listing appears once, in one tier.
+Then a third tier, «ευρύτερα» (``tier=2``): every remaining flat within budget × 1,30 — the
+ones that fail two or more answers and the one-answer ones past a step's cap — by the usual
+sort, with no cap; ``relaxed`` names everything it fails («ποσό +22 %, κτίριο 1985, χωρίς όρο
+σταθμού»). Every flat in the band appears exactly once, in one tier.
 
 The buyer score (``buyer_score``) on every pick is the 0–100 score of ``nl_search.advise``,
 the same number the map colour and the search advice use.
@@ -624,7 +625,8 @@ def find(
         kept: list[Pick] = []
         for p in group:
             if cap is not None and len(kept) >= cap:
-                break
+                wide.append(replace(p, tier=2))  # past the step's cap: «ευρύτερα»
+                continue
             d = p.listing
             key = (d.get("neighborhood"), d.get("year_built"), round(d["price"], -4))
             if key not in seen:
