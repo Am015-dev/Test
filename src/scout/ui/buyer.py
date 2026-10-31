@@ -470,8 +470,9 @@ def card_html(
     if d.get("few_photos"):
         l3 += f' <span class="hg-st hg-st-photo">{picks.FEW_PHOTOS}</span>'
     extras = _extras(d, adv)
+    mark = ' data-compact="1"' if compact else ""
     out = (
-        f'<div class="hg-card{" hg-compact" if compact else ""}" data-lid="{d.get("id")}">'
+        f'<div class="hg-card"{mark} data-lid="{d.get("id")}">'
         f'<div class="hg-l1">{_join(l1)}</div>'
         f'<div class="hg-l2">{_join(l2)}</div>'
         f'<div class="hg-l3">{l3}</div>'

@@ -670,8 +670,8 @@ footer {{ visibility: hidden; height: 0; }}
 [data-testid="stMain"] p, [data-testid="stMain"] li {{ font-size: .95rem; }}
 [data-testid="stMain"] [data-testid="stCaptionContainer"] p {{ font-size: .875rem; }}
 [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"] {{ padding: .85rem 1rem; }}
-.hg-compact > div + div {{ margin-top: 3px; }}
-.hg-compact details {{ margin-top: 4px; }}
+.hg-card[data-compact] > div + div {{ margin-top: 3px; }}
+.hg-card[data-compact] details {{ margin-top: 4px; }}
 </style>
 """
 

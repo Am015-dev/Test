@@ -121,7 +121,7 @@ def test_too_cheap_is_a_question_not_a_bonus():
 def _visible_before_expander(html: str) -> list[str]:
     """The card's top-level lines before «Από πού βγαίνουν» (what a phone shows unopened)."""
     head = html.split("<details>", 1)[0]
-    return re.findall(r'<div class="(hg-[a-z0-9]+)"', head)
+    return [c for c in re.findall(r'<div class="(hg-[a-z0-9]+)"', head) if c != "hg-card"]
 
 
 def test_compact_card_shows_at_most_five_lines_and_hides_the_rest_one_tap_away():
