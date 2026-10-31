@@ -233,6 +233,11 @@ def rent_html(d: dict) -> str:
 def comps_badge(cmp: dict) -> tuple[str, str]:
     """(tone, '−33% vs 5 παρόμοια · χαμηλή αξιοπιστία') — the short card version."""
     pct = cmp["pct"]
+    if -pct > nl_search.TOO_CHEAP:
+        return "warn", (
+            f"{_signed_pct(pct)} €/τ.μ. vs {cmp['n']} παρόμοια — ασυνήθιστα φθηνό, "
+            "έλεγξε γιατί (τ.μ., κατάσταση, νομικά)"
+        )
     tone = "good" if pct <= -0.1 else "bad" if pct >= 0.1 else "muted"
     conf = confidence(cmp).lower()
     return tone, f"{_signed_pct(pct)} €/τ.μ. vs {cmp['n']} παρόμοια · {conf} αξιοπιστία"
@@ -256,7 +261,10 @@ def _card_html(d: dict, adv: dict) -> str:
     if d.get("renovated_year"):
         facts.append(f"ανακαίνιση <b>{d['renovated_year']}</b>")
     elif d.get("year_built"):
-        facts.append(f"κατασκευή <b>{d['year_built']}</b>" + (f" ({age} ετών)" if age else ""))
+        facts.append(
+            f"κατασκευή <b>{d['year_built']}</b>"
+            + (f" ({age} {'έτους' if age == 1 else 'ετών'})" if age else "")
+        )
     badges = []
     # Only past the default age filter (shown when the buyer relaxes it) — same 40-year line.
     if age is not None and age > DEFAULT_AGE and not d.get("renovated_year"):

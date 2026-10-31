@@ -69,3 +69,21 @@ def test_age_table_and_comparable_value_drive_the_score():
     assert [r["band"] for r in table] == ["έως 5 ετών", "16–30 ετών"]
     d = {"score": 60, "year_built": 2010}
     assert advise(d, comp_pct=-0.20)["score"] > advise(d, comp_pct=0.15)["score"]
+
+
+def test_houses_are_compared_with_houses_not_flats():
+    flats = [flat(i, 4000, year=2015 + i % 5) for i in range(6)]
+    houses = [
+        {**flat(20 + i, 2400, m2=100 + 10 * i), "title": "Μονοκατοικία 160 τ.μ."} for i in range(5)
+    ]
+    house = {**flat(99, 2300), "title": "Μονοκατοικία 150 τ.μ."}
+    c = mi.build([*flats, *houses, house], YEAR).comps(house)
+    assert c["ppm"] == 2400 and "μονοκατοικίες" in c["label"]
+
+
+def test_far_under_comparables_is_a_warning_not_a_bonus():
+    d = {"score": 60, "year_built": 2010, "gross_yield": 0.09}
+    normal = advise(d, comp_pct=-0.20)
+    odd = advise(d, comp_pct=-0.50)
+    assert odd["too_cheap"] and not normal["too_cheap"]
+    assert odd["score"] < normal["score"]

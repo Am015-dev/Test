@@ -247,6 +247,9 @@ OFF_PLAN_FACTOR = 0.6  # built "this year": often still a shell sold off-plan �
 UNFINISHED_FACTOR = 0.25  # an unfinished shell needs more capital before it can be let
 
 
+TOO_CHEAP = 0.35  # this far under the like-for-like median = check why before believing it
+
+
 def advise(d: dict, comp_pct: float | None = None) -> dict:
     """Buyer view of one listing: a 0-100 score plus the facts behind it.
 
@@ -264,19 +267,26 @@ def advise(d: dict, comp_pct: float | None = None) -> dict:
     if gap is None and d.get("value_confident"):
         gap = d.get("value_gap_pct")
     parts: list[tuple[str, int | None]] = []
+    # Far under every comparable is a question (wrong m², a shell, legal trouble), not a deal:
+    # it earns no value credit — and its "yield" (area rent ÷ that price) none either.
+    too_cheap = gap is not None and gap > TOO_CHEAP
     if gap is None:
         score = base
     else:
-        value = min(max(gap / 0.20, 0), 1) * 70 + min(d.get("negotiation_score") or 0, 100) * 0.2
+        credit = 0.0 if too_cheap else min(max(gap / 0.20, 0), 1)
+        value = credit * 70 + min(d.get("negotiation_score") or 0, 100) * 0.2
         value += 10 if d.get("price_dropped") else 0
         score = 0.6 * base + 0.4 * value
-        parts.append(("τιμή vs παρόμοια", 1 if gap >= 0.10 else -1 if gap <= -0.10 else 0))
+        sign = None if too_cheap else 1 if gap >= 0.10 else -1 if gap <= -0.10 else 0
+        parts.append(("τιμή vs παρόμοια", sign))
+    if too_cheap:
+        score *= 0.7
     age = building_age(d)
     factor = age_factor(age)
     score *= factor
     sign = None if age is None else 1 if factor >= 0.95 else 0 if factor >= 0.8 else -1
     parts.append(("ηλικία", sign))
-    if gy := d.get("gross_yield"):
+    if (gy := d.get("gross_yield")) and not too_cheap:
         parts.append(("απόδοση", 1 if gy >= YIELD_GOOD else -1 if gy < YIELD_WEAK else 0))
     if (d.get("year_built") or 0) >= date.today().year:
         score *= OFF_PLAN_FACTOR
@@ -284,7 +294,13 @@ def advise(d: dict, comp_pct: float | None = None) -> dict:
     if d.get("is_unfinished"):
         score *= UNFINISHED_FACTOR
         parts.append(("ημιτελές", -1))
-    return {"score": round(score), "gap": gap, "age": age, "parts": parts}
+    return {
+        "score": round(score),
+        "gap": gap,
+        "age": age,
+        "parts": parts,
+        "too_cheap": too_cheap,
+    }
 
 
 def candidates(listings: list[dict], include_stale: bool = False) -> list[dict]:

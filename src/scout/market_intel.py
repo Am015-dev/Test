@@ -15,6 +15,7 @@ Pure functions over the listing dicts the UI already loads; no DB, no network.
 from __future__ import annotations
 
 import statistics
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -23,6 +24,16 @@ AGE_BANDS = ((0, 5, "έως 5 ετών"), (6, 15, "6–15 ετών"), (16, 30, "
 SIZE_BANDS = ((0, 45), (45, 65), (65, 90), (90, 120), (120, 10_000))
 MIN_COMPS = 5
 TWIN_PRICE_GAP = 0.10
+
+
+HOUSE_WORDS = ("μονοκατοικ", "μεζονετ", "βιλα", "κτιριο", "πολυκατοικ")
+
+
+def kind(d: dict) -> str:
+    """'house' for detached houses / maisonettes (priced differently per m²), else 'flat'."""
+    title = unicodedata.normalize("NFD", (d.get("title") or "").casefold())
+    title = "".join(c for c in title if not unicodedata.combining(c))
+    return "house" if title.startswith(HOUSE_WORDS) else "flat"
 
 
 def municipality(d: dict) -> str:
@@ -80,9 +91,9 @@ class Intel:
     def comps(self, d: dict) -> dict | None:
         """Like-for-like €/m² for ``d``: median, quartiles, n, where ``d`` sits, and a label
         naming exactly what it was compared with. None when fewer than MIN_COMPS exist."""
-        m, a = municipality(d), age_band(_age(d, self.year))
+        m, a = (municipality(d), kind(d)), age_band(_age(d, self.year))
         s, f = _size_band(d.get("area_m2")), _floor_band(d.get("floor"))
-        if not m or a is None or s is None or not d.get("price_per_m2"):
+        if not m[0] or a is None or s is None or not d.get("price_per_m2"):
             return None
         twins = {id(t) for t in self.twins(d)}
         levels = [(m, a, s, f)] if f is not None else []  # tightest first, then relax
@@ -121,8 +132,8 @@ class Intel:
         ]
 
     @staticmethod
-    def _label(m: str, a: int, s: int | None, f: int | None) -> str:
-        parts = [m, AGE_BANDS[a][2]]
+    def _label(m: tuple, a: int, s: int | None, f: int | None) -> str:
+        parts = [m[0] + (" · μονοκατοικίες/μεζονέτες" if m[1] == "house" else ""), AGE_BANDS[a][2]]
         if s is not None:
             lo, hi = SIZE_BANDS[s]
             parts.append(
@@ -153,10 +164,10 @@ class Intel:
     # ---- age premium ---------------------------------------------------------------------
 
     def age_table(self, m: str) -> list[dict]:
-        """Median €/m² per age band in municipality ``m`` (bands with at least MIN_COMPS)."""
+        """Median flat €/m² per age band in municipality ``m`` (bands with ≥ MIN_COMPS)."""
         out = []
         for a, (_, _, label) in enumerate(AGE_BANDS):
-            vals = [x["price_per_m2"] for x in self._pool((m, a, None, None))]
+            vals = [x["price_per_m2"] for x in self._pool(((m, "flat"), a, None, None))]
             if len(vals) >= MIN_COMPS:
                 out.append({"band": label, "ppm": statistics.median(vals), "n": len(vals)})
         return out
@@ -175,7 +186,7 @@ def build(listings: list[dict], year: int | None = None) -> Intel:
         if not _usable(d):
             continue
         key = (
-            municipality(d),
+            (municipality(d), kind(d)),
             age_band(_age(d, intel.year)),
             _size_band(d.get("area_m2")),
             _floor_band(d.get("floor")),
