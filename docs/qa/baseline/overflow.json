@@ -1,0 +1,202 @@
+{
+  "00-first-load-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 5246
+  },
+  "01-find-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 5246
+  },
+  "02-areas-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [
+      "TABLE. right=403",
+      "THEAD. right=403",
+      "TR. right=403",
+      "TH. right=403",
+      "TBODY. right=403"
+    ],
+    "pageHeight": 4491
+  },
+  "03-search-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 6107
+  },
+  "04-map-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [
+      "INPUT. right=497",
+      "INPUT. right=497",
+      "DIV.dvn-stack right=665",
+      "DIV. right=665"
+    ],
+    "pageHeight": 1975
+  },
+  "05-favs-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 844
+  },
+  "06-saved-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 844
+  },
+  "07-compare-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 844
+  },
+  "08-detail-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 2449
+  },
+  "09-search-filtered-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 6036
+  },
+  "10-find-rejected-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 5227
+  },
+  "11-area-listings-phone": {
+    "overflow": false,
+    "scrollWidth": 390,
+    "innerWidth": 390,
+    "mainScrollWidth": 390,
+    "wideElements": [],
+    "pageHeight": 6590
+  },
+  "01-find-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 3212
+  },
+  "02-areas-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [
+      "DIV.dvn-stack right=1844",
+      "DIV. right=1844"
+    ],
+    "pageHeight": 2804
+  },
+  "03-search-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 4228
+  },
+  "04-map-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [
+      "INPUT. right=1323"
+    ],
+    "pageHeight": 1531
+  },
+  "05-favs-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 800
+  },
+  "06-saved-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 800
+  },
+  "07-compare-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 800
+  },
+  "08-detail-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 1568
+  },
+  "09-search-filtered-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 4152
+  },
+  "10-find-rejected-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 3270
+  },
+  "11-area-listings-desktop": {
+    "overflow": false,
+    "scrollWidth": 1280,
+    "innerWidth": 1280,
+    "mainScrollWidth": 980,
+    "wideElements": [],
+    "pageHeight": 4422
+  }
+}
