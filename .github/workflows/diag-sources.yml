@@ -1,0 +1,22 @@
+# Diagnostic only: survey Greek portals from a GitHub runner (the dev sandbox is blocked).
+# Runs on push to ws/sources or by hand; prints to the job log. Never writes to the DB branch.
+name: diag-sources
+on:
+  push:
+    branches: [ws/sources]
+    paths: [diag/**, .github/workflows/diag-sources.yml, src/scout/collectors/**]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e . -q
+      - name: Survey portals
+        run: python diag/sources_probe.py --links
