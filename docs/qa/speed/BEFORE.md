@@ -1,6 +1,6 @@
 # C13 — speed: BEFORE
 
-**Code:** `main` at 7caf9c1 (after #92, before any C13 change), run from a clean worktree.
+**Code:** `main` at 7caf9c1 (after #92, before any C13 change), run from a clean worktree. AFTER is on `ws/speed` merged with 286b008 (main moved by #98 card photos while measuring; BEFORE was not re-run on it).
 **Data:** the published DB (`origin/data:listings.db`, 26.758 active sale rows, last seen
 31/10/2026 19:38; 25.921 cards after the re-listing merge).
 **Machine:** 4 vCPU Intel Xeon 2,1 GHz, 16 GB (GitHub-runner class), Chromium headless,
