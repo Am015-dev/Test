@@ -346,9 +346,14 @@ DOM_BASIS = {"listed": "από την ημερομηνία αγγελίας", "s
 
 
 def dom_text(d: dict) -> str:
-    """'109 μέρες στην αγορά (από την ημερομηνία αγγελίας)' — the basis when we know it."""
+    """'109 μέρες στην αγορά (από τότε που τη βλέπουμε) · η αγγελία ανανεώθηκε 28/10' — the
+    basis when we know it, and the re-post date when the portal's date is newer than our
+    first sighting (a refreshed ad is not a new flat on the market)."""
     basis = DOM_BASIS.get(d.get("dom_basis") or "")
-    return f"{d['days_on_market']} μέρες στην αγορά" + (f" ({basis})" if basis else "")
+    text = f"{d['days_on_market']} μέρες στην αγορά" + (f" ({basis})" if basis else "")
+    if d.get("relisted_on"):
+        text += f" · η αγγελία ανανεώθηκε {d['relisted_on']:%d/%m}"
+    return text
 
 
 def _year_text(d: dict) -> str:

@@ -8,6 +8,7 @@ would. ``red_flags`` is the cheap deterministic part, shared by the prompt and t
 from __future__ import annotations
 
 import json
+import os
 import statistics
 from datetime import date
 from typing import Literal
@@ -16,7 +17,7 @@ from pydantic import BaseModel, field_validator
 
 from scout.config import get_settings
 
-MODEL = "claude-sonnet-5-5"
+MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5")
 MAX_REASON = 160
 OLD_BUILDING_YEARS = 40
 
