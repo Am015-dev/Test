@@ -2296,14 +2296,17 @@ def _go_find() -> None:
 UNKNOWN = "άγνωστο"
 
 
-def _compare_rows(d: dict) -> dict[str, str]:
-    """One flat's eight facts (field -> one value). Status, comparables, net yield and days on
-    market are on the compact cards under the table, or one tap away in their expander."""
-    from scout import picks
+def _compare_rows(d: dict, intel=None) -> dict[str, str]:
+    """One flat's facts (field -> one value): the score first (C7, ``picks.buyer_score``),
+    then eight facts. Status, comparables, net yield and days on market are on the compact
+    cards under the table, or one tap away in their expander."""
+    from scout import market_intel, picks
 
     rent = d.get("listed_rent") or d.get("est_monthly_rent")
     gy = buyer.gross_yield(d)
+    intel = intel or market_intel.build([d])
     return {
+        "Βαθμολογία": str(picks.buyer_score(d, intel)),
         "Τιμή": fmt.euro(d["price"]),
         "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")) if d.get("price_per_m2") else UNKNOWN,
         "τ.μ.": f"{d['area_m2']:g}".replace(".", ",") if d.get("area_m2") else UNKNOWN,
@@ -2387,7 +2390,7 @@ def page_compare(listings: list[dict]) -> None:
     chosen = [by_id[opts[pick_a]], by_id[opts[pick_b]]]
 
     intel = market_intel.build(listings)
-    views = [_compare_rows(d) for d in chosen]
+    views = [_compare_rows(d, intel) for d in chosen]
     rows = "".join(f"| {k} | {views[0][k]} | {views[1][k]} |\n" for k in views[0])
     st.markdown(f"| | Α | Β |\n|---|---|---|\n{rows}")
     st.caption(

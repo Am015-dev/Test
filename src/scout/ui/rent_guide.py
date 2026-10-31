@@ -348,6 +348,10 @@ def rent_facts(shown: list[picks_rent.RentPick], r: dict, all_rentals: list[dict
                 "over_budget_eur": p.over_budget or None,
                 "risks": p.risks,
                 "seller_text": picks.excerpt(d.get("description")),
+                "score_0_100": p.score,
+                "score_basis": p.score_basis,
+                "exact_match": not p.relaxed,
+                "relaxed": p.relaxed or None,
             }
         )
     wanted = {row["area"] for row in rows}
@@ -578,10 +582,10 @@ def _step4(r: dict) -> None:
 
 
 METHOD = f"""
-- **Σειρά**: πρώτα όσες έχουν το χαμηλότερο ενοίκιο ανά τ.μ. σε σχέση με τα παρόμοια, μετά οι
-  πιο πρόσφατες αγγελίες. Όσες είναι πάνω από {round(picks_rent.TOO_CHEAP * 100)} % κάτω από τα
-  παρόμοια πάνε μετά (συχνά δωμάτιο, λάθος τιμή ή αγγελία που δεν υπάρχει), όσες δεν έχουν
-  παρόμοια στο τέλος.
+- **Σειρά**: η Βαθμολογία (έως 70 για ενοίκιο ανά τ.μ. κάτω από τα παρόμοια, έως 30 για
+  πρόσφατη αγγελία)· στις ισοπαλίες το χαμηλότερο ενοίκιο ανά τ.μ. σε σχέση με τα παρόμοια. Όσες
+  είναι πάνω από {round(picks_rent.TOO_CHEAP * 100)} % κάτω από τα παρόμοια δεν παίρνουν πόντους
+  τιμής (συχνά δωμάτιο, λάθος τιμή ή αγγελία που δεν υπάρχει).
 - **Παρόμοια ενοίκια**: διάμεσο €/τ.μ. των άλλων ενεργών αγγελιών ενοικίασης στην ίδια γειτονιά
   (τουλάχιστον {picks_rent.MIN_COMPS}), αλλιώς στην ευρύτερη περιοχή.
 - **Ποσό**: ενοίκια έως {round(picks_rent.BUDGET_BAND * 100)} % πάνω από το ποσό σου.
@@ -591,6 +595,18 @@ METHOD = f"""
 - Ζητούμενα ενοίκια αγγελιών, όχι συμβόλαια. Δεν ξέρουμε εγγύηση, κοινόχρηστα και διάρκεια
   συμβολαίου: ρώτα τον ιδιοκτήτη.
 """
+
+
+def counts_line(exact: int, near: int, what: str, wide: int = 0) -> str:
+    """C7's result sentence with the three counts (rentals)."""
+    rest = guide.tier_text(near, wide)
+    if exact:
+        joint = ", " if near and wide else " και "
+        return (
+            f"**{buyer._num(exact)}** {buyer._noun(exact)} ενοικίασης {what} ακριβώς όπως ζήτησες"
+            f"{joint}{rest}. Σε κάθε κάρτα γράφω τι δεν ταιριάζει."
+        )
+    return f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}. Σε κάθε κάρτα γράφω τι δεν ταιριάζει."
 
 
 def card_more(p: picks_rent.RentPick) -> list[str]:
@@ -613,10 +629,12 @@ def card_more(p: picks_rent.RentPick) -> list[str]:
 
 
 def card_adv(p: picks_rent.RentPick) -> dict:
-    """Line 5 of the compact card (``buyer.comps_text``) from the rental comparables."""
-    if p.vs_area_pct is None:
-        return {}
-    return {"cmp": {"pct": p.vs_area_pct, "n": p.comps_n, "ppm": p.comps_ppm}}
+    """Line 5 of the compact card (``buyer.comps_text``) from the rental comparables, the
+    rent-value «Βαθμολογία» with its basis, and (near match) the loosened answer (C7)."""
+    adv = {"score": p.score, "score_basis": p.score_basis, "relaxed": p.relaxed}
+    if p.vs_area_pct is not None:
+        adv["cmp"] = {"pct": p.vs_area_pct, "n": p.comps_n, "ppm": p.comps_ppm}
+    return adv
 
 
 def card(i: int | None, p: picks_rent.RentPick, k: str, verdicts: bool = False,
@@ -721,13 +739,16 @@ def _results(r: dict, rows: list[dict]) -> None:
         max_age=r.get("age"),
         furnished=bool(r.get("furnished")),
     )
-    found = picks_rent.find(rows, budget, **rules, top=10**6)
+    found = picks_rent.find(rows, budget, **rules, top=10**6, near=True)
     review = guide._review()
     every, dropped = guide.arrange(found, review)
+    exact = [p for p in every if not p.relaxed]
+    near = sum(p.tier == 1 for p in every)
+    wide = sum(p.tier == 2 for p in every)
     what = f"έως {eur(budget * (1 + picks_rent.BUDGET_BAND))}/μήνα (το ποσό σου + 10 %)" + (
         ", κοντά σε σταθμό" if where == "rail" else ""
     )
-    relax = picks_rent.relaxations(rows, budget, **rules) if len(every) < picks.PAGE else []
+    relax = picks_rent.relaxations(rows, budget, **rules) if len(exact) < picks.PAGE else []
     if not every:
         st.markdown(f"Καμία αγγελία ενοικίασης {what}.")
         if relax:
@@ -735,14 +756,21 @@ def _results(r: dict, rows: list[dict]) -> None:
         else:
             st.info("Ούτε με έναν όρο λιγότερο βρίσκω κάτι. Άλλαξε το ποσό.")
     else:
-        if sentence := recommend(every):
+        if sentence := recommend(exact or every):
             st.markdown(sentence)
-        st.markdown(f"**{len(every)}** {buyer._noun(len(every))} ενοικίασης {what}.")
+        if near or wide:
+            st.markdown(counts_line(len(exact), near, what, wide))
+        else:
+            st.markdown(f"**{len(every)}** {buyer._noun(len(every))} ενοικίασης {what}.")
         if relax:
             _relax(
-                relax, f"Μόνο {len(every)}. Με έναν όρο λιγότερο (σε παρένθεση πόσες προστίθενται):"
+                relax,
+                f"Μόνο {len(exact)} ακριβώς όπως ζήτησες. Κάνε μόνιμο έναν όρο λιγότερο "
+                "(σε παρένθεση πόσες προστίθενται):",
             )
         facts = rent_facts(every, r, rows)
+        if any(p.relaxed for p in every[:10]):
+            facts["near_matches_note"] = guide.NEAR_NOTE
         _brief(facts)
         n = st.session_state.setdefault("rent_shown", picks.PAGE)
         visible = every[:n]
@@ -757,7 +785,7 @@ def _results(r: dict, rows: list[dict]) -> None:
                     on_click=_more,
                     width="stretch",
                 )
-        st.caption(f"Βλέπεις {len(visible)} από {len(every)}.")
+        st.caption(f"Βλέπεις {buyer._num(len(visible))} από {buyer._num(len(every))}.")
         _panel(facts)
     if dropped:
         _dropped(dropped)

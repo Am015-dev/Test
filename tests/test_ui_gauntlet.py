@@ -635,8 +635,9 @@ def test_compare_opens_with_favourites_and_shows_yield(env):
     assert len(set(picked)) == 2 and all(v.endswith(" · αγαπημένο") for v in picked)
     table = next(m.value for m in at.markdown if m.value.startswith("| | Α | Β |"))
     assert all(f"| {f} |" in table for f in ("Ενοίκιο (εκτίμηση)", "Μικτή απόδοση"))
-    # C3: eight rows; net yield is on the listing page, one tap away via «Λεπτομέρειες»
-    assert len(table.splitlines()) == 2 + 8
+    # C3: eight rows + C7's score first; net yield is on the listing page, one tap away
+    assert len(table.splitlines()) == 2 + 9
+    assert table.splitlines()[2].startswith("| Βαθμολογία |")
 
 
 DEV_WORDS = ("GITHUB_TOKEN", "GITHUB", "ANTHROPIC", "agent", "Agent", "🤖", "Κατάλαβα", "token")
