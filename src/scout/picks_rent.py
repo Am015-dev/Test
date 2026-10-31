@@ -20,8 +20,8 @@ bedrooms off; last, any building age. Each step keeps its best ``picks.NEAR_MIN`
 all near matches are then sorted by ``score`` (smaller loosening first on a tie), after every
 strict one — and only when the strict matches are fewer than ``picks.NEAR_MIN``. Each carries
 ``relaxed`` («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»).
-Then «ευρύτερα» (``tier=2``): every remaining rental within rent × 1,30 that fails two or
-more answers, by ``score``, no cap; ``relaxed`` names them all. «Επιπλωμένο» is not loosened
+Then «ευρύτερα» (``tier=2``): every remaining rental within rent × 1,30 (two or more answers
+failed, or one past a step's cap), by ``score``, no cap; ``relaxed`` names what it fails. «Επιπλωμένο» is not loosened
 (C7 does not list it).
 
 Rent-value score («Βαθμολογία», 0–100, ``RentPick.score``): value 0–70 from ``vs_area_pct``
@@ -373,8 +373,9 @@ def find(
         # loosening first on a tie.
         ranked = []
         for i, step in enumerate(picks.near_steps(max_age, near_rail, areas, bedrooms)):
-            best = sorted(loose.get(step, []), key=RentPick.sort_key)[: picks.NEAR_MIN]
-            ranked += [(-p.score, i, p) for p in best]
+            group = sorted(loose.get(step, []), key=lambda p: (-p.score, p.sort_key()))
+            ranked += [(-p.score, i, p) for p in group[: picks.NEAR_MIN]]
+            wide += [replace(p, tier=2) for p in group[picks.NEAR_MIN :]]  # past the cap
         ranked.sort(key=lambda x: x[:2])
         out += [p for *_, p in ranked]
         out += sorted(wide, key=lambda p: (-p.score, p.sort_key()))  # «ευρύτερα», no cap

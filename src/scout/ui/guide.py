@@ -449,14 +449,14 @@ def coverage(listings: list[dict]) -> str:
 
 
 def tier_text(near: int, wide: int) -> str:
-    """«**55** κοντινές (ένας όρος χαλαρωμένος) και **410** ευρύτερα (περισσότεροι όροι)»."""
+    """«**55** κοντινές (ένας όρος χαλαρωμένος) και **410** ευρύτερα (πιο μακριά από αυτό που ζήτησες)»."""
     parts = []
     if near:
         noun = "κοντινή" if near == 1 else "κοντινές"
         parts.append(f"**{buyer._num(near)}** {noun} (ένας όρος χαλαρωμένος)")
     if wide:
         noun = "ευρύτερη" if wide == 1 else "ευρύτερα"
-        parts.append(f"**{buyer._num(wide)}** {noun} (περισσότεροι όροι)")
+        parts.append(f"**{buyer._num(wide)}** {noun} (πιο μακριά από αυτό που ζήτησες)")
     return " και ".join(parts)
 
 

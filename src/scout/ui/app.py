@@ -2365,7 +2365,7 @@ NAV = {
     "Αναζήτηση": buyer.page_search,
     "Χάρτης": page_map,
     "Αγαπημένα": buyer.page_watchlist,
-    "Αποθηκευμένες αναζητήσεις": buyer.page_shortlist,
+    buyer.NAV_SAVED: buyer.page_shortlist,
     "Σύγκριση": page_compare,
     buyer.NAV_DETAIL: buyer.page_listing,
 }
@@ -2380,8 +2380,9 @@ ADMIN_NAV = {  # open with ?admin=1
 }
 
 
-# Phone navigation: one tap, short labels. Each maps to an existing NAV key (never renamed).
-# «Αποθηκευμένες αναζητήσεις» and «Αγγελία» are reached from their pages, so no pill.
+# The one navigation (every width): one tap, short labels. Each maps to a NAV key (never
+# renamed). «Αποθηκευμένες αναζητήσεις» opens from the sidebar and from «Αναζήτηση»;
+# «Αγγελία» opens from cards only, so neither is a pill.
 SHORT_NAV = {
     ("Οδηγός" if guide is not None else HOME): HOME,
     "Περιοχές": "Πού να αγοράσω",
@@ -2396,8 +2397,8 @@ _PILL_OF = {key: short for short, key in SHORT_NAV.items()}
 def _pick_page() -> None:
     """Pill tapped -> go to its page. Deselecting (None) keeps the current page."""
     pick = st.session_state.get("nav_pill")
-    if pick in SHORT_NAV:
-        st.session_state["page"] = SHORT_NAV[pick]
+    if pick in SHORT_NAV or pick in ADMIN_NAV:
+        st.session_state["page"] = SHORT_NAV.get(pick, pick)
 
 
 def _data_status(listings: list[dict]) -> str:
@@ -2429,22 +2430,25 @@ def _refresh_data() -> None:
 def main() -> None:
     admin = bool(st.query_params.get("admin"))
     pages = {**NAV, **(ADMIN_NAV if admin else {})}
-    with st.sidebar:  # desktop / keyboard navigation; on a phone the pills below do the job
+    # session_state["page"] is the single source of truth: the pills, cards and buttons set it.
+    if st.session_state.get("page") not in pages:
+        st.session_state["page"] = HOME
+    page = st.session_state["page"]
+    with st.sidebar:  # sign-in, refresh and the saved searches; the pages are the pills
         account.login_ui()
-        # «Αγγελία» needs a selected listing: reachable from cards only, listed only while open.
-        shown = [p for p in pages if p != buyer.NAV_DETAIL or st.session_state.get("page") == p]
-        page = st.radio("Σελίδα", shown, key="page", label_visibility="collapsed")
         st.button("Ανανέωση δεδομένων", key="refresh", on_click=_refresh_data, width="stretch")
+        st.button(buyer.NAV_SAVED, key="nav_saved", type="tertiary", on_click=buyer.open_saved)
     # One header line, the data line under it, then the pills (every page).
     listings = get_listings()
     with st.container(key="app-head"):  # theme.py: the wordmark and the quiet data line
         st.markdown('<div class="hg-app-head">Σκάουτ ακινήτων</div>', unsafe_allow_html=True)
         st.caption(_data_status(listings))
     # Pills mirror the current page (pages also navigate by setting session_state["page"]).
-    st.session_state["nav_pill"] = _PILL_OF.get(page)
+    # With ?admin=1 the owner's tools follow the buyer pages, under their own names.
+    st.session_state["nav_pill"] = _PILL_OF.get(page, page if page in ADMIN_NAV else None)
     st.pills(
         "Σελίδα",
-        list(SHORT_NAV),
+        list(SHORT_NAV) + (list(ADMIN_NAV) if admin else []),
         key="nav_pill",
         on_change=_pick_page,
         label_visibility="collapsed",

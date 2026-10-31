@@ -73,15 +73,65 @@ def test_deep_link_via_session_state_selects_page_and_pill(env):  # noqa: F811
 
 def test_detail_page_is_not_a_menu_item_but_opens_from_a_card(env):  # noqa: F811
     at = _app()
-    assert "Αγγελία" not in at.radio(key="page").options
+    assert "Αγγελία" not in at.pills(key="nav_pill").options
     at.pills(key="nav_pill").set_value("Αναζήτηση").run()
     next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
     ok(at, "detail")
     assert at.session_state["page"] == "Αγγελία"
     assert at.pills(key="nav_pill").value is None
-    assert "Αγγελία" in at.radio(key="page").options  # listed only while it is open
+    assert "Αγγελία" not in at.pills(key="nav_pill").options  # never a pill, even while open
     at.pills(key="nav_pill").set_value("Χάρτης").run()
-    assert "Αγγελία" not in at.radio(key="page").options
+    assert at.session_state["page"] == "Χάρτης"
+
+
+# C9 — one navigation: the pills on every width; the sidebar keeps sign-in, refresh and
+# the saved searches link, nothing that lists the pages.
+
+
+def test_one_navigation_no_page_menu_in_the_sidebar(env):  # noqa: F811
+    at = _app()
+    assert not at.radio  # the old sidebar menu is gone everywhere
+    assert [b.key for b in at.sidebar.button] == ["login_go", "login_new", "refresh", "nav_saved"]
+    assert not any(b.label in SHORT_TO_KEY for b in at.sidebar.button)
+    assert at.sidebar.button(key="nav_saved").label == "Αποθηκευμένες αναζητήσεις"
+    assert at.sidebar.button(key="nav_saved").proto.type == "tertiary"  # link-style
+
+
+def test_saved_searches_open_from_the_sidebar_and_from_search(env):  # noqa: F811
+    at = _app()
+    at.sidebar.button(key="nav_saved").click().run()
+    ok(at, "sidebar saved")
+    assert at.session_state["page"] == "Αποθηκευμένες αναζητήσεις"
+    assert any(m.value == "## Αποθηκευμένες αναζητήσεις" for m in at.markdown)
+    assert at.pills(key="nav_pill").value is None
+    at.pills(key="nav_pill").set_value("Αναζήτηση").run()
+    assert at.button(key="to_saved").label == "Αποθηκευμένες"
+    at.button(key="to_saved").click().run()
+    ok(at, "search saved")
+    assert at.session_state["page"] == "Αποθηκευμένες αναζητήσεις"
+
+
+def test_unknown_page_in_state_falls_back_home(env):  # noqa: F811
+    at = _app()
+    at.session_state["page"] = "🛠 Debug"  # an owner page without ?admin=1
+    at.run()
+    ok(at, "fallback")
+    assert at.session_state["page"] == HOME
+    assert at.pills(key="nav_pill").value == HOME_PILL
+
+
+def test_admin_pages_are_pills_after_the_buyer_pages(env):  # noqa: F811
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["admin"] = "1"
+    at.run()
+    ok(at, "admin")
+    opts = list(at.pills(key="nav_pill").options)
+    assert opts[: len(SHORT_TO_KEY)] == list(SHORT_TO_KEY)
+    assert "Debug" in opts  # Streamlit shows a leading emoji as the pill's icon
+    at.pills(key="nav_pill").set_value("🛠 Debug").run()
+    ok(at, "debug")
+    assert at.session_state["page"] == "🛠 Debug"
+    assert at.pills(key="nav_pill").value == "🛠 Debug"
 
 
 def test_listing_page_back_returns_where_it_was_opened(env):  # noqa: F811

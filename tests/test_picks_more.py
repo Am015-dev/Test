@@ -133,12 +133,14 @@ def test_no_near_matches_after_a_long_strict_list():
     assert len(got) == 30 and all(not p.relaxed for p in got)
 
 
-def test_each_step_keeps_at_most_three_pages():
-    # 40 off-station flats in distinct blocks: the station step contributes NEAR_MIN.
+def test_each_step_keeps_at_most_three_pages_and_the_rest_go_wider():
+    # 36 off-station flats in distinct blocks: the station step keeps NEAR_MIN, the other 6
+    # go to «ευρύτερα» with their own label — every flat in the band appears exactly once.
     rows = [flat(i, 280_000 + i * 500, hood="Γαλάτσι (Λαμπρινή)", year=1990 + i) for i in range(36)]
     got = run(rows, max_age=None)
-    assert len(got) == picks.NEAR_MIN == 3 * picks.PAGE
+    assert [p.tier for p in got] == [1] * picks.NEAR_MIN + [2] * 6
     assert all(p.relaxed == "χωρίς όρο σταθμού" for p in got)
+    assert {p.listing["id"] for p in got} == set(range(36))
 
 
 def test_every_pick_carries_the_buyer_score_of_advise():
@@ -296,3 +298,10 @@ def test_order_is_trust_ladder_then_the_score_in_every_tier(published):
 def test_rent_order_is_the_score():
     got = picks_rent.find(RENTALS, 800, bedrooms=2, top=10**6)
     assert [p.score for p in got] == sorted((p.score for p in got), reverse=True)
+
+
+def test_rent_overflow_past_a_step_cap_goes_wider():
+    rows = [rental(i, 700 + i, hood=f"Χαλάνδρι ({i})", bedrooms=3) for i in range(35)]
+    got = picks_rent.find(rows, 800, bedrooms=2, top=10**6, near=True)
+    assert [p.tier for p in got] == [1] * picks.NEAR_MIN + [2] * 5
+    assert len({p.listing["id"] for p in got}) == 35

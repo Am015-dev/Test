@@ -66,6 +66,8 @@ _SNAPSHOT_FIELDS = (
     "net_yield",
     "predicted_price",
     "value_gap_pct",
+    # The search card's first photo: every collector reads it from the card, so each
+    # sighting refreshes it (and clears it when the portal shows only its placeholder).
     "image_url",
     "listing_type",
     "furnished",
