@@ -25,11 +25,11 @@ APP = str(Path(__file__).resolve().parents[1] / "src" / "scout" / "ui" / "app.py
 
 
 def _open(at, label: str):
-    """Switch the sidebar page (the home page is now Αναζήτηση, not Opportunities)."""
-    if label not in at.radio(key="page").options:  # analyst pages live behind ?admin=1
+    """Switch page with the pills (the home page is now Αναζήτηση, not Opportunities)."""
+    if label not in at.pills(key="nav_pill").options:  # analyst pages live behind ?admin=1
         at.query_params["admin"] = "1"
         at.run()
-    at.radio(key="page").set_value(label).run()
+    at.pills(key="nav_pill").set_value(label).run()
     return at
 
 
