@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import (
     Boolean,
     DateTime,
@@ -21,6 +21,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -93,6 +94,19 @@ class Listing(BaseModel):
     value_gap_pct: float | None = None
 
     image_url: str | None = None  # a representative photo (card carousel / detail og:image)
+    # What the listing's own page says, verbatim (JSON-LD description, whitespace-collapsed,
+    # capped) and how many photos it has. Only the detail page carries these; a None means
+    # the page was never read, so the upsert never lets a card-only sighting blank them.
+    description: str | None = None
+    photo_count: int | None = None
+
+    @field_validator("description")
+    @classmethod
+    def _clean_description(cls, value: str | None) -> str | None:
+        # Every portal's text is stored the same way: whitespace collapsed, capped.
+        from .collectors.parse_helpers import clean_description
+
+        return clean_description(value)
 
     first_seen: datetime | None = None
     last_seen: datetime | None = None
@@ -183,6 +197,9 @@ class ListingRow(Base):
     predicted_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
     value_gap_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # See Listing.description / photo_count. Added by forward migration on old DBs.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    photo_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Latest computed score (denormalized for fast UI reads).
     score: Mapped[float] = mapped_column(Float, default=0.0)

@@ -69,6 +69,11 @@ _SNAPSHOT_FIELDS = (
     "image_url",
 )
 
+# Fields only a listing's own (detail) page provides. Copied only when the incoming listing
+# carries a value: a results-page sighting knows nothing about them and must not blank what
+# an earlier page read stored.
+_DETAIL_FIELDS = ("description", "photo_count")
+
 
 def get_engine() -> Engine:
     global _engine, _SessionFactory
@@ -106,6 +111,9 @@ def init_db() -> None:
             "rent_estimated": "BOOLEAN DEFAULT TRUE",
             # Legacy rows have no description to judge from → not flagged.
             "is_unfinished": "BOOLEAN DEFAULT FALSE",
+            # What the listing page says + its photo count; NULL = page not read yet.
+            "description": "TEXT",
+            "photo_count": "INTEGER",
         },
     )
     _ensure_index(engine, "ix_listing_search_area", "listing", "search_area")
@@ -185,7 +193,7 @@ def upsert_listing_with_history(
             last_seen=now,
             status="active",
         )
-        for field in _SNAPSHOT_FIELDS:
+        for field in _SNAPSHOT_FIELDS + _DETAIL_FIELDS:
             setattr(row, field, getattr(listing, field))
         session.add(row)
         session.flush()  # assign row.id
@@ -204,6 +212,10 @@ def upsert_listing_with_history(
         setattr(row, field, getattr(listing, field))
     if was_unfinished:
         row.is_unfinished = True
+    for field in _DETAIL_FIELDS:
+        value = getattr(listing, field)
+        if value is not None:
+            setattr(row, field, value)
     row.last_seen = now
 
     if price_changed:

@@ -47,8 +47,10 @@ def test_normalize_maps_to_listing():
     assert listing is not None
     assert listing.price == 215000
     assert listing.neighborhood == "Άνω Χολαργός"
-    # description is portal-specific and must not leak onto the canonical schema.
-    assert not hasattr(listing, "description")
+    # The portal's own text is canonical now (shown as "what the page says"), but always
+    # whitespace-collapsed and capped, never stored raw.
+    assert listing.description == " ".join(raw["description"].split())[:1500]
+    assert "\n" not in listing.description
 
 
 def test_normalize_drops_unusable_raw():
