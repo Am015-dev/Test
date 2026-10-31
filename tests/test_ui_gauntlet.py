@@ -202,14 +202,21 @@ def env(tmp_path, monkeypatch):
     return fake
 
 
+def goto(at, page: str):
+    """Open a page the way the pills, cards and buttons do: session_state["page"] is the one
+    source of truth (the pills themselves are covered in test_shell)."""
+    at.session_state["page"] = page
+    return at.run()
+
+
 def fresh(page: str):
     at = AppTest.from_file(APP, default_timeout=60).run()
     assert not at.exception, [e.value for e in at.exception]
     if page != PAGES[0]:  # the app opens on the first menu entry
-        if page in at.radio(key="page").options:
-            at.radio(key="page").set_value(page).run()
+        if page != DETAIL:
+            goto(at, page)
         else:  # «Αγγελία» is not a menu item: open it from a card, like a user does
-            at.radio(key="page").set_value("Αναζήτηση").run()
+            goto(at, SEARCH)
             next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
             assert at.session_state["page"] == page
     return at
@@ -246,7 +253,7 @@ def test_buyer_journey(env):
     ok(at, "star")
     assert any(b.label == "Αφαίρεση από αγαπημένα" for b in at.button)
     # it is on the favourites page and persisted in the gist
-    at.radio(key="page").set_value(STARRED).run()
+    goto(at, STARRED)
     ok(at, "favourites")
     assert any(m.value == "## Αγαπημένα (1)" for m in at.markdown)
     # open its details from the favourites page
@@ -272,15 +279,15 @@ def test_buyer_journey(env):
     # unstar from the listing page
     next(b for b in at.button if b.label == "Αφαίρεση από αγαπημένα").click().run()
     ok(at, "unstar")
-    at.radio(key="page").set_value(STARRED).run()
+    goto(at, STARRED)
     assert any("Δεν έχεις αγαπημένα" in i.value for i in at.info)
     # save the search
-    at.radio(key="page").set_value(SEARCH).run()
+    goto(at, SEARCH)
     at.button(key="save_mandate").click().run()
     ok(at, "save mandate")
     assert any("Αποθηκεύτηκε" in s.value for s in at.success)
     # shortlist: the mandate shows with picks; approve one, reject one
-    at.radio(key="page").set_value(SHORTLIST).run()
+    goto(at, SHORTLIST)
     ok(at, "shortlist")
     next(b for b in at.button if b.label == "Έγκριση").click().run()
     ok(at, "approve")
@@ -288,10 +295,10 @@ def test_buyer_journey(env):
     ok(at, "reject")
     assert any("εγκρίθηκαν 1" in e.label and "απορρίφθηκαν 1" in e.label for e in at.expander)
     # the approved one is now starred
-    at.radio(key="page").set_value(STARRED).run()
+    goto(at, STARRED)
     assert any(m.value == "## Αγαπημένα (1)" for m in at.markdown)
     # delete the mandate
-    at.radio(key="page").set_value(SHORTLIST).run()
+    goto(at, SHORTLIST)
     next(b for b in at.button if b.label == "Διαγραφή αναζήτησης").click().run()
     ok(at, "delete")
     assert any("Καμία αποθηκευμένη αναζήτηση" in i.value for i in at.info)
@@ -375,7 +382,7 @@ def fresh_admin(page: str):
     at.query_params["admin"] = "1"
     at.run()
     assert not at.exception, [e.value for e in at.exception]
-    at.radio(key="page").set_value(page).run()
+    at.pills(key="nav_pill").set_value(page).run()  # the owner's tools are pills too
     return at
 
 

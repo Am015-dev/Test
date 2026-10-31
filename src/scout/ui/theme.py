@@ -224,7 +224,6 @@ hr, [data-testid="stDivider"] {{
 [data-testid="stSidebar"] h1,
 [data-testid="stSidebar"] h2,
 [data-testid="stSidebar"] h3 {{ font-size: var(--hg-fs-body); letter-spacing: 0; }}
-[data-testid="stSidebar"] .stRadio label {{ font-size: var(--hg-fs-subhead); }}
 
 /* ------------------------------------------------------------------ *
  * Buttons & link-buttons — solid, calm, slightly rounded.
@@ -450,29 +449,12 @@ footer {{ visibility: hidden; height: 0; }}
     white-space: nowrap; transition: background .15s ease; }}
 @media (hover: hover) {{ .ph-cta:hover {{ background: var(--hg-accent-2); }} }}
 
-/* ------------------------------------------------------------------ *
- * Sidebar navigation — turn the default radio into a clean nav menu.
- * ------------------------------------------------------------------ */
-[data-testid="stSidebar"] [role="radiogroup"] {{ gap: 4px; }}
-[data-testid="stSidebar"] [role="radiogroup"] label {{
-    display: flex; align-items: center; width: 100%;
-    padding: 8px 12px; border-radius: var(--hg-r-control); cursor: pointer;
-    font-size: var(--hg-fs-subhead); font-weight: 550; color: var(--hg-ink-soft);
-    transition: background .12s ease, color .12s ease;
+/* The sidebar's one link: «Αποθηκευμένες αναζητήσεις», a text button on the left edge. */
+[data-testid="stSidebar"] .st-key-nav_saved button {{
+    min-height: var(--hg-target); padding: 0 12px; justify-content: flex-start;
+    border: 0; background: transparent; box-shadow: none;
 }}
-@media (hover: hover) {{
-    [data-testid="stSidebar"] [role="radiogroup"] label:hover {{ background: #E7EDF4; }}
-}}
-/* hide the radio dot itself (label > [hidden input span] + div > [dot div, text div]) */
-[data-testid="stSidebar"] [role="radiogroup"] label > div:first-child,
-[data-testid="stSidebar"] [data-testid="stRadioOption"] > div > div:first-child:not(:has(p)) {{
-    display: none;
-}}
-/* selected item — teal pill */
-[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {{
-    background: var(--hg-accent); color: #fff;
-}}
-[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {{ color: #fff; font-weight: 650; }}
+[data-testid="stSidebar"] .st-key-nav_saved button p {{ color: var(--hg-accent); font-weight: 600; }}
 
 /* ------------------------------------------------------------------ *
  * Metric rows on phones: two tiles per row instead of one tall stack.
