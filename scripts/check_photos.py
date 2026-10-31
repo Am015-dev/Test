@@ -53,7 +53,7 @@ MIN_IMAGES = 3
 # writes them (seen live: stop_reason=max_tokens after `{"labels": `). Thinking off, as
 # scout.ui.assistant does; the SDK/API take no temperature for this model family.
 MAX_TOKENS = 300
-THINKING_OFF = {"type": "between_tools"}
+THINKING_OFF = {"type": "disabled"}
 MAX_IMAGE_BYTES = 4_500_000  # API limit is 5 MB per image
 # When no label has a majority, the least flattering one wins: a real photo needs a majority.
 TIE_ORDER = ("render", "plan", "site", "stock", "photo")
