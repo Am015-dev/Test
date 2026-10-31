@@ -175,9 +175,15 @@ def run(
                 logger.warning("enrich failed for %s: %s", lst.dedup_key, exc)
                 enriched.append(lst)
 
-    # 3. Dedup (keep cheapest canonical per physical property).
+    # 3. Dedup (cheapest canonical per physical property) — used ONLY so market stats
+    # count each flat once. Every portal's listing is still stored: the fuzzy match here
+    # (m² ±3, price ±5 %, any shared area word; no floor/year) is too loose to drop data
+    # on, and the UI groups cross-portal copies with the stricter ``market_intel.twins``
+    # (same municipality, m², floor, year, price ±10 %), so a buyer sees «και σε N ακόμα
+    # πηγές» instead of losing the second portal's link.
     groups = deduplicate(enriched)
     canonical = [g.canonical for g in groups]
+    to_store = [lst for g in groups for lst in (g.canonical, *g.duplicates)]
 
     # 3b. Hedonic valuation: fit a fair-price model PER AREA and annotate each listing
     # with predicted_price + value_gap_pct. This is what lets scoring tell a genuine
@@ -185,7 +191,7 @@ def run(
     # cheap because it's old/small/low. Per-area fits are far more accurate than one
     # pooled model (R²≈0.7-0.8 vs ≈0.3). Fails soft: too few comps → the undervaluation
     # signal falls back to the naive €/m²-vs-median.
-    val_models = fit_and_apply_by_area(canonical)
+    val_models = fit_and_apply_by_area(to_store)
     for area, m in val_models.items():
         logger.info(
             "valuation model [%s]: %d comps, R²=%.2f, ±%.0f%% band",
@@ -200,9 +206,7 @@ def run(
     # Every collected listing counts as "seen" — including the non-canonical
     # duplicates — so a run where the cheaper source flips canonical doesn't leave
     # the other source's still-live row looking unseen and retire it.
-    seen_keys: set[tuple[str, str]] = {
-        (lst.source, lst.source_id) for g in groups for lst in [g.canonical, *g.duplicates]
-    }
+    seen_keys: set[tuple[str, str]] = {(lst.source, lst.source_id) for lst in to_store}
     stored = 0
     with session_scope() as session:
         # One-time backfill: rows created before per-area tagging have search_area
@@ -215,7 +219,7 @@ def run(
                 .where(ListingRow.search_area.is_(None))
                 .values(search_area=effective_area)
             )
-        for lst in canonical:
+        for lst in to_store:
             try:
                 # SAVEPOINT per listing so a single failed flush (a UNIQUE/NOT NULL
                 # violation, a cross-area duplicate-key race, an oversized field) rolls
