@@ -17,7 +17,7 @@ import pytest
 from scout import picks_rent
 from scout.ui import rent_guide
 
-from .test_ui_gauntlet import FIND, env, fresh, ok  # noqa: F401 — AppTest harness
+from .test_ui_gauntlet import FIND, env, fresh, goto, ok  # noqa: F401 — AppTest harness
 
 YEAR = 2026
 
@@ -172,11 +172,11 @@ def test_rent_flow_end_to_end(rent_env):
     star = next(b for b in at.button if (b.key or "").startswith("rent-star-"))
     star.click().run()
     ok(at, "star")
-    at.radio(key="page").set_value("Αγαπημένα").run()
+    goto(at, "Αγαπημένα")
     ok(at, "favourites")
     assert "## Αγαπημένα (1)" in _text(at) and "### Ενοίκια" in _text(at)
     assert any((b.key or "").startswith("wrent-star-") for b in at.button)
-    at.radio(key="page").set_value("Οδηγός").run()
+    goto(at, "Οδηγός")
     # a chip reopens its question; the mode chip reopens step 0
     at.button_group(key="rent_chips").set_value("υπν. αδιάφορο").run()
     assert "Βήμα 2 από 5" in _text(at)
