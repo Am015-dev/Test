@@ -115,6 +115,8 @@ def compute_market_stats(listings: Iterable[Listing]) -> MarketStats:
     all_ppm2: list[float] = []
 
     for lst in listings:
+        if lst.listing_type == "rent":
+            continue  # a monthly rent is not a sale price: rentals never enter sale stats
         ppm2 = lst.price_per_m2
         if ppm2 is None and lst.area_m2:
             ppm2 = lst.price / lst.area_m2
@@ -390,7 +392,12 @@ def score(
     strategy: Strategy,
     first_price: int | None = None,
 ) -> ScoredListing:
-    """Score a single listing. ``first_price`` enables the price-drop signal."""
+    """Score a single listing. ``first_price`` enables the price-drop signal.
+
+    Rental ads (``listing_type == "rent"``) are never scored: they come back excluded with
+    reason ``"rent"`` — the one mechanism that keeps them out of every sale ranking."""
+    if listing.listing_type == "rent":
+        return _excluded(listing, "rent")
     # 1. Hard filters.
     # Non-dwelling types (air rights, land, shops, parking…) have no comparable €/m² or
     # rentable value — exclude before anything else so they never reach stats/comps.

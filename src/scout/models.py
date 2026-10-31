@@ -10,15 +10,17 @@ Two layers:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -27,6 +29,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 ListingStatus = Literal["active", "gone"]
+ListingType = Literal["sale", "rent"]
 
 
 # ---- Pydantic canonical model ---------------------------------------------
@@ -108,6 +111,14 @@ class Listing(BaseModel):
 
         return clean_description(value)
 
+    # "rent" rows are rental ads (price = monthly rent). They live in the same table as
+    # sales, under the same dedup/history/retire rules, but are never scored, never in sale
+    # market stats and never comps for sale flats (scoring.score excludes them as "rent").
+    listing_type: ListingType = "sale"
+    # Rental-card facts, None when the ad does not say.
+    furnished: bool | None = None
+    available_from: date | None = None
+
     first_seen: datetime | None = None
     last_seen: datetime | None = None
     status: ListingStatus = "active"
@@ -142,7 +153,10 @@ class ListingRow(Base):
     """Current snapshot — one row per unique listing."""
 
     __tablename__ = "listing"
-    __table_args__ = (UniqueConstraint("source", "source_id", name="uq_source_listing"),)
+    __table_args__ = (
+        UniqueConstraint("source", "source_id", name="uq_source_listing"),
+        Index("ix_listing_type_status", "listing_type", "status"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source: Mapped[str] = mapped_column(String(32), index=True)
@@ -219,6 +233,14 @@ class ListingRow(Base):
     status: Mapped[str] = mapped_column(String(16), default="active", index=True)
 
     is_watched: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # See Listing.listing_type / furnished / available_from. Added by forward migration on
+    # old DBs (listing_type DEFAULT 'sale', so every legacy row reads as a sale).
+    listing_type: Mapped[str] = mapped_column(
+        Text, nullable=False, default="sale", server_default="sale"
+    )
+    furnished: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    available_from: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     prices: Mapped[list[PriceHistoryRow]] = relationship(
         back_populates="listing", cascade="all, delete-orphan"
