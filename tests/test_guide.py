@@ -60,7 +60,7 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     ]  # fmt: skip
     text = _text(at)
     assert (
-        "Πρόταση: **" in text
+        "Σου προτείνω: **" in text
         and "Δόση ~" in text
         and "Πηγές: XE.gr · " in " ".join(c.value for c in at.caption)
     )
@@ -126,11 +126,11 @@ def test_loan_maths_on_a_synthetic_listing():
     p = picks.find(rows, market_intel.build(rows, YEAR), RENTS, 300_000, year=YEAR, loan=True)[0]
     assert (p.rent, p.instalment, p.cashflow) == (1210, 1110, 100)
     assert p.loan and p.loan_line == (
-        "Δόση ~1.110 €/μήνα (δάνειο 70 %, 4 %, 25 έτη) → μένουν 100 €"
+        "Δόση ~1.110 €/μήνα (δάνειο 70 %, επιτόκιο 4 %, 25 χρόνια). Το ενοίκιο την καλύπτει και περισσεύουν 100 € τον μήνα."
     )
     rows = [flat(2, 320_000, m2=80)]
     p = picks.find(rows, market_intel.build(rows, YEAR), RENTS, 300_000, year=YEAR, loan=True)[0]
-    assert p.cashflow < 0 and p.loan_line.endswith(f"λείπουν {-p.cashflow} €")
+    assert p.cashflow < 0 and p.loan_line.endswith(f"λείπουν {-p.cashflow} € τον μήνα.")
 
 
 def test_answer_chips_and_relax_mapping():
@@ -252,7 +252,7 @@ def test_near_matches_follow_with_their_label_counts_and_score(env, monkeypatch)
     cards = [m.value for m in at.markdown if 'class="hg-card"' in m.value]
     assert cards and len(cards) == min(near, picks.PAGE)
     assert all(">Βαθμολογία " in c for c in cards)
-    assert all("Έξω από: " in c for c in cards)  # no exact match: every card is a near one
+    assert all("Ξεφεύγει: " in c for c in cards)  # no exact match: every card is a near one
     # the relaxation buttons stay as a shortcut to make a loosening permanent
     assert any((b.key or "").startswith("relax-") for b in at.button)
 
@@ -261,10 +261,10 @@ def test_counts_line_wording():
     line = guide.counts_line(2, 55, "140.800 €–179.200 €, νεόδμητο", 3, 410)
     assert line.startswith(
         "**2** αγγελίες 140.800 €–179.200 €, νεόδμητο ακριβώς όπως ζήτησες, **55** κοντινές "
-        "(ένας όρος χαλαρωμένος) και **410** ευρύτερα (πιο μακριά από αυτό που ζήτησες)."
+        "(με έναν όρο πιο χαλαρό) και **410** ευρύτερα (πιο μακριά από αυτό που ζήτησες)."
     )
     assert "**1.286** ευρύτερα" in guide.counts_line(0, 5, "x", 0, 1286)
-    assert "και **31** κοντινές (ένας όρος χαλαρωμένος)." in guide.counts_line(4, 31, "x", 0)
+    assert "και **31** κοντινές (με έναν όρο πιο χαλαρό)." in guide.counts_line(4, 31, "x", 0)
     assert guide.counts_line(0, 1, "x", 0).startswith(
         "Καμία ακριβώς όπως ζήτησες (x)· **1** κοντινή"
     )
