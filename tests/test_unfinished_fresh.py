@@ -193,3 +193,29 @@ def test_scoring_cuts_unfinished_and_off_plan_hard():
     off_plan = score(base.model_copy(update={"year_built": date.today().year}), stats, strategy)
     assert shell.score <= normal * 0.3 and not shell.is_opportunity
     assert off_plan.score < normal * 0.75 and not off_plan.is_opportunity
+
+
+def test_a_card_never_unflags_what_the_listing_page_said(tmp_path, monkeypatch):
+    from datetime import datetime
+
+    import scout.db as dbmod
+    from scout.db import init_db, session_scope, upsert_listing_with_history
+
+    from .conftest import make_listing
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 't.db'}")
+    dbmod._engine = None
+    dbmod._SessionFactory = None
+    from scout.config import get_settings
+
+    get_settings.cache_clear() if hasattr(get_settings, "cache_clear") else None
+    init_db()
+    lst = make_listing(source_id="u1")
+    with session_scope() as s:
+        row = upsert_listing_with_history(s, lst)
+        row.is_unfinished, row.detail_checked_at = True, datetime.utcnow()
+    with session_scope() as s:
+        row = upsert_listing_with_history(s, lst)  # next week's card: is_unfinished=False
+        assert row.is_unfinished
+    dbmod._engine = None
+    dbmod._SessionFactory = None

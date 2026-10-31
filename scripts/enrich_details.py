@@ -25,7 +25,7 @@ import argparse
 import logging
 import random
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import or_, select
 
@@ -35,6 +35,7 @@ from scout.collectors.xe import (
     parse_detail_coordinates,
     parse_detail_jsonld,
     parse_listed_date,
+    unfinished_on_detail,
 )
 from scout.config import get_settings, load_strategy
 from scout.db import init_db, session_scope
@@ -67,7 +68,28 @@ def _incomplete_xe_rows(session, limit: int) -> list[ListingRow]:
     return list(session.scalars(stmt).all())
 
 
-def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> dict:
+def _new_build_rows(session, limit: int) -> list[ListingRow]:
+    """Recent, never-checked listings of new buildings (≤10 years), cheapest-per-m² first.
+
+    Their results-page cards say "νεόδμητο 2025" whether the flat is finished or still a
+    shell sold off-plan; only the listing's own page says "Υπό κατασκευή" / "παράδοση
+    2027". These are exactly the flats a buyer is recommended, so they are checked first."""
+    year = datetime.utcnow().year
+    recent = datetime.utcnow() - timedelta(days=14)
+    stmt = (
+        select(ListingRow)
+        .where(ListingRow.source == "xe", ListingRow.status == "active")
+        .where(ListingRow.detail_checked_at.is_(None), ListingRow.excluded.is_(False))
+        .where(ListingRow.last_seen >= recent, ListingRow.year_built >= year - 10)
+        .order_by(ListingRow.price_per_m2)
+        .limit(limit)
+    )
+    return list(session.scalars(stmt).all())
+
+
+def enrich(
+    limit: int, rescore: bool = True, max_fetches: int | None = None, new_builds: bool = False
+) -> dict:
     """``max_fetches`` bounds LIVE network fetches only — cached pages replay free and
     unlimited. This keeps a run's wall-clock inside a predictable window regardless of
     how much cache-stamping backlog it clears first."""
@@ -76,7 +98,7 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
     collector = XeCollector(load_strategy())
     session_http = collector._new_session()
 
-    filled = {"energy_class": 0, "year_built": 0, "listed_date": 0, "coords": 0}
+    filled = {"energy_class": 0, "year_built": 0, "listed_date": 0, "coords": 0, "unfinished": 0}
     processed = 0
     fetched = 0
     # Circuit-breaker: XE redirects removed ads AND (when it has bot-flagged the IP) live
@@ -89,8 +111,8 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
     _GONE_STREAK_LIMIT = 10
     gone_streak: list = []
     with session_scope() as db:
-        rows = _incomplete_xe_rows(db, limit)
-        log.info("enriching %d incomplete XE listings", len(rows))
+        rows = _new_build_rows(db, limit) if new_builds else _incomplete_xe_rows(db, limit)
+        log.info("checking %d XE listing pages (new_builds=%s)", len(rows), new_builds)
         canaries = list(
             db.scalars(
                 select(ListingRow.url)
@@ -178,6 +200,9 @@ def enrich(limit: int, rescore: bool = True, max_fetches: int | None = None) -> 
             # Stamp the check regardless of what filled: a parsed page that lacks
             # energy/year is DONE, not pending — it must leave the enrichment queue.
             row.detail_checked_at = datetime.utcnow()
+            if unfinished_on_detail(html, detail):
+                row.is_unfinished = True
+                filled["unfinished"] += 1
             if row.energy_class is None and detail.get("energy_class"):
                 row.energy_class = detail["energy_class"]
                 filled["energy_class"] += 1
@@ -231,8 +256,18 @@ def main() -> None:
         help="stop after this many LIVE fetches (cached replays are free and unbounded)",
     )
     parser.add_argument("--no-rescore", action="store_true")
+    parser.add_argument(
+        "--new-builds",
+        action="store_true",
+        help="check recent new-build listings (finished or still under construction?)",
+    )
     args = parser.parse_args()
-    summary = enrich(limit=args.limit, rescore=not args.no_rescore, max_fetches=args.max_fetches)
+    summary = enrich(
+        limit=args.limit,
+        rescore=not args.no_rescore,
+        max_fetches=args.max_fetches,
+        new_builds=args.new_builds,
+    )
     print(f"Detail enrichment complete: {summary}")
 
 

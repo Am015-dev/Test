@@ -207,6 +207,7 @@ def _row_to_dict(
     d["year_built"], d["renovated_year"] = clean_future_years(row.year_built, row.renovated_year)
     d["building_age"] = _building_age(d["year_built"], d["renovated_year"])
     d["is_unfinished"] = bool(row.is_unfinished)
+    d["page_checked"] = row.detail_checked_at is not None
     d["is_fresh"] = True  # load_listings re-derives it against the whole loaded set
     d["strategy_tags"] = _strategy_tags(d)
     rec = _recommend(d)
