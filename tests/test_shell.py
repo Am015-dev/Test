@@ -10,8 +10,15 @@ pytest.importorskip("streamlit.testing.v1")
 
 from .test_ui_gauntlet import APP, AppTest, env, ok  # noqa: E402,F401
 
+try:  # the home page is the guide (W8) once it lands, «Βρες μου σπίτι» before
+    from scout.ui.guide import TITLE as HOME
+
+    HOME_PILL = "Οδηγός"
+except ImportError:
+    HOME = HOME_PILL = "Βρες μου σπίτι"
+
 SHORT_TO_KEY = {
-    "Βρες μου σπίτι": "Βρες μου σπίτι",
+    HOME_PILL: HOME,
     "Περιοχές": "Πού να αγοράσω",
     "Αναζήτηση": "Αναζήτηση",
     "Χάρτης": "Χάρτης",
@@ -28,8 +35,8 @@ def _app() -> AppTest:
 
 def test_default_page_is_first_nav_entry_and_renders(env):  # noqa: F811
     at = _app()
-    assert at.session_state["page"] == "Βρες μου σπίτι"
-    assert at.pills(key="nav_pill").value == "Βρες μου σπίτι"
+    assert at.session_state["page"] == HOME
+    assert at.pills(key="nav_pill").value == HOME_PILL
     assert len(at.main) > 0
 
 
@@ -45,9 +52,10 @@ def test_every_short_label_routes_to_its_nav_key(env, short):  # noqa: F811
 
 def test_data_status_line_has_greek_numbers_and_no_english(env):  # noqa: F811
     at = _app()
-    line = next(c.value for c in at.caption if c.value.startswith("XE.gr ·"))
+    line = next(c.value for c in at.caption if c.value.startswith("XE.gr"))
+    # the sources present in the data (only XE.gr in the fixture), then date and counts
     assert re.fullmatch(
-        r"XE\.gr · \d\d/\d\d · [\d.]+ ενεργές · [\d.]+ ελεγμένες",
+        r"XE\.gr(, [^·]+)? · \d\d/\d\d · [\d.]+ ενεργές · [\d.]+ ελεγμένες",
         line,
     ), line
     assert not re.search(r"[A-Za-z]{3,}", line.replace("XE.gr", ""))
@@ -123,11 +131,17 @@ def test_compare_opens_filled_with_top_picks_when_no_favourites(env):  # noqa: F
     assert any(m.value.startswith("| | Α | Β |") for m in at.markdown)
 
 
-def test_map_filters_sit_in_one_expander(env):  # noqa: F811
+def test_map_page_is_the_map_with_the_ranked_list_under_it(env):  # noqa: F811
     at = _app()
     at.pills(key="nav_pill").set_value("Χάρτης").run()
     ok(at, "map")
-    assert len(at.expander) == 1 and at.expander[0].label == "Φίλτρα"
+    assert not at.dataframe  # no table to scroll to in order to understand a dot
+    assert [e.label for e in at.main.expander] == ["Φίλτρα"]  # the filters stay in one place
+    try:
+        import scout.ui.maplist  # noqa: F401
+    except ImportError:  # before W9: today's map + top cards
+        return
+    assert any(m.value.startswith("#### Όλες με τη σειρά") for m in at.markdown)
 
 
 def test_status_is_one_short_line_and_refresh_lives_in_the_sidebar(env):  # noqa: F811
@@ -136,3 +150,71 @@ def test_status_is_one_short_line_and_refresh_lives_in_the_sidebar(env):  # noqa
     assert len(line) <= 48  # one line at 390 px
     assert any(b.key == "refresh" for b in at.sidebar.button)
     assert not any(b.key == "refresh" for b in at.main.button)
+
+
+# ---- accounts in the shell ---------------------------------------------------------------
+
+
+def _sign_up(at: AppTest, name: str, pin: str, new: bool = True) -> AppTest:
+    at.sidebar.text_input(key="login_name").input(name)
+    at.sidebar.text_input(key="login_pin").input(pin)
+    at.sidebar.button(key="login_new" if new else "login_go").click().run()
+    ok(at, "login")
+    return at
+
+
+def test_login_block_renders_in_the_sidebar(env):  # noqa: F811
+    at = _app()
+    assert [e.label for e in at.sidebar.expander] == ["Σύνδεση"]
+    assert at.sidebar.text_input(key="login_pin").proto.type == 1  # PASSWORD
+    assert any(c.value.startswith("Χωρίς σύνδεση") for c in at.sidebar.caption)
+
+
+def test_sign_up_shows_who_and_logout_returns_to_anonymous(env):  # noqa: F811
+    at = _sign_up(_app(), "Μαρία", "1234")
+    assert any("Συνδεδεμένος ως **Μαρία**" in m.value for m in at.sidebar.markdown)
+    stored = __import__("json").loads(env.gists["g1"]["files"]["mandates.json"]["content"])
+    prof = stored["profiles"]["μαρια"]
+    assert "1234" not in __import__("json").dumps(stored)  # never the PIN itself
+    assert set(prof) >= {"salt", "hash", "data"}
+    at.sidebar.button(key="logout").click().run()
+    ok(at, "logout")
+    assert at.session_state["page"] == HOME
+    assert any(e.label == "Σύνδεση" for e in at.sidebar.expander)
+
+
+def test_wrong_pin_is_refused_without_echoing_it(env):  # noqa: F811
+    at = _sign_up(_app(), "Νίκος", "4321")
+    at.sidebar.button(key="logout").click().run()
+    at = _sign_up(at, "Νίκος", "9999", new=False)
+    texts = [w.value for w in at.sidebar.warning] + [c.value for c in at.sidebar.caption]
+    assert any("Λάθος PIN" in t for t in texts) and not any("9999" in t for t in texts)
+    assert not any("Συνδεδεμένος" in m.value for m in at.sidebar.markdown)
+
+
+def test_favourites_follow_the_profile(env):  # noqa: F811
+    at = _sign_up(_app(), "Ελένη", "1111")
+    at.pills(key="nav_pill").set_value("Αναζήτηση").run()
+    star = next(b for b in at.main.button if b.label == "☆ Αγαπημένο")
+    star.click().run()
+    ok(at, "star")
+    starred = set(at.session_state["watch"])
+    assert starred
+    at.sidebar.button(key="logout").click().run()
+    assert buyer_watch(at) == set()  # the anonymous profile has its own (empty) list
+    at = _sign_up(at, "Ελένη", "1111", new=False)
+    assert buyer_watch(at) == starred
+
+
+def buyer_watch(at: AppTest) -> set[str]:
+    at.pills(key="nav_pill").set_value("Αγαπημένα").run()
+    ok(at, "favourites")
+    return set(at.session_state["watch"])
+
+
+def test_deep_link_still_works_when_signed_in(env):  # noqa: F811
+    at = _sign_up(_app(), "Κώστας", "2468")
+    at.session_state["page"] = "Σύγκριση"
+    at.run()
+    ok(at, "deep link")
+    assert at.pills(key="nav_pill").value == "Σύγκριση"

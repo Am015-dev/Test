@@ -106,12 +106,30 @@ from scout.scoring import (  # noqa: E402
 )  # noqa: E402
 from scout.strategy_fit import STRATEGY_LABELS, strategy_label  # noqa: E402
 from scout.ui import (  # noqa: E402
+    account,  # noqa: E402
     areas,  # noqa: E402
     buyer,  # noqa: E402
     components,  # noqa: E402
-    find,  # noqa: E402
     queries,  # noqa: E402
 )
+
+# Round-3 pages land in separate PRs: use each when it exists, keep today's page otherwise.
+try:
+    from scout.ui import guide  # noqa: E402
+except ImportError:
+    guide = None
+try:
+    from scout.ui import find  # noqa: E402
+except ImportError:  # retired into the guide
+    find = None
+try:
+    from scout.ui import maplist  # noqa: E402
+except ImportError:
+    maplist = None
+try:
+    from scout.collectors import SOURCE_LABELS  # noqa: E402
+except ImportError:
+    SOURCE_LABELS = {"xe": "XE.gr"}
 from scout.ui import format as fmt  # noqa: E402
 
 sys.modules["scout"]._source_stamp = _SOURCE_STAMP
@@ -1434,9 +1452,6 @@ def page_map(listings: list[dict]) -> None:
     if not shown:
         st.info("Καμία αγγελία δεν ταιριάζει — χαλάρωσε την τιμή, το έτος ή την περιοχή.")
         return
-    components.results_map(shown, key="map_chart", height=420)
-
-    # The best few as the same cards as the search page (not a wide table).
     from scout import market_intel
 
     intel = market_intel.build(listings)
@@ -1451,6 +1466,11 @@ def page_map(listings: list[dict]) -> None:
         m = nl_search.match(d, SearchFilters())
         return rank(m[0] if m else 0, views[d["id"]], d)
 
+    if maplist is not None:  # one map, one selection, the ranked list directly under it
+        maplist.render(sorted(shown, key=_key), key="map", intel=intel)
+        return
+    components.results_map(shown, key="map_chart", height=420)
+    # The best few as the same cards as the search page (not a wide table).
     top = sorted(shown, key=_key)[:5]
     st.markdown("#### Οι 5 καλύτερες στον χάρτη")
     for d in top:
@@ -2208,7 +2228,7 @@ def page_saved_searches(listings: list[dict]) -> None:
 
 
 def _go_find() -> None:
-    st.session_state["page"] = find.TITLE
+    st.session_state["page"] = HOME
 
 
 def _compare_rows(d: dict, adv: dict) -> dict[str, str]:
@@ -2308,7 +2328,7 @@ def page_compare(listings: list[dict]) -> None:
     )
     if not pick_a or not pick_b:
         st.info("Διάλεξε δύο αγγελίες — ή άνοιξε «Βρες μου σπίτι» για να δεις τις καλύτερες.")
-        st.button("Βρες μου σπίτι", key="cmp_to_find", on_click=_go_find)
+        st.button(HOME, key="cmp_to_find", on_click=_go_find)
         return
     if pick_a == pick_b:
         st.info("Διάλεξε δύο διαφορετικές αγγελίες.")
@@ -2337,10 +2357,18 @@ def page_compare(listings: list[dict]) -> None:
         st.link_button(f"Άνοιγμα {tag} στο {d['source'].upper()} ↗", d["url"], width="stretch")
 
 
+# The home page: the guided flow (W8) when present, else «Βρες μου σπίτι».
+if guide is not None:
+    HOME, _home_page = guide.TITLE, getattr(guide, "page_guide", None) or guide.page
+elif find is not None:
+    HOME, _home_page = find.TITLE, find.page_find
+else:  # neither module: start on the search page
+    HOME, _home_page = "Αναζήτηση", buyer.page_search
+
 # What a buyer uses. The older rental-investor tools (yields, cap rate, Airbnb, Golden Visa)
 # stay reachable for the owner with ?admin=1.
 NAV = {
-    find.TITLE: find.page_find,
+    HOME: _home_page,
     "Πού να αγοράσω": areas.page_areas,
     "Αναζήτηση": buyer.page_search,
     "Χάρτης": page_map,
@@ -2363,7 +2391,7 @@ ADMIN_NAV = {  # open with ?admin=1
 # Phone navigation: one tap, short labels. Each maps to an existing NAV key (never renamed).
 # «Αποθηκευμένες αναζητήσεις» and «Αγγελία» are reached from their pages, so no pill.
 SHORT_NAV = {
-    "Βρες μου σπίτι": find.TITLE,
+    ("Οδηγός" if guide is not None else HOME): HOME,
     "Περιοχές": "Πού να αγοράσω",
     "Αναζήτηση": "Αναζήτηση",
     "Χάρτης": "Χάρτης",
@@ -2381,14 +2409,17 @@ def _pick_page() -> None:
 
 
 def _data_status(listings: list[dict]) -> str:
-    """One line that fits 390 px: «XE.gr · ΗΗ/ΜΜ · N ενεργές · M ελεγμένες», from the data."""
+    """One line: «XE.gr, Golden Home · ΗΗ/ΜΜ · N ενεργές · M ελεγμένες» — the sources actually
+    present in the loaded listings, then the data's date and counts."""
     last_up = _last_updated(listings)
     if last_up is None:
         return "Δεν υπάρχουν δεδομένα ακόμα."
     active = sum(1 for d in listings if d.get("is_fresh", True))
     checked = sum(1 for d in listings if d.get("page_checked"))
+    present = sorted({d.get("source") or "xe" for d in listings}, key=lambda k: (k != "xe", k))
+    sources = ", ".join(SOURCE_LABELS.get(k, k) for k in present)
     return (
-        f"XE.gr · {last_up:%d/%m} · {fmt._gr_int(active)} ενεργές · "
+        f"{sources} · {last_up:%d/%m} · {fmt._gr_int(active)} ενεργές · "
         f"{fmt._gr_int(checked)} ελεγμένες"
     )
 
@@ -2408,6 +2439,7 @@ def main() -> None:
     pages = {**NAV, **(ADMIN_NAV if admin else {})}
     with st.sidebar:  # desktop / keyboard navigation; on a phone the pills below do the job
         st.markdown("### Σκάουτ ακινήτων")
+        account.login_ui()
         # «Αγγελία» needs a selected listing: reachable from cards only, listed only while open.
         shown = [p for p in pages if p != buyer.NAV_DETAIL or st.session_state.get("page") == p]
         page = st.radio("Σελίδα", shown, key="page", label_visibility="collapsed")

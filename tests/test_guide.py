@@ -152,6 +152,8 @@ def test_contract_hooks_line4_and_profile_store(monkeypatch):
     import sys
     import types
 
+    import scout.ui
+
     # The real scout.metro_line4 (W12): a station counts only when the listing's own sub-area
     # carries its name, so «Γαλάτσι (Άλσος Βεΐκου)» has one and «Νέα Ιωνία (Κέντρο)» none.
     rows = [
@@ -185,6 +187,7 @@ def test_contract_hooks_line4_and_profile_store(monkeypatch):
     acc = types.ModuleType("scout.ui.account")
     acc.storage = lambda: store
     monkeypatch.setitem(sys.modules, "scout.ui.account", acc)
+    monkeypatch.setattr(scout.ui, "account", acc, raising=False)  # once the real one is imported
     assert guide._load_saved() == {"budget": 200_000, "step": 2}
     guide._save({"budget": 300_000})
     assert store.data["guide"] == {"budget": 300_000}
