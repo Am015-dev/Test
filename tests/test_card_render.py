@@ -112,8 +112,8 @@ def test_buyer_card_every_number_has_its_basis_one_tap_away_and_no_score():
     html = card_html(BUYER, {"cmp": CMP, "score": 81})
     basis = html.split("<details>", 1)[1]
     assert "12 × 900 € ÷ 245.000 € = 4,4 %" in basis  # the yield
-    assert "× 78 τ.μ." in basis and "αγγελίες ενοικίασης στο XE" in basis  # the rent
-    assert "12 αγγελίες (L), διάμεσος 3.600 €/τ.μ." in basis  # the comparables
+    assert "× 78 τ.μ." in basis and "τα διπλανά στο XE.gr" in basis  # the rent
+    assert "12 σπίτια (L). Ζητούν συνήθως 3.600 €/τ.μ." in basis  # the comparables
     assert "81" not in html and "Σκορ" not in html
     # no emoji decoration, no English, no raw keys
     assert not re.search(r"[\U0001F300-\U0001FAFF]", html)
@@ -124,7 +124,7 @@ def test_too_cheap_is_a_question_not_a_bonus():
     from scout.ui.buyer import comps_text
 
     assert comps_text({"cmp": {**CMP, "pct": -0.45}}).endswith(
-        "45 % κάτω — έλεγξε γιατί (τ.μ., κατάσταση, νομικά)"
+        "45 % κάτω. Πολύ φθηνό, έλεγξε γιατί"
     )
 
 
@@ -163,9 +163,9 @@ def test_compact_card_shows_at_most_five_lines_and_hides_the_rest_one_tap_away()
         "Ιδιώτης",
         "Ενεργειακή κλάση A+",
         "Μείωση από 260.000 €",
-        "δεν αναφέρει κατασκευή σε εξέλιξη",
+        "δεν γράφει ότι χτίζεται ακόμα",
         "12 × 900 € ÷ 245.000 € = 4,4 %",
-        "διάμεσος 3.600 €/τ.μ.",
+        "Ζητούν συνήθως 3.600 €/τ.μ.",
     ):
         assert fact in inside, fact
     assert "hg-more" not in html

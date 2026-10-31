@@ -28,9 +28,10 @@ NAV_SEARCH = "Αναζήτηση"  # label of the search page (the listing page 
 AI_LABEL = "Δεύτερη γνώμη από τεχνητή νοημοσύνη"
 
 CONF_HELP = (
-    "Αξιοπιστία σύγκρισης: Υψηλή = 12+ παρόμοια και το μεσαίο 50 % των τιμών τους απέχει έως "
-    "25 % του διάμεσου· Χαμηλή = λιγότερα από 8 παρόμοια ή εύρος πάνω από 45 %· αλλιώς Μέτρια. "
-    "Παρόμοια = ίδια περιοχή, ηλικία κτιρίου και (όπου γίνεται) μέγεθος και όροφος."
+    "Πόσο σίγουρη είναι η σύγκριση. Υψηλή: 12 παρόμοια και πάνω, με τιμές κοντά μεταξύ τους "
+    "(οι μισές μεσαίες απέχουν έως 25 % από τη συνηθισμένη). Χαμηλή: λιγότερα από 8 παρόμοια ή "
+    "τιμές που απλώνονται πάνω από 45 %. Μέτρια σε όλες τις άλλες περιπτώσεις. Παρόμοια λέμε τα "
+    "σπίτια της ίδιας περιοχής και ηλικίας και, όπου γίνεται, του ίδιου μεγέθους και ορόφου."
 )
 UNFINISHED_NOTE = "Υπό κατασκευή"
 
@@ -78,10 +79,10 @@ SORTS = {
     "Νεότερο κτίριο": lambda pct, adv, d: (-(d.get("year_built") or 0), d["price"]),
 }
 SORT_HELP = {
-    DEFAULT_SORT: "Πρώτα όσα έχουν τη χαμηλότερη τιμή ανά τ.μ. σε σχέση με παρόμοιες αγγελίες "
-    "(ίδια περιοχή, ηλικία, μέγεθος). Τελευταία όσα είναι υπό κατασκευή, πάνω από 35 % "
-    "φθηνότερα από τα παρόμοια (θέλουν έλεγχο) ή δεν έχουν αρκετά παρόμοια.",
-    "Υψηλότερη απόδοση": "Μικτή απόδοση = 12 × ενοίκιο (εκτίμηση) ÷ τιμή. Τελευταία όσα είναι "
+    DEFAULT_SORT: "Πρώτα όσα ζητούν λιγότερα ανά τ.μ. από τα άλλα σπίτια της γειτονιάς (ίδια "
+    "περιοχή, ηλικία, μέγεθος). Στο τέλος όσα είναι υπό κατασκευή, όσα είναι πάνω από 35 % "
+    "φθηνότερα από τα παρόμοια (θέλουν έλεγχο) και όσα δεν έχουν αρκετά παρόμοια.",
+    "Υψηλότερη απόδοση": "Μικτή απόδοση = 12 × ενοίκιο (εκτίμηση) ÷ τιμή. Στο τέλος όσα είναι "
     "υπό κατασκευή ή ύποπτα φθηνά.",
 }
 
@@ -166,7 +167,7 @@ def toggle_watch(key: str) -> None:
     on = key not in keys
     keys.add(key) if on else keys.discard(key)
     if st.session_state.get("watch_persisted") and not account.storage().set("watch", sorted(keys)):
-        _flash("error", "Δεν αποθηκεύτηκε — ισχύει μέχρι να κλείσεις τη σελίδα.")
+        _flash("error", "Δεν αποθηκεύτηκε. Το κρατάμε μέχρι να κλείσεις τη σελίδα.")
 
 
 def open_detail(listing_id: int) -> None:
@@ -196,10 +197,10 @@ def _reason(e: Exception) -> str:
     if status == 404:
         return "δεν βρέθηκε το αρχείο αποθήκευσης"
     if status is not None:
-        return "σφάλμα αποθήκευσης — δοκίμασε ξανά σε λίγο"
+        return "η αποθήκευση δεν έγινε, δοκίμασε ξανά σε λίγο"
     if isinstance(e, OSError | TimeoutError):
-        return "δεν υπάρχει σύνδεση — δοκίμασε ξανά σε λίγο"
-    return "απρόσμενο σφάλμα"
+        return "δεν υπάρχει σύνδεση, δοκίμασε ξανά σε λίγο"
+    return "κάτι πήγε στραβά, δοκίμασε ξανά"
 
 
 def _flash(kind: str, msg: str) -> None:
@@ -278,20 +279,20 @@ def rent_basis(d: dict) -> str:
     """Where the rent figure comes from, in one sentence."""
     rent, area = _rent(d), d.get("area_m2")
     if not rent:
-        return "Χωρίς τ.μ. δεν βγαίνει εκτίμηση ενοικίου."
+        return "Η αγγελία δεν γράφει τ.μ., άρα δεν βγάζουμε ενοίκιο."
     if d.get("listed_rent"):
-        return "Ενοίκιο που γράφει η αγγελία (το ακίνητο είναι ήδη νοικιασμένο)."
+        return "Το ενοίκιο το γράφει η αγγελία: το σπίτι είναι ήδη νοικιασμένο."
     per = (
-        f" ~{f'{rent / area:.1f}'.replace('.', ',')} €/τ.μ. τον μήνα × {_m2(area)} τ.μ."
+        f": ~{f'{rent / area:.1f}'.replace('.', ',')} €/τ.μ. τον μήνα × {_m2(area)} τ.μ."
         if area
         else ""
     )
     if d.get("rent_estimated", True):
         return (
-            f"Διάμεσο ζητούμενο ενοίκιο της περιοχής{per}, από αγγελίες ενοικίασης στο XE. "
-            "Όχι πραγματικό συμβόλαιο."
+            f"Τόσο ζητούν συνήθως για ενοίκιο τα διπλανά στο XE.gr{per}. Είναι αγγελίες, όχι "
+            "υπογεγραμμένα συμβόλαια."
         )
-    return f"Ζητούμενα ενοίκια παρόμοιων σπιτιών της περιοχής στο XE{per}."
+    return f"Τόσο ζητούν για ενοίκιο σπίτια σαν αυτό στη γειτονιά, στο XE.gr{per}."
 
 
 def comps_text(adv: dict) -> str:
@@ -301,12 +302,12 @@ def comps_text(adv: dict) -> str:
         return "Λίγα παρόμοια για σύγκριση"
     pct = cmp["pct"]
     if abs(pct) < 0.005:
-        where = "στον διάμεσο"
+        where = "όσο και τα άλλα"
     else:
         where = f"{pct_int(abs(pct))} {'κάτω' if pct < 0 else 'πάνω'}"
     out = f"Παρόμοια ({cmp['n']}): {where}"
     if -pct > nl_search.TOO_CHEAP:
-        out += " — έλεγξε γιατί (τ.μ., κατάσταση, νομικά)"
+        out += ". Πολύ φθηνό, έλεγξε γιατί"
     return out
 
 
@@ -314,13 +315,13 @@ def comps_basis(d: dict, adv: dict) -> str:
     cmp = adv.get("cmp")
     if not cmp:
         return (
-            f"Παρόμοια: λιγότερες από {market_intel.MIN_COMPS} αγγελίες ίδιας περιοχής, ηλικίας και μεγέθους — "
-            "δεν γίνεται σύγκριση."
+            f"Παρόμοια: βρήκαμε λιγότερα από {market_intel.MIN_COMPS} σπίτια στην ίδια περιοχή, "
+            "με ίδια ηλικία και μέγεθος, άρα δεν συγκρίνουμε."
         )
     return (
-        f"Παρόμοια: {cmp['n']} αγγελίες ({cmp['label']}), διάμεσος "
-        f"{eur(_r(cmp['ppm'], 10))}/τ.μ.· αυτή {eur(_r(d['price_per_m2'], 10))}/τ.μ. "
-        "Ζητούμενες τιμές, όχι τιμές πώλησης."
+        f"Παρόμοια: {cmp['n']} σπίτια ({cmp['label']}). Ζητούν συνήθως "
+        f"{eur(_r(cmp['ppm'], 10))}/τ.μ., αυτό ζητά {eur(_r(d['price_per_m2'], 10))}/τ.μ. "
+        "Είναι τιμές αγγελιών, όχι τιμές πώλησης."
     )
 
 
@@ -333,17 +334,17 @@ def status(d: dict) -> tuple[str, str]:
 
 def status_basis(d: dict) -> str:
     if _unfinished(d):
-        return "Υπό κατασκευή: το λέει η ίδια η αγγελία (τίτλος ή περιγραφή στο XE)."
+        return "Υπό κατασκευή: το γράφει η ίδια η αγγελία στο XE.gr, στον τίτλο ή στην περιγραφή."
     if d.get("page_checked"):
         when = d.get("page_checked_at")
         on = f" στις {when:%d/%m}" if hasattr(when, "strftime") else ""
         return (
-            f"Ελέγχθηκε η περιγραφή: διαβάσαμε τη σελίδα στο XE{on} και δεν αναφέρει κατασκευή "
-            "σε εξέλιξη. Οι φωτογραφίες δεν ελέγχονται."
+            f"Ελέγχθηκε η περιγραφή: διαβάσαμε την αγγελία στο XE.gr{on} και δεν γράφει ότι "
+            "χτίζεται ακόμα. Τις φωτογραφίες δεν τις κρίνει αυτός ο έλεγχος."
         )
     return (
-        "Δεν έχει ελεγχθεί ακόμα: δεν έχουμε διαβάσει τη σελίδα της αγγελίας — μπορεί να είναι "
-        "υπό κατασκευή. Διάβασε την περιγραφή στο XE."
+        "Δεν έχει ελεγχθεί ακόμα: δεν έχουμε διαβάσει ακόμα την αγγελία, οπότε μπορεί να είναι "
+        "υπό κατασκευή. Διάβασε την περιγραφή στο XE.gr."
     )
 
 
@@ -938,11 +939,11 @@ def _save_mandate(text: str, f: SearchFilters) -> None:
         shortlist.save_mandate(text, f)
         _flash(
             "ok",
-            "Αποθηκεύτηκε — νέες αγγελίες γι' αυτή την αναζήτηση θα βρίσκεις στη σελίδα "
+            "Αποθηκεύτηκε. Τις νέες αγγελίες γι' αυτή την αναζήτηση θα τις βρίσκεις στις "
             "«Αποθηκευμένες αναζητήσεις».",
         )
     except shortlist.StorageNotConfigured:
-        _flash("error", "Η αποθήκευση αναζητήσεων δεν είναι διαθέσιμη σε αυτή την εγκατάσταση.")
+        _flash("error", "Εδώ δεν μπορούμε να αποθηκεύσουμε αναζητήσεις.")
     except Exception as e:
         _flash("error", f"Δεν αποθηκεύτηκε: {_reason(e)}")
 
@@ -1041,11 +1042,13 @@ def page_search(listings: list[dict]) -> None:
             seen = [d["last_seen"] for d in listings if d.get("last_seen") and _area_hit(d, [a])]
             when = f" (τελευταία ενημέρωση {max(seen):%d/%m})" if seen else ""
             st.caption(
-                f"Για «{a}» δεν υπάρχουν πρόσφατες αγγελίες{when}. Στα φίλτρα: «Και "
-                "παλαιότερες αγγελίες»."
+                f"Για «{a}» δεν έχουμε πρόσφατες αγγελίες{when}. Για τις παλαιότερες, άνοιξε "
+                "στα φίλτρα το «Και παλαιότερες αγγελίες»."
             )
     if not hits:
-        st.info("Καμία αγγελία δεν ταιριάζει. Χαλάρωσε κάποιο φίλτρο (π.χ. τιμή, έτος ή όροφο).")
+        st.info(
+            "Καμία αγγελία δεν ταιριάζει. Άνοιξε λίγο ένα φίλτρο, π.χ. την τιμή, το έτος ή τον όροφο."
+        )
         _market_panel(intel, named[:3])
         return
     hits.sort(key=lambda h: SORTS[sort](h[0][0], h[2], h[1]))
@@ -1104,7 +1107,9 @@ def _search_advice(hits: list, f: SearchFilters, intel) -> dict:
     with st.container(border=True, key="advice-box"):
         st.markdown(f"**{AI_LABEL}**")
         st.write(review.summary)
-        st.caption("Σχόλιο γλωσσικού μοντέλου πάνω στα ίδια δεδομένα — όχι εκτίμηση αξίας.")
+        st.caption(
+            "Το σχόλιο το γράφει γλωσσικό μοντέλο από τα ίδια στοιχεία. Δεν είναι εκτίμηση αξίας."
+        )
         st.button(
             "Νέα γνώμη για τα τρέχοντα αποτελέσματα", key="advice_again", on_click=_advice_again
         )
@@ -1122,7 +1127,9 @@ def _market_panel(intel, areas: list[str]) -> None:
         lines.append(f"**{a}** · " + " · ".join(cells))
     if lines:
         with st.container(border=True, key="market-panel"):
-            st.markdown("**Διάμεσο €/τ.μ. ζητούμενης τιμής ανά ηλικία κτιρίου** (πλήθος αγγελιών)")
+            st.markdown(
+                "**Πόσο ζητούν συνήθως ανά τ.μ., ανάλογα με την ηλικία του κτιρίου** (σε παρένθεση οι αγγελίες)"
+            )
             st.markdown("  \n".join(lines))
 
 
@@ -1169,20 +1176,20 @@ def page_shortlist(listings: list[dict]) -> None:
     _css()
     st.markdown("## Αποθηκευμένες αναζητήσεις")
     st.caption(
-        "Για κάθε αναζήτηση που αποθήκευσες, οι νέες αγγελίες που ταιριάζουν. Η έγκριση τη "
-        "βάζει στα αγαπημένα."
+        "Εδώ βλέπεις τις νέες αγγελίες για κάθε αναζήτηση που αποθήκευσες. Με την «Έγκριση» "
+        "η αγγελία μπαίνει στα αγαπημένα."
     )
     _show_flash()
     try:
         mandates = shortlist.list_mandates()
     except shortlist.StorageNotConfigured:
         st.info(
-            "Η αποθήκευση αναζητήσεων δεν είναι διαθέσιμη εδώ. Η «Αναζήτηση» δουλεύει "
-            "κανονικά· απλώς δεν κρατιέται."
+            "Εδώ δεν μπορούμε να αποθηκεύσουμε αναζητήσεις. Η «Αναζήτηση» δουλεύει κανονικά, "
+            "απλώς δεν τη θυμόμαστε."
         )
         return
     except Exception as e:
-        st.caption(f"Οι αποθηκευμένες αναζητήσεις δεν διαβάστηκαν ({_reason(e)}).")
+        st.caption(f"Δεν μπορέσαμε να φέρουμε τις αποθηκευμένες αναζητήσεις ({_reason(e)}).")
         return
     if not mandates:
         st.info(
@@ -1293,9 +1300,9 @@ def position_bar(ppm: float, cmp: dict) -> str:
         f'<div class="hg-pos-med" style="left:{x(cmp["ppm"])}"></div>'
         f'<div class="hg-pos-dot" style="left:{x(ppm)}"></div></div>'
         '<div class="hg-pos-legend">'
-        f'<span><i class="hg-pos-k-band"></i>μεσαίο 50 % των παρόμοιων: {eur(_r(cmp["p25"], 10))[:-2]}–'
+        f'<span><i class="hg-pos-k-band"></i>οι μισές μεσαίες τιμές των παρόμοιων: {eur(_r(cmp["p25"], 10))[:-2]}–'
         f'{eur(_r(cmp["p75"], 10))}/τ.μ.</span>'
-        f'<span><i class="hg-pos-k-med"></i>διάμεσος {eur(_r(cmp["ppm"], 10))}/τ.μ.</span>'
+        f'<span><i class="hg-pos-k-med"></i>συνήθως {eur(_r(cmp["ppm"], 10))}/τ.μ.</span>'
         f'<span><i class="hg-pos-k-dot"></i>αυτό {eur(_r(ppm, 10))}/τ.μ.</span>'
         "</div></div>"
     )
@@ -1309,7 +1316,7 @@ def _comparison_section(d: dict, adv: dict) -> None:
         return
     st.markdown(position_bar(d["price_per_m2"], cmp), unsafe_allow_html=True)
     st.caption(
-        f"{comps_basis(d, adv)} Αξιοπιστία σύγκρισης: {confidence(cmp)}.",
+        f"{comps_basis(d, adv)} Πόσο σίγουρη είναι η σύγκριση: {confidence(cmp)}.",
         help=CONF_HELP,
     )
     with st.expander(f"Δες τα παρόμοια ({cmp['n']})"):
@@ -1321,14 +1328,14 @@ def _description_section(d: dict) -> None:
     st.markdown("#### Τι λέει η αγγελία")
     if cut := picks.excerpt(d.get("description"), 600):
         st.markdown(f'<div class="hg-desc">{html.escape(cut)}</div>', unsafe_allow_html=True)
-        st.caption("Από τη σελίδα της αγγελίας στο XE.")
+        st.caption("Αυτά γράφει η ίδια η αγγελία στο XE.gr.")
     elif d.get("page_checked"):
         st.caption(
-            "Η σελίδα διαβάστηκε μόνο για «υπό κατασκευή»· το κείμενό της δεν έχει κρατηθεί. "
-            "Διάβασέ το στο XE."
+            "Διαβάσαμε την αγγελία μόνο για να δούμε αν είναι υπό κατασκευή και δεν κρατήσαμε "
+            "το κείμενο. Διάβασέ το στο XE.gr."
         )
     else:
-        st.caption("Δεν έχουμε διαβάσει ακόμα τη σελίδα της αγγελίας.")
+        st.caption("Δεν έχουμε διαβάσει ακόμα την αγγελία.")
 
 
 def _rent_section(d: dict) -> None:
@@ -1375,7 +1382,7 @@ def _rent_section(d: dict) -> None:
             _r(4 * (area or 0), 10),
             10,
             key=f"nc_enfia_{lid}",
-            help="Πρόχειρα ~4 €/τ.μ. τον χρόνο· το πραγματικό ποσό είναι στο εκκαθαριστικό.",
+            help="Περίπου 4 €/τ.μ. τον χρόνο. Το ακριβές ποσό το γράφει το εκκαθαριστικό.",
         )
         vacant = r2[1].number_input("Μήνες κενό ανά έτος", 0, 12, 1, 1, key=f"nc_vac_{lid}")
         r3 = st.columns(2)
@@ -1400,7 +1407,7 @@ def _rent_section(d: dict) -> None:
         )
         st.caption(
             "Καθαρό = ενοίκιο × (12 − μήνες κενό) × (1 − φόρος − συντήρηση) − κοινόχρηστα × 12 "
-            "− ΕΝΦΙΑ. Καθαρή απόδοση = καθαρό ÷ (τιμή + έξοδα αγοράς). Χωρίς δάνειο και ασφάλιση."
+            "− ΕΝΦΙΑ. Καθαρή απόδοση = καθαρό ÷ (τιμή + έξοδα αγοράς). Δεν μετράμε δάνειο ούτε ασφάλιση."
         )
     lines = [
         ("Φόρος μεταβίβασης 3,09 %", acq["transfer_tax"]),
@@ -1438,8 +1445,8 @@ def _checks_section(d: dict, intel, listings: list[dict]) -> None:
     insight = next((x for x in ranked if x.area == name), None)
     areas.render_checks(ai.investor_checks(d, intel, insight))
     st.caption(
-        "Καλό / μέτριο / προσοχή κατά τα όρια του «Πώς βαθμολογούμε» στη σελίδα «Πού να "
-        "αγοράσω»· «άγνωστο» όταν λείπει το στοιχείο."
+        "Τα όρια για «καλό», «μέτριο» και «προσοχή» είναι στο «Πώς βαθμολογούμε», στη σελίδα "
+        "«Πού να αγοράσω». «Άγνωστο» σημαίνει ότι δεν το ξέρουμε ακόμα."
     )
 
 
@@ -1451,8 +1458,8 @@ def _area_line(d: dict, listings: list[dict]) -> None:
     vals = [x["price_per_m2"] for x in listings if x.get("price_per_m2") and area_name(x) == m]
     if len(vals) >= 5:
         st.caption(
-            f"Περιοχή {m}: διάμεσο {eur(_r(statistics.median(vals), 10))}/τ.μ. ζητούμενης τιμής "
-            f"σε {_num(len(vals))} αγγελίες του XE."
+            f"Στην περιοχή {m} ζητούν συνήθως {eur(_r(statistics.median(vals), 10))}/τ.μ. "
+            f"({_num(len(vals))} αγγελίες στο XE.gr)."
         )
     st.button(f"Αγγελίες στην περιοχή {m}", key="area_link", on_click=_go_area, args=(m,))
 
@@ -1501,8 +1508,8 @@ def page_listing(listings: list[dict]) -> None:
             f"{'αγγελία' if len(twins) == 1 else 'αγγελίες'}"
         )
         st.caption(
-            "Ίδια περιοχή, τ.μ., όροφος και έτος, τιμή έως 10 % διαφορά — πιθανότατα το ίδιο "
-            "διαμέρισμα από άλλο μεσίτη. Η χαμηλότερη τιμή είναι το σημείο εκκίνησης."
+            "Ίδια περιοχή, τ.μ., όροφος και έτος, με τιμή που διαφέρει έως 10 %. Μάλλον είναι "
+            "το ίδιο διαμέρισμα από άλλο μεσίτη. Ξεκίνα από τη χαμηλότερη τιμή."
         )
         _listing_lines(twins)
 
@@ -1511,7 +1518,9 @@ def page_listing(listings: list[dict]) -> None:
     if len({p for _, p in history}) > 1:
         st.markdown("  \n".join(f"{when:%d/%m/%Y}: **{eur(price)}**" for when, price in history))
     elif history:
-        st.caption(f"Τιμή αμετάβλητη από {history[0][0]:%d/%m/%Y} που την πρωτοείδαμε στο XE.")
+        st.caption(
+            f"Η τιμή δεν έχει αλλάξει από τις {history[0][0]:%d/%m/%Y}, που την πρωτοείδαμε στο XE.gr."
+        )
     _area_line(d, listings)
 
     review = st.session_state.get("listing_advice", {}).get(shortlist.lkey(d))
@@ -1530,6 +1539,8 @@ def page_listing(listings: list[dict]) -> None:
             )
     if review is not None and review.verdicts:
         st.markdown(_advice_html(review.verdicts[0]), unsafe_allow_html=True)
-        st.caption("Σχόλιο γλωσσικού μοντέλου πάνω στα ίδια δεδομένα — όχι εκτίμηση αξίας.")
+        st.caption(
+            "Το σχόλιο το γράφει γλωσσικό μοντέλο από τα ίδια στοιχεία. Δεν είναι εκτίμηση αξίας."
+        )
     elif st.session_state.get("advice_err") and has_ai():
         st.caption(st.session_state["advice_err"])
