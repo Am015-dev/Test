@@ -12,11 +12,13 @@ from .test_ui_gauntlet import APP, AppTest, env, ok  # noqa: E402,F401
 
 try:  # the home page is the guide (W8) once it lands, «Βρες μου σπίτι» before
     from scout.ui.guide import TITLE as HOME
+
+    HOME_PILL = "Οδηγός"
 except ImportError:
-    HOME = "Βρες μου σπίτι"
+    HOME = HOME_PILL = "Βρες μου σπίτι"
 
 SHORT_TO_KEY = {
-    HOME: HOME,
+    HOME_PILL: HOME,
     "Περιοχές": "Πού να αγοράσω",
     "Αναζήτηση": "Αναζήτηση",
     "Χάρτης": "Χάρτης",
@@ -34,7 +36,7 @@ def _app() -> AppTest:
 def test_default_page_is_first_nav_entry_and_renders(env):  # noqa: F811
     at = _app()
     assert at.session_state["page"] == HOME
-    assert at.pills(key="nav_pill").value == HOME
+    assert at.pills(key="nav_pill").value == HOME_PILL
     assert len(at.main) > 0
 
 
@@ -128,12 +130,17 @@ def test_compare_opens_filled_with_top_picks_when_no_favourites(env):  # noqa: F
     assert any(m.value.startswith("| | Α | Β |") for m in at.markdown)
 
 
-def test_map_filters_sit_in_one_expander(env):  # noqa: F811
+def test_map_page_is_the_map_with_the_ranked_list_under_it(env):  # noqa: F811
     at = _app()
     at.pills(key="nav_pill").set_value("Χάρτης").run()
     ok(at, "map")
-    main = at.main.expander
-    assert len(main) == 1 and main[0].label == "Φίλτρα"
+    assert not at.dataframe  # no table to scroll to in order to understand a dot
+    assert [e.label for e in at.main.expander] == ["Φίλτρα"]  # the filters stay in one place
+    try:
+        import scout.ui.maplist  # noqa: F401
+    except ImportError:  # before W9: today's map + top cards
+        return
+    assert any(m.value.startswith("#### Όλες με τη σειρά") for m in at.markdown)
 
 
 def test_status_is_one_short_line_and_refresh_lives_in_the_sidebar(env):  # noqa: F811

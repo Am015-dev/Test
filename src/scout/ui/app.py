@@ -1448,9 +1448,6 @@ def page_map(listings: list[dict]) -> None:
     if not shown:
         st.info("Καμία αγγελία δεν ταιριάζει — χαλάρωσε την τιμή, το έτος ή την περιοχή.")
         return
-    components.results_map(shown, key="map_chart", height=420)
-
-    # The best few as the same cards as the search page (not a wide table).
     from scout import market_intel
 
     intel = market_intel.build(listings)
@@ -1465,6 +1462,11 @@ def page_map(listings: list[dict]) -> None:
         m = nl_search.match(d, SearchFilters())
         return rank(m[0] if m else 0, views[d["id"]], d)
 
+    if maplist is not None:  # one map, one selection, the ranked list directly under it
+        maplist.render(sorted(shown, key=_key), key="map", intel=intel)
+        return
+    components.results_map(shown, key="map_chart", height=420)
+    # The best few as the same cards as the search page (not a wide table).
     top = sorted(shown, key=_key)[:5]
     st.markdown("#### Οι 5 καλύτερες στον χάρτη")
     for d in top:
@@ -2351,32 +2353,6 @@ def page_compare(listings: list[dict]) -> None:
         st.link_button(f"Άνοιγμα {tag} στο {d['source'].upper()} ↗", d["url"], width="stretch")
 
 
-def page_map_list(listings: list[dict]) -> None:
-    """«Χάρτης»: the map with the same ranked list under it (W9's maplist) when available."""
-    if maplist is None:
-        page_map(listings)
-        return
-    st.subheader("Χάρτης")
-    from scout import market_intel, nl_search
-    from scout.nl_search import SearchFilters
-
-    # One score everywhere, and the search page's default sort over fresh, drawable listings.
-    scores = buyer.buyer_scores(listings)
-    fresh = [
-        {**d, "score": scores[d["id"]]}
-        for d in listings
-        if d.get("is_fresh", True) and not _map_hidden(d)
-    ]
-    intel = market_intel.build(listings)
-    rank = buyer.SORTS[buyer.DEFAULT_SORT]
-
-    def _key(d: dict):
-        m = nl_search.match(d, SearchFilters())
-        return rank(m[0] if m else 0, buyer.buyer_view(d, intel), d)
-
-    maplist.render(sorted(fresh, key=_key), key="map")
-
-
 # The home page: the guided flow (W8) when present, else «Βρες μου σπίτι».
 if guide is not None:
     HOME, _home_page = guide.TITLE, guide.page_guide
@@ -2391,7 +2367,7 @@ NAV = {
     HOME: _home_page,
     "Πού να αγοράσω": areas.page_areas,
     "Αναζήτηση": buyer.page_search,
-    "Χάρτης": page_map_list,
+    "Χάρτης": page_map,
     "Αγαπημένα": buyer.page_watchlist,
     "Αποθηκευμένες αναζητήσεις": buyer.page_shortlist,
     "Σύγκριση": page_compare,
@@ -2411,7 +2387,7 @@ ADMIN_NAV = {  # open with ?admin=1
 # Phone navigation: one tap, short labels. Each maps to an existing NAV key (never renamed).
 # «Αποθηκευμένες αναζητήσεις» and «Αγγελία» are reached from their pages, so no pill.
 SHORT_NAV = {
-    HOME: HOME,
+    ("Οδηγός" if guide is not None else HOME): HOME,
     "Περιοχές": "Πού να αγοράσω",
     "Αναζήτηση": "Αναζήτηση",
     "Χάρτης": "Χάρτης",

@@ -534,9 +534,10 @@ def test_one_score_on_map_and_cards(env):
     assert any(scores[d["id"]] != round(d.get("score") or 0) for d in listings)
     at = fresh("Χάρτης")
     ok(at, "map")
-    # the map shows up to 5 cards, none with a score, and no score legend
+    # the map shows the selected card + one page of the ranked list (maplist: 10 at a time; 5
+    # before it), none with a score, and no score legend
     cards = _cards(at)
-    assert 0 < len(cards) <= 5 and not any("hg-score" in c or "Σκορ" in c for c in cards)
+    assert 0 < len(cards) <= 11 and not any("hg-score" in c or "Σκορ" in c for c in cards)
     assert not any("Σκορ 0–100" in c.value for c in at.caption)
     # the search cards carry no score number (its parts are not figures), but every card carries
     # the basis of each of its numbers one tap away
