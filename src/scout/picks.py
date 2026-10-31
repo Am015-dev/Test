@@ -9,8 +9,9 @@ negotiate — and writes one short line per number with its basis. When too litt
 
 Ranking by goal (the «Οδηγός» question «Τι σε νοιάζει πιο πολύ;»). Every listing gets four
 part scores, in points; ``rank_score`` = Σ ``GOAL_WEIGHTS[goal][part]`` × part. The sort is
-always: page read first, then >2 photos, then ``rank_score`` — a goal never lifts an unread
-page above a read one.
+always: page read first, then real photos (>2, not render/plan/site/stock), then the buyer
+score (``buyer_score``, the card's «Βαθμολογία»), then ``rank_score`` as the tie-break — the
+goal never lifts an unread page above a read one, nor a lower score above a higher one.
 
 =========  ===============================================================================
 part       points
@@ -254,10 +255,16 @@ class Pick:
         )
 
     def sort_key(self) -> tuple:
-        # A page we have read beats one we have not, whatever its yield; real photos beat
-        # "≤2 photos" (often a render or a logo); then the investor ranking. Photos the
-        # photo check classed as render/plan/site/stock sit below real or unchecked ones.
-        return (self.checked, not self.bad_photos, not self.few_photos, self.rank_score)
+        # The trust ladder first: a page we have read beats one we have not; real photos beat
+        # "≤2 photos" (often a render or a logo) and render/plan/site/stock. Then the buyer
+        # score (one truth with the card's «Βαθμολογία»); the goal's points break ties.
+        return (
+            self.checked,
+            not self.bad_photos,
+            not self.few_photos,
+            self.buyer_score,
+            self.rank_score,
+        )
 
 
 def _r(x: float, step: int) -> int:

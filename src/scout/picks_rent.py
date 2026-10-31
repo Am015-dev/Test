@@ -4,8 +4,8 @@ Input: rental dicts from ``queries.load_rent_listings()`` (contract C1: the sale
 ``price`` = monthly rent, plus ``rent_per_m2``, ``furnished``, ``available_from``,
 ``days_on_market`` / ``dom_basis`` / ``relisted_on``, ``is_fresh``, ``page_checked``).
 
-Ranking: value first — the rental's €/τ.μ. against the median €/τ.μ. of the OTHER active
-rentals in the same neighbourhood (at least ``MIN_COMPS``), else in the same area
+Ranking: the rent-value score (``RentPick.score``, below) first; the tie-break is value — the
+rental's €/τ.μ. against the median €/τ.μ. of the OTHER active rentals in the same neighbourhood (at least ``MIN_COMPS``), else in the same area
 (``area_insights.area_name``) — then freshness (fewer days on market first). A rent more than
 ``TOO_CHEAP`` under its comparables is a warning (often a room, a typo or a bait ad) and
 sorts after the ones that compare normally; rentals without comparables come last.
@@ -366,7 +366,7 @@ def find(
             answer, step, label = miss[0]
             p = replace(_build(d, index, budget_month), relaxed=label, tier=1)
             loose.setdefault((answer, step), []).append(p)
-    strict.sort(key=RentPick.sort_key)
+    strict.sort(key=lambda p: (-p.score, p.sort_key()))  # the score, then value/freshness
     out = strict
     if near and len(out) < picks.NEAR_MIN:  # only to fill a thin list
         # Each step's best NEAR_MIN by value, then all near matches by score, the smaller

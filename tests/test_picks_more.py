@@ -275,3 +275,24 @@ def test_owner_like_long_list_has_no_near_matches(published):
         listings, intel, rents, 250_000, max_age=None, near_rail=False, top=10**6, near=True
     )
     assert len(got) >= picks.NEAR_MIN and not any(p.relaxed for p in got)
+
+
+def test_order_is_trust_ladder_then_the_score_in_every_tier(published):
+    """One truth: within a tier and a trust step, a lower «Βαθμολογία» never ranks above a
+    higher one; the goal's points only break ties."""
+    listings, rents = published
+    intel = market_intel.build(listings)
+    for goal in picks.GOALS:
+        got = picks.find(
+            listings, intel, rents, 160_000, max_age=10, near_rail=True, goal=goal,
+            top=10**6, near=True,
+        )  # fmt: skip
+        for tier in (0, 2):  # near (1) is per-step first, then ranked the same way
+            rows = [p for p in got if p.tier == tier]
+            keys = [p.sort_key()[:4] for p in rows]
+            assert keys == sorted(keys, reverse=True)
+
+
+def test_rent_order_is_the_score():
+    got = picks_rent.find(RENTALS, 800, bedrooms=2, top=10**6)
+    assert [p.score for p in got] == sorted((p.score for p in got), reverse=True)
