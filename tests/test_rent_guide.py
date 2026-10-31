@@ -145,6 +145,8 @@ def test_rent_flow_end_to_end(rent_env):
     assert total > 10 and "Πρόταση: **" in text
     assert "Παρόμοια (" in text and "Ιδιώτης ή μεσιτικό" in text
     assert "/μήνα" in text and "Από πού βγαίνουν" in text
+    assert "Δεν έχει ελεγχθεί ακόμα" not in text  # no rental page is read: no page-check chip
+    assert 'hg-st-neu">Επιπλωμένο<' in text and 'hg-st-neu">Διαθέσιμο από 01/12<' in text
     assert "Ενεργειακή κλάση" in text and "Φρεσκάδα" in text and "Τιμή έναντι παρόμοιων" in text
     assert "απόδοση" not in text.lower()  # no yield talk for renters
     first = _cards(at)

@@ -586,16 +586,13 @@ METHOD = f"""
 
 
 def card_more(p: picks_rent.RentPick) -> list[str]:
-    """What sits behind «Από πού βγαίνουν» on the rent card: the four checks, the risks,
-    furnished / available from, the listing's own words and the basis of the comparison."""
+    """What sits behind «Από πού βγαίνουν» on the rent card: the four checks, the risks, the
+    listing's own words and the basis of the comparison (furnished / available from are the
+    card's line 3, ``buyer.rent_chips``)."""
     d = p.listing
     more = [d["title"]] if d.get("title") else []
     more += [f"{k}: {v}" for k, v in p.checks]
     more += [f"Έλεγξε: {r}" for r in p.risks]
-    if d.get("furnished"):
-        more.append("Επιπλωμένο")
-    if avail := _day(d.get("available_from")):
-        more.append(f"Διαθέσιμο από {avail}")
     if text := picks.excerpt(d.get("description")):
         more.append(f"Τι λέει η αγγελία: «{text}»")
     if p.comps_ppm:
