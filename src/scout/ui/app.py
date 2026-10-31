@@ -2255,13 +2255,15 @@ def _compare_rows(d: dict) -> dict[str, str]:
         "Έτος": str(d["year_built"]) if d.get("year_built") else UNKNOWN,
         "Ενοίκιο (εκτίμηση)": f"~{fmt.euro(round(rent, -1))}/μήνα" if rent else UNKNOWN,
         "Μικτή απόδοση": buyer.pct1(gy) if gy else UNKNOWN,
-        "Σταθμός": stn.removeprefix("Σταθμός ") or UNKNOWN,
+        # no station in the neighbourhood name is not «unknown»: we just cannot tell
+        "Σταθμός": stn.removeprefix("Σταθμός ") or "δεν προκύπτει",
     }
 
 
 def page_compare(listings: list[dict]) -> None:
     """Two flats: pick them (favourites first), an eight-row field · Α · Β table (three
     columns fit a 390 px phone), then the two compact cards."""
+    buyer._css()
 
     st.subheader("Σύγκριση")
     st.caption("Διάλεξε 2 αγγελίες (τα αγαπημένα πρώτα).")
