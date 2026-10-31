@@ -232,12 +232,14 @@ def test_new_builds_queue_rereads_checked_pages_missing_photos_after_unchecked(m
     assert picked == ["unchecked", "backfill"]  # fully read pages leave the queue
 
 
-def test_days_on_market_counts_from_the_posting_date_when_known(mem_db):
+def test_days_on_market_counts_from_the_earliest_evidence(mem_db):
     from datetime import timedelta
+
+    from scout.ui.buyer import dom_text
 
     now = datetime.utcnow()
     with db.session_scope() as s:
-        # first seen 108 days ago, but the ad was (re)posted 2 days ago
+        # first seen 108 days ago; the agent re-posted the ad 2 days ago (XE resets the date)
         db.upsert_listing_with_history(
             s,
             make_listing(
@@ -245,11 +247,32 @@ def test_days_on_market_counts_from_the_posting_date_when_known(mem_db):
             ),
             observed_at=now - timedelta(days=108),
         )
+        # posted 60 days ago, first seen by us 40 days ago: the posting date is the evidence
+        db.upsert_listing_with_history(
+            s,
+            make_listing(
+                source_id="posted",
+                price=255_000,
+                area_m2=98.0,
+                listed_date=now - timedelta(days=60),
+                first_seen=None,
+            ),
+            observed_at=now - timedelta(days=40),
+        )
         db.upsert_listing_with_history(
             s,
             make_listing(source_id="cardonly", price=260_000, area_m2=99.0, first_seen=None),
             observed_at=now - timedelta(days=40),
         )
     by_id = {d["source_id"]: d for d in load_listings()}
-    assert (by_id["reposted"]["days_on_market"], by_id["reposted"]["dom_basis"]) == (2, "listed")
-    assert (by_id["cardonly"]["days_on_market"], by_id["cardonly"]["dom_basis"]) == (40, "seen")
+    rep, posted, card = by_id["reposted"], by_id["posted"], by_id["cardonly"]
+    assert (rep["days_on_market"], rep["dom_basis"]) == (108, "seen")
+    assert rep["relisted_on"].date() == (now - timedelta(days=2)).date()
+    assert "108 μέρες στην αγορά (από τότε που τη βλέπουμε) · η αγγελία ανανεώθηκε" in dom_text(rep)
+    assert (posted["days_on_market"], posted["dom_basis"], posted["relisted_on"]) == (
+        60,
+        "listed",
+        None,
+    )
+    assert (card["days_on_market"], card["dom_basis"], card["relisted_on"]) == (40, "seen", None)
+    assert "ανανεώθηκε" not in dom_text(card)
