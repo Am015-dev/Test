@@ -783,9 +783,9 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
             else ""
         )
         out.append(
-            f"Για απόδοση: {x.area}. Μικτή απόδοση {_pct(x.gross_yield, 1)} στα παλιά{new_y}, "
+            f"Αν θες απόδοση: {x.area}. Μικτή απόδοση {_pct(x.gross_yield, 1)} στα παλιά{new_y}, "
             f"με ενοίκιο (εκτίμηση) {_rent(x.rent_ppm)} €/τ.μ. τον μήνα, όσο ζητούν στη "
-            f"γειτονιά. {x.n_fresh} σπίτια προς πώληση.{small}"
+            f"γειτονιά.{small}"
         )
     ok = [x for x in solid if x.trend_pct is None or x.trend_pct > FALLING_TREND]
     if ok:
@@ -793,8 +793,8 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
         if known:
             x = max(known, key=lambda a: (a.gone_60 if a.gone_60 is not None else a.gone_30))
             out.append(
-                f"Για εύκολη μεταπώληση: {x.area}. Η αγορά είναι {liquidity_text(x)}. "
-                f"{x.n_fresh} σπίτια προς πώληση.{small}"
+                f"Αν θες να το πουλήσεις εύκολα αργότερα: {x.area}. Η αγορά είναι "
+                f"{liquidity_text(x)}.{small}"
             )
         else:
             x = max(ok, key=lambda a: a.n_fresh)
@@ -805,7 +805,7 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
                 else ""
             )
             out.append(
-                f"Για εύκολη μεταπώληση: {x.area}. {x.n_fresh} σπίτια προς πώληση, το "
+                f"Αν θες να το πουλήσεις εύκολα αργότερα: {x.area}. Εκεί το "
                 f"{_pct(x.cut_share)} έχει ήδη κατεβάσει τιμή.{dom}{small}"
             )
     grow = [(t, x) for x in solid if (t := exit_trend(x)) is not None]
@@ -817,13 +817,13 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
             else ""
         )
         out.append(
-            f"Για ανατίμηση: {x.area}{l4}. Η τιμή ανά τ.μ. "
-            f"{'ανέβηκε' if t[0] >= 0 else 'έπεσε'} {_pct(abs(t[0]), 1)} {t[1]} "
-            f"({t[2]}).{small}"
+            f"Αν θες να ανέβει η αξία: {x.area}{l4}. Η τιμή ανά τ.μ. "
+            f"{'ανέβηκε' if t[0] >= 0 else 'έπεσε'} {_pct(abs(t[0]), 1)} {t[1]}.{small}"
         )
     else:
         out.append(
-            "Για ανατίμηση: δεν ξέρουμε ακόμα πώς κινούνται οι τιμές. Θέλουμε τουλάχιστον "
+            "Αν θες να ανέβει η αξία: δεν ξέρουμε ακόμα πώς κινούνται οι τιμές. Θέλουμε "
+            "τουλάχιστον "
             f"{MIN_MONTH} αγγελίες τον μήνα ή {MIN_TREND} σε κάθε περίοδο."
         )
     near = max(ranked, key=lambda a: a.near_station_in_budget, default=None)
@@ -831,12 +831,23 @@ def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[st
     if near is not None and near.near_station_in_budget:
         st = ", ".join(near.stations[:2])
         out.append(
-            f"Για νεόδμητο κοντά σε σταθμό έως {b}: {near.area} ({st}). "
+            f"Αν θες νεόδμητο κοντά σε σταθμό έως {b}: {near.area} ({st}). "
             f"{near.near_station_in_budget} αγγελίες, από αυτές "
             f"{near.near_station_in_budget_checked} με ελεγμένη περιγραφή."
         )
     else:
         out.append(f"Νεόδμητο έως {b} σε γειτονιά με σταθμό: δεν υπάρχει σήμερα καμία αγγελία.")
+    return out
+
+
+def decision_basis(ranked: list[AreaInsight]) -> list[str]:
+    """The counts behind ``decision`` (moved out of the sentences, C10): one line per area."""
+    out = []
+    for x in ranked:
+        t = exit_trend(x)
+        rent = f", {x.rent_samples} αγγελίες ενοικίασης" if x.rent_samples else ""
+        trend = f", τάση τιμής από {t[2]}" if t else ""
+        out.append(f"{x.area}: {x.n_fresh} αγγελίες πώλησης{rent}{trend}.")
     return out
 
 
@@ -896,7 +907,7 @@ def investor_checks(d: dict, intel, insight: AreaInsight | None) -> list[tuple[s
                 "Τιμή έναντι παρόμοιων",
                 f"Ζητά {_num(d['price_per_m2'])} €/τ.μ., {_pct(abs(pct))} "
                 f"{'κάτω' if pct < 0 else 'πάνω'} από τα άλλα σπίτια της γειτονιάς, που ζητούν "
-                f"συνήθως {_num(comps['ppm'])} €/τ.μ. Παρόμοια ({comps['n']}): "
+                f"συνήθως {_num(comps['ppm'])} €/τ.μ. Παρόμοια: {comps['n']} "
                 f"{comps['label']}{note}",
                 v,
             )

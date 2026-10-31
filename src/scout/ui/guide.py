@@ -321,13 +321,12 @@ def recommend(
     area = max(by, key=keys.get(goal, keys["yield"]))
     ps, x = by[area], facts.get(area)
     out = (
-        f"Πρόταση: **{html.escape(area)}**, με μικτή απόδοση "
-        f"{picks.gr_pct(med(ps, lambda p: p.gross))}.  \n"
+        f"Σου προτείνω: **{html.escape(area)}**. Εκεί βγαίνει μικτή απόδοση "
+        f"{picks.gr_pct(med(ps, lambda p: p.gross))}"
         + (
-            "Είναι η μόνη αγγελία της λίστας"
+            " και είναι η μόνη αγγελία της λίστας"
             if len(found) == 1
-            else f"Τόση βγάζουν συνήθως οι {len(ps)} από τις {len(found)} αγγελίες της λίστας "
-            "που είναι εκεί"
+            else f" και είναι εκεί {len(ps)} από τις {len(found)} αγγελίες της λίστας"
         )
     )
     extra = []

@@ -607,6 +607,8 @@ def page_areas(listings: list[dict]) -> None:
         st.markdown("**Για αγορά προς ενοικίαση**")
         for line in ai.decision(shown, budget):
             st.markdown(line)
+        with st.expander("Από πού βγαίνουν"):
+            st.markdown("\n".join(f"- {line}" for line in ai.decision_basis(shown)))
     st.caption(coverage_line(shown, listings) + ". " + FILTERS_CAPTION)
 
     st.markdown("### Οι 3 περιοχές με την καλύτερη βαθμολογία")

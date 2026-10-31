@@ -344,7 +344,7 @@ def comps_text(adv: dict) -> str:
         where = "όσο και τα άλλα"
     else:
         where = f"{pct_int(abs(pct))} {'κάτω' if pct < 0 else 'πάνω'}"
-    out = f"Παρόμοια ({cmp['n']}): {where}"
+    out = f"Παρόμοια: {where}"
     if -pct > nl_search.TOO_CHEAP:
         out += ". Πολύ φθηνό, έλεγξε γιατί"
     return out
@@ -358,7 +358,7 @@ def comps_basis(d: dict, adv: dict) -> str:
             "ηλικία και μέγεθος, οπότε δεν μπορούμε να πούμε αν είναι ακριβό."
         )
     return (
-        f"Παρόμοια: {cmp['n']} σπίτια ({cmp['label']}). Ζητούν συνήθως "
+        f"Παρόμοια: {cmp['n']} {cmp['label']}. Ζητούν συνήθως "
         f"{eur(_r(cmp['ppm'], 10))}/τ.μ., αυτό ζητά {eur(_r(d['price_per_m2'], 10))}/τ.μ. "
         "Είναι τιμές αγγελιών, όχι τιμές πώλησης."
     )

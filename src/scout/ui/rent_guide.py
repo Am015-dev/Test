@@ -220,7 +220,7 @@ def recommend(found: list[picks_rent.RentPick]) -> str | None:
         else f"{round(abs(vs) * 100)} % {'κάτω' if vs < 0 else 'πάνω'} από τα παρόμοια"
     )
     return (
-        f"Πρόταση: **{html.escape(area)}**. Εκεί είναι {len(ps)} από τις {len(found)} αγγελίες "
+        f"Σου προτείνω: **{html.escape(area)}**. Εκεί είναι {len(ps)} από τις {len(found)} αγγελίες "
         f"της λίστας. Ζητούν συνήθως {picks_rent.gr_num(med(ps, lambda p: p.rent_per_m2))} "
         f"€/τ.μ. τον μήνα, {rel}."
     )

@@ -142,8 +142,8 @@ def test_rent_flow_end_to_end(rent_env):
     text = _text(at)
     total = int(re.search(r"\*\*(\d+)\*\* αγγελίες ενοικίασης έως 1\.100 €/μήνα", text).group(1))
     assert total == len(picks_rent.find(RENTALS, 1000, top=10**6))
-    assert total > 10 and "Πρόταση: **" in text
-    assert "Παρόμοια (" in text and "Ιδιώτης ή μεσιτικό" in text
+    assert total > 10 and "Σου προτείνω: **" in text
+    assert "Παρόμοια:" in text and "Ιδιώτης ή μεσιτικό" in text
     assert "/μήνα" in text and "Από πού βγαίνουν" in text
     assert "Δεν έχει ελεγχθεί ακόμα" not in text  # no rental page is read: no page-check chip
     assert 'hg-st-neu">Επιπλωμένο<' in text and 'hg-st-neu">Διαθέσιμο από 01/12<' in text
@@ -290,9 +290,7 @@ def test_rank_by_value_against_the_neighbourhood_then_freshness():
     assert ids[:2] == [10_051, 10_050] and ids[-1] == 10_052 and 10_053 not in ids
     p = got[0]
     assert p.comps_n == 9 and p.comps_where == "Χαλάνδρι (Κέντρο)"  # the others in the hood
-    assert (
-        p.vs_area_pct == pytest.approx(-0.1) and p.comps_line == "Παρόμοια ενοίκια (9): 10 % κάτω"
-    )
+    assert p.vs_area_pct == pytest.approx(-0.1) and p.comps_line == "Παρόμοια ενοίκια: 10 % κάτω"
     assert [k for k, _ in p.checks] == [
         "Τιμή έναντι παρόμοιων",
         "Φρεσκάδα",
@@ -378,7 +376,7 @@ def test_rent_flow_on_the_real_loader(env):  # noqa: F811
     text = _text(at)
     want = len(picks_rent.find(real, 1000, bedrooms=2, furnished=True, top=10**6))
     assert want and f"**{want}** αγγελίες ενοικίασης" in text
-    assert "Παρόμοια (" in text and "Επιπλωμένο" in text
+    assert "Παρόμοια:" in text and "Επιπλωμένο" in text
 
 
 def test_rent_card_has_the_value_score_its_basis_and_the_near_chip():

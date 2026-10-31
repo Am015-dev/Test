@@ -84,7 +84,7 @@ def test_buyer_card_has_the_five_fixed_lines_in_greek():
         " · Φωτογραφίες: δεν τις έχουμε δει ακόμα"
     )
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
-    assert l5 == "Παρόμοια (12): 13 % κάτω"
+    assert l5 == "Παρόμοια: 13 % κάτω"
 
 
 def test_buyer_card_status_unknowns_and_photos():
@@ -114,7 +114,7 @@ def test_buyer_card_every_number_has_its_basis_one_tap_away_and_the_score():
     head, basis = html.split("<details>", 1)
     assert "12 × 900 € ÷ 245.000 € = 4,4 %" in basis  # the yield
     assert "αυτό έχει 78 τ.μ." in basis and "τα διπλανά ζητούν συνήθως" in basis  # the rent
-    assert "12 σπίτια (L). Ζητούν συνήθως 3.600 €/τ.μ." in basis  # the comparables
+    assert "Παρόμοια: 12 L. Ζητούν συνήθως 3.600 €/τ.μ." in basis  # the comparables
     # C7: the score right of the price, its basis one tap away; never «Σκορ»
     assert 'hg-rating">Βαθμολογία 81<' in head.split("hg-l2")[0]
     assert "Βαθμολογία 81 από 100: 60 %" in basis and "Σκορ" not in html
@@ -171,7 +171,7 @@ def test_compact_card_shows_at_most_five_lines_and_hides_the_rest_one_tap_away()
     assert re.fullmatch(r"1\. 245\.000 € Βαθμολογία \d{1,3} · 78 τ\.μ\. · 3\.141 €/τ\.μ\.", l1)
     assert l3 == "Ελέγχθηκε η περιγραφή"  # the short glossary term; the sentence is inside
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
-    assert l5 == "Παρόμοια (12): 13 % κάτω"
+    assert l5 == "Παρόμοια: 13 % κάτω"
     inside = html.split("<details>", 1)[1]
     for fact in (
         *more,

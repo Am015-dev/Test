@@ -60,7 +60,7 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     ]  # fmt: skip
     text = _text(at)
     assert (
-        "Πρόταση: **" in text
+        "Σου προτείνω: **" in text
         and "Δόση ~" in text
         and "Πηγές: XE.gr · " in " ".join(c.value for c in at.caption)
     )

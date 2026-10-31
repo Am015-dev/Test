@@ -145,12 +145,12 @@ class RentPick:
     def comps_line(self) -> str:
         """«Παρόμοια ενοίκια (12): 8 % κάτω» or why it cannot be compared."""
         if self.vs_area_pct is None:
-            return f"Παρόμοια ενοίκια: λιγότερα από {MIN_COMPS} (δεν συγκρίνεται)"
+            return f"Παρόμοια ενοίκια: λιγότερα από {MIN_COMPS}, δεν συγκρίνουμε"
         pct = round(abs(self.vs_area_pct) * 100)
         if pct < 2:
-            return f"Παρόμοια ενοίκια ({self.comps_n}): όσο τα παρόμοια"
+            return "Παρόμοια ενοίκια: όσο και τα άλλα"
         side = "κάτω" if self.vs_area_pct < 0 else "πάνω"
-        return f"Παρόμοια ενοίκια ({self.comps_n}): {pct} % {side}"
+        return f"Παρόμοια ενοίκια: {pct} % {side}"
 
 
 def _day(v) -> str | None:
