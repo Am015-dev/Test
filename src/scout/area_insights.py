@@ -42,7 +42,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from .market_intel import AGE_BANDS, MIN_COMPS, _age, _usable, age_band, municipality
+from .market_intel import AGE_BANDS, MIN_COMPS, _age, _usable, age_band, kind, municipality
 
 # The buyer's NE-Athens search areas (``search_area`` values; mirrors WEEKLY_AREAS in
 # .github/workflows/daily.yml).
@@ -85,6 +85,8 @@ WEIGHTS = {
     "momentum": 0.10,
 }
 NEUTRAL = 0.5
+OLD_FROM = 16  # "old stock" for the new-build premium = 16+ years (AGE_BANDS 2..4)
+DEFAULT_BUDGET = 300_000  # the buyer's stated budget (find page default)
 
 _ATHENS = {"Αθήνα", "Athina", "Athens"}
 _GREEK = re.compile(r"[Ͱ-Ͽἀ-῿]")
@@ -117,6 +119,24 @@ class AreaInsight:
     components: dict[str, float] = field(default_factory=dict)
     reasons: list[str] = field(default_factory=list)
     risks: list[str] = field(default_factory=list)
+    # New vs old stock inside the area (fresh flats, floor >= 1): median €/m² of ≤5-year
+    # stock vs 16+-year stock; each needs MIN_BAND listings, else None.
+    n_new: int = 0
+    ppm_new: float | None = None
+    n_old: int = 0
+    ppm_old: float | None = None
+    new_premium: float | None = None  # ppm_new / ppm_old − 1
+    # Under construction among the new builds whose own page was read (is_unfinished).
+    uc_unfinished: int = 0
+    uc_checked: int = 0
+    stations: list[str] = field(default_factory=list)  # rail stations of its neighbourhoods
+    # Fresh, not-flagged ≤5-year flats priced within budget in a station neighbourhood.
+    near_station_in_budget: int = 0
+    near_station_in_budget_checked: int = 0  # …of which the listing page was read
+    gross_yield_new: float | None = None  # 12 × rent / ppm_new (rent is area-wide, not new-only)
+    yield_rank: int | None = None  # 1 = best gross yield among ranked areas with a rent
+    yield_of: int = 0
+    why: str = ""
 
 
 # ---- helpers -----------------------------------------------------------------------------
@@ -150,6 +170,16 @@ def _eligible(d: dict) -> bool:
     return _usable(d) and _in_attica(d) and bool(_GREEK.search(area_name(d.get("neighborhood"))))
 
 
+def _upper_flat(d: dict) -> bool:
+    """A flat (not a house/maisonette) on floor 1 or above; unknown floor does not qualify."""
+    return kind(d) == "flat" and d.get("floor") is not None and d["floor"] >= 1
+
+
+def short_station(label: str) -> str:
+    """'ΗΣΑΠ Περισσός (Γραμμή 1)' → 'ΗΣΑΠ Περισσός'."""
+    return label.split(" (")[0]
+
+
 def _median(vals: list[float]) -> float | None:
     return statistics.median(vals) if vals else None
 
@@ -164,7 +194,7 @@ def _num(x: float) -> str:
 
 
 def _pct(x: float, digits: int = 0) -> str:
-    return f"{x * 100:.{digits}f}%".replace(".", ",")
+    return f"{x * 100:.{digits}f} %".replace(".", ",")
 
 
 def _first_ppm(d: dict) -> float:
@@ -228,7 +258,11 @@ def _insight(
     everything: list[dict],
     rent: tuple[float, int | None] | None,
     year: int,
+    unfinished: tuple[int, int] = (0, 0),
+    budget: int = DEFAULT_BUDGET,
 ) -> AreaInsight:
+    from .picks import station  # picks imports this module: import late
+
     ppms = [d["price_per_m2"] for d in fresh]
     median_ppm = statistics.median(ppms)
     ages = [(d, _age(d, year)) for d in fresh]
@@ -275,6 +309,17 @@ def _insight(
         ):
             good += 1
 
+    new = [d["price_per_m2"] for d, a in ages if a is not None and a <= AGE_BANDS[0][1]]
+    old = [d["price_per_m2"] for d, a in ages if a is not None and a >= OLD_FROM]
+    ppm_new = statistics.median(new) if len(new) >= MIN_BAND else None
+    ppm_old = statistics.median(old) if len(old) >= MIN_BAND else None
+    stations = sorted({short_station(s) for d in everything if (s := station(d))})
+    near = [
+        d
+        for d, a in ages
+        if a is not None and a <= AGE_BANDS[0][1] and station(d) and d["price"] <= budget
+    ]
+
     rent_ppm, rent_n = rent if rent else (None, None)
     return AreaInsight(
         area=name,
@@ -298,6 +343,17 @@ def _insight(
         good_stock=good,
         old_share=sum(a > RECENT_MAX_AGE for a in known) / len(known) if known else None,
         unknown_age_share=1 - len(known) / len(fresh),
+        n_new=len(new),
+        ppm_new=ppm_new,
+        n_old=len(old),
+        ppm_old=ppm_old,
+        new_premium=ppm_new / ppm_old - 1 if ppm_new and ppm_old else None,
+        gross_yield_new=12 * rent_ppm / ppm_new if rent_ppm and ppm_new else None,
+        uc_unfinished=unfinished[0],
+        uc_checked=unfinished[1],
+        stations=stations,
+        near_station_in_budget=len(near),
+        near_station_in_budget_checked=sum(bool(d.get("page_checked")) for d in near),
     )
 
 
@@ -423,13 +479,29 @@ def area_insights(
     *,
     areas: tuple[str, ...] | list[str] | None = None,
     year: int | None = None,
+    budget: int = DEFAULT_BUDGET,
 ) -> tuple[list[AreaInsight], float | None]:
     """Metrics per area with at least MIN_FRESH fresh usable listings, plus the reference
-    (median fresh €/m² over all eligible input). ``areas`` filters by ``search_area``."""
+    (median fresh €/m² over all eligible input). ``areas`` filters by ``search_area``.
+    Flats only, floor 1 or above (``_upper_flat``)."""
     year = year or date.today().year
-    pool = [
-        d for d in listings if _eligible(d) and (areas is None or d.get("search_area") in areas)
+    scope = [
+        d for d in listings if _upper_flat(d) and (areas is None or d.get("search_area") in areas)
     ]
+    pool = [d for d in scope if _eligible(d)]
+    # Under construction among new builds whose own page was read. Flagged listings are not
+    # "usable", so they are counted here from the same scope, not from the pool.
+    unf: dict[str, list[int]] = {}
+    for d in scope:
+        if not (d.get("is_fresh", True) and d.get("page_checked")):
+            continue
+        if not _eligible({**d, "is_unfinished": False}):
+            continue
+        a = _age(d, year)
+        if d.get("is_unfinished") or (a is not None and a <= AGE_BANDS[0][1]):
+            c = unf.setdefault(area_name(d.get("neighborhood")), [0, 0])
+            c[0] += bool(d.get("is_unfinished"))
+            c[1] += 1
     fresh_all = [d for d in pool if d.get("is_fresh", True)]
     if not fresh_all:
         return [], None
@@ -442,7 +514,11 @@ def area_insights(
     for name, rows in sorted(grouped.items()):
         fresh = [d for d in rows if d.get("is_fresh", True)]
         if len(fresh) >= MIN_FRESH:
-            out.append(_insight(name, fresh, rows, rents.get(name), year))
+            out.append(
+                _insight(
+                    name, fresh, rows, rents.get(name), year, tuple(unf.get(name, (0, 0))), budget
+                )
+            )
     return out, ref
 
 
@@ -452,12 +528,89 @@ def rank_areas(
     *,
     areas: tuple[str, ...] | list[str] | None = None,
     year: int | None = None,
+    budget: int = DEFAULT_BUDGET,
 ) -> list[AreaInsight]:
     """Areas ranked for a buy-to-let private buyer, best first (see module docstring)."""
-    insights, ref = area_insights(listings, rent_rows, areas=areas, year=year)
+    insights, ref = area_insights(listings, rent_rows, areas=areas, year=year, budget=budget)
+    by_yield = sorted(
+        (x for x in insights if x.gross_yield is not None), key=lambda x: -x.gross_yield
+    )
+    for i, x in enumerate(by_yield, 1):
+        x.yield_rank, x.yield_of = i, len(by_yield)
     for x in insights:
         x.components = _components(x, ref)
         x.score = round(100 * sum(WEIGHTS[k] * v for k, v in x.components.items()), 1)
         x.reasons = _reasons(x, ref)
         x.risks = _risks(x)
+        x.why = why(x)
     return sorted(insights, key=lambda x: (-x.score, x.area))
+
+
+# ---- the explained "why" and the decision sentences --------------------------------------
+
+
+def _rent(x: float) -> str:
+    return f"{x:.1f}".replace(".", ",")
+
+
+def why(x: AreaInsight) -> str:
+    """One line of numbers, filled from the fields — no adjectives. Parts whose data is
+    missing are left out (never guessed)."""
+    parts = []
+    if x.gross_yield is not None:
+        n = f" από {x.rent_samples} αγγελίες ενοικίασης" if x.rent_samples else ""
+        rank = f" ({x.yield_rank}η από {x.yield_of})" if x.yield_rank else ""
+        parts.append(
+            f"Απόδοση {_pct(x.gross_yield, 1)}{rank} με ενοίκιο {_rent(x.rent_ppm)} €/τ.μ.{n}"
+        )
+    if x.new_premium is not None:
+        word = "ακριβότερα" if x.new_premium >= 0 else "φθηνότερα"
+        parts.append(
+            f"νεόδμητα {_pct(abs(x.new_premium))} {word} από τα παλιά (n={x.n_new}/{x.n_old})"
+        )
+    if x.stations:
+        parts.append(", ".join(x.stations[:2]))
+    return (
+        "· ".join(parts) if parts else f"{x.n_fresh} αγγελίες, διάμεση {_num(x.median_ppm)} €/τ.μ."
+    )
+
+
+def decision(ranked: list[AreaInsight], budget: int = DEFAULT_BUDGET) -> list[str]:
+    """The buyer's answer in up to three short sentences, each computed from ``ranked`` with
+    its numbers inline: best yield, deepest market without falling prices, and most new flats
+    within budget in a neighbourhood with a rail station."""
+    out = []
+    solid = [x for x in ranked if x.n_fresh >= SMALL_SAMPLE]
+    small = " Μικρό δείγμα." if ranked and not solid else ""
+    solid = solid or ranked  # nothing reaches SMALL_SAMPLE: still answer, and say so
+    ys = [x for x in solid if x.gross_yield is not None]
+    if ys:
+        x = max(ys, key=lambda a: a.gross_yield)
+        new_y = (
+            f" ({_pct(x.gross_yield_new, 1)} στα νεόδμητα)" if x.gross_yield_new is not None else ""
+        )
+        out.append(
+            f"Για απόδοση: {x.area}, μικτή {_pct(x.gross_yield, 1)} στα παλιά{new_y}, "
+            f"ενοίκιο {_rent(x.rent_ppm)} €/τ.μ. από ζητούμενα ενοίκια της περιοχής, "
+            f"{x.n_fresh} αγγελίες πώλησης.{small}"
+        )
+    ok = [x for x in solid if x.trend_pct is None or x.trend_pct > FALLING_TREND]
+    if ok:
+        x = max(ok, key=lambda a: a.n_fresh)
+        dom = f", διάμεσα {x.median_dom:.0f} μέρες στην αγορά" if x.median_dom else ""
+        out.append(
+            f"Για ρευστότητα: {x.area}, {x.n_fresh} αγγελίες, "
+            f"{_pct(x.cut_share)} με μείωση τιμής{dom}.{small}"
+        )
+    near = max(ranked, key=lambda a: a.near_station_in_budget, default=None)
+    b = f"{_num(budget)} €"
+    if near is not None and near.near_station_in_budget:
+        st = ", ".join(near.stations[:2])
+        out.append(
+            f"Για νεόδμητο κοντά σε σταθμό έως {b}: {near.area} ({st}), "
+            f"{near.near_station_in_budget} αγγελίες, "
+            f"{near.near_station_in_budget_checked} με ελεγμένη περιγραφή."
+        )
+    else:
+        out.append(f"Νεόδμητο έως {b} σε γειτονιά με σταθμό: δεν βρέθηκε αγγελία.")
+    return out

@@ -98,11 +98,11 @@ def gr_rent(v) -> str:
 
 
 def gr_pct(fraction, digits: int = 1, sign: bool = False) -> str:
-    """0.054 → '5,4%' (sign=True: '+5,4%')."""
+    """0.054 → '5,4 %' (sign=True: '+5,4 %')."""
     if _missing(fraction):
         return "—"
     s = gr_num(fraction * 100, digits)
-    return f"+{s}%" if sign and fraction > 0 else f"{s}%"
+    return f"+{s} %" if sign and fraction > 0 else f"{s} %"
 
 
 def samples_text(x: ai.AreaInsight) -> str:
@@ -112,6 +112,41 @@ def samples_text(x: ai.AreaInsight) -> str:
 def trend_text(x: ai.AreaInsight) -> str:
     n = f"n={x.trend_early_n}/{x.trend_late_n}"
     return f"— ({n})" if x.trend_pct is None else f"{gr_pct(x.trend_pct, sign=True)} ({n})"
+
+
+def yield_text(x: ai.AreaInsight) -> str:
+    """Yield at the all-stock median, and at the new-build median when there is one."""
+    if x.gross_yield_new is None:
+        return gr_pct(x.gross_yield)
+    return f"{gr_pct(x.gross_yield)} στα παλιά · {gr_pct(x.gross_yield_new)} στα νεόδμητα"
+
+
+def uc_text(x: ai.AreaInsight) -> str:
+    """Under-construction share among new builds whose page was read: '2/5 ελεγμένα'."""
+    if not x.uc_checked:
+        return "δεν έχει ελεγχθεί ακόμα κανένα νεόδμητο"
+    return f"{x.uc_unfinished}/{x.uc_checked} ελεγμένα"
+
+
+def confidence_text(x: ai.AreaInsight) -> str:
+    """Confidence word + the n it rests on."""
+    return f"{confidence(x)} (n={x.n_fresh})"
+
+
+def new_old_text(x: ai.AreaInsight) -> str:
+    if x.new_premium is None:
+        return f"δεν υπάρχουν ≥{ai.MIN_BAND} αγγελίες και στις δύο ομάδες (n={x.n_new}/{x.n_old})"
+    return (
+        f"{gr_ppm(x.ppm_new)} (n={x.n_new}) έναντι {gr_ppm(x.ppm_old)} (n={x.n_old}), "
+        f"{gr_pct(x.new_premium, 0, sign=True)}"
+    )
+
+
+FILTERS_CAPTION = (
+    "Μετράνε μόνο διαμερίσματα από 1ο όροφο και πάνω, με γνωστό όροφο, που εμφανίστηκαν "
+    f"στην τελευταία σάρωση (≤{queries.FRESH_DAYS} ημέρες). Νεόδμητα = έως 5 ετών, "
+    "παλιά = 16+ ετών."
+)
 
 
 def coverage_line(insights: list[ai.AreaInsight], listings: list[dict]) -> str:
@@ -143,6 +178,7 @@ def table_frame(insights: list[ai.AreaInsight]) -> pd.DataFrame:
                 "n τάσης": f"{x.trend_early_n}/{x.trend_late_n}",
                 "Με μείωση τιμής": 100 * x.cut_share,
                 "Καλό απόθεμα": x.good_stock,
+                "Νεόδμητα vs παλιά": None if x.new_premium is None else 100 * x.new_premium,
             }
         )
     return pd.DataFrame(rows)
@@ -160,7 +196,9 @@ _TABLE_FORMAT = {
     "Τάση από Ιούλιο": lambda v: gr_pct(None if _missing(v) else v / 100, sign=True),
     "Με μείωση τιμής": lambda v: gr_pct(v / 100, 0),
     "Καλό απόθεμα": gr_num,
+    "Νεόδμητα vs παλιά": lambda v: gr_pct(None if _missing(v) else v / 100, 0, sign=True),
 }
+PHONE_COLUMNS = ["Περιοχή", "Μικτή απόδοση", "€/τ.μ. (όλα)", "Πρόσφατες αγγελίες"]
 
 
 def area_points(listings: list[dict], names: set[str]) -> dict[str, tuple[float, float, bool]]:
@@ -199,14 +237,14 @@ def area_points(listings: list[dict], names: set[str]) -> dict[str, tuple[float,
 
 
 @st.cache_data(ttl=10800, show_spinner=False)
-def _ranked(_listings: list[dict], stamp: tuple) -> list[ai.AreaInsight]:
+def _ranked(_listings: list[dict], stamp: tuple, budget: int) -> list[ai.AreaInsight]:
     """Ranked over the 15 NE-Athens SEARCHES (so the reference median is NE Athens and a
     score does not change with the toggle). ``stamp`` keys the cache on the data."""
     try:
         rents = queries.load_rent_comp_rows()
     except Exception:  # a missing rent table must not take the page down
         rents = []
-    return ai.rank_areas(_listings, rents, areas=ai.NE_ATHENS_AREAS)
+    return ai.rank_areas(_listings, rents, areas=ai.NE_ATHENS_AREAS, budget=budget)
 
 
 def _stamp(listings: list[dict]) -> tuple:
@@ -267,23 +305,41 @@ def _method() -> None:
         )
 
 
-def _card(rank: int, x: ai.AreaInsight) -> None:
+def _card(rank: int | None, x: ai.AreaInsight, *, key: str) -> None:
     with st.container(border=True):
-        st.markdown(f"#### {rank}. {x.area}")
-        st.markdown(
-            f"**Σκορ {gr_num(x.score, 1)}/100** · Εμπιστοσύνη: **{confidence(x)}**  \n"
-            f"{x.n_fresh} πρόσφατες αγγελίες · δείγματα ενοικίου: {samples_text(x)}"
-        )
-        st.markdown(
-            f"Ζητούμενη **{gr_ppm(x.median_ppm)}** (≤30 ετών {gr_ppm(x.median_ppm_recent)}, "
-            f"n={x.n_recent}) · ενοίκιο **{gr_rent(x.rent_ppm)}**/μήνα · μικτή απόδοση "
-            f"**{gr_pct(x.gross_yield)}** · τάση από Ιούλιο {trend_text(x)}"
-        )
-        st.markdown("**Γιατί**\n" + "\n".join(f"- {r}" for r in x.reasons))
+        st.markdown(f"#### {rank}. {x.area}" if rank else f"##### {x.area}")
+        st.markdown(x.why)
+        rows = [
+            ("Τιμή (διάμεση)", f"{gr_ppm(x.median_ppm)}, {x.n_fresh} αγγελίες"),
+            ("Νεόδμητα / παλιά", new_old_text(x)),
+            (
+                "Ενοίκιο (εκτίμηση)",
+                f"{gr_rent(x.rent_ppm)}/μήνα"
+                + (
+                    f", n={x.rent_samples}"
+                    if x.rent_samples
+                    else ", δείγμα ενοικίων μη καταγεγραμμένο"
+                ),
+            ),
+            ("Μικτή απόδοση", yield_text(x)),
+            ("Υπό κατασκευή", uc_text(x)),
+            (
+                "Στην αγορά",
+                (
+                    f"{gr_num(x.median_dom)} μέρες (διάμεσα, από την πρώτη φορά που τις είδαμε)"
+                    if x.median_dom
+                    else "άγνωστο"
+                ),
+            ),
+            ("Με μείωση τιμής", gr_pct(x.cut_share, 0)),
+            ("Σταθμός", ", ".join(x.stations) if x.stations else "κανένας στις γειτονιές"),
+            ("Εμπιστοσύνη", confidence_text(x)),
+        ]
+        st.markdown("\n".join(f"- **{k}:** {v}" for k, v in rows))
         st.markdown("**Προσοχή**\n" + "\n".join(f"- {r}" for r in x.risks))
         st.button(
             "Δες τις αγγελίες",
-            key=f"area_go_{rank}",
+            key=f"area_go_{key}",
             on_click=_go_to_listings,
             args=(x.area,),
             width="stretch",
@@ -296,28 +352,18 @@ def _table(insights: list[ai.AreaInsight]) -> None:
     df = table_frame(insights)
     nums = list(_TABLE_FORMAT)
     df[nums] = df[nums].astype(float).fillna(-math.inf)
+    df = df[PHONE_COLUMNS]  # phone: 4 columns; the rest is in the card below
     cc = st.column_config
     st.dataframe(
-        df.style.format(_TABLE_FORMAT),
+        df.style.format({k: f for k, f in _TABLE_FORMAT.items() if k in PHONE_COLUMNS}),
         hide_index=True,
         width="stretch",
         height=min(35 * (len(df) + 1) + 3, 800),  # every area visible without inner scroll
         column_config={
             "Περιοχή": cc.TextColumn(pinned=True),
-            "Σκορ": cc.NumberColumn(help="0–100, βλ. «Πώς βαθμολογούμε»"),
-            "€/τ.μ. (όλα)": cc.NumberColumn(help="Διάμεση ζητούμενη τιμή πώλησης"),
-            "€/τ.μ. ≤30 ετών": cc.NumberColumn(help="Διάμεση ζητούμενη, κτίρια έως 30 ετών"),
-            "Ενοίκιο €/τ.μ./μήνα": cc.NumberColumn(help="Διάμεσο ζητούμενο ενοίκιο"),
-            "Δείγματα ενοικίου": cc.NumberColumn(help="«—» = δεν έχει καταγραφεί ακόμα"),
-            "Μικτή απόδοση": cc.NumberColumn(help="12 × ενοίκιο €/τ.μ. ÷ τιμή €/τ.μ."),
-            "Τάση από Ιούλιο": cc.NumberColumn(
-                help="Ζητούμενη €/τ.μ. τέλη Οκτωβρίου έναντι Ιουλίου (n στη διπλανή στήλη)"
-            ),
-            "n τάσης": cc.TextColumn(help="Αγγελίες Ιουλίου / τέλη Οκτωβρίου"),
-            "Με μείωση τιμής": cc.NumberColumn(help="Ποσοστό αγγελιών που έχουν μειώσει τιμή"),
-            "Καλό απόθεμα": cc.NumberColumn(
-                help="Έως 30 ετών, από 1ο όροφο, κάτω από τη διάμεση της ηλικίας τους"
-            ),
+            "€/τ.μ. (όλα)": cc.NumberColumn("€/τ.μ.", help="Διάμεση ζητούμενη τιμή πώλησης"),
+            "Μικτή απόδοση": cc.NumberColumn("Απόδοση", help="12 × ενοίκιο €/τ.μ. ÷ τιμή €/τ.μ."),
+            "Πρόσφατες αγγελίες": cc.NumberColumn("Αγγελίες"),
         },
     )
     st.caption("Κλικ σε επικεφαλίδα για ταξινόμηση. «—» = δεν υπάρχει αρκετό δείγμα.")
@@ -396,10 +442,9 @@ def page_areas(listings: list[dict]) -> None:
         help="Οι 15 περιοχές της αναζήτησής σου. Κλειστό: και γειτονικές περιοχές που "
         "εμφανίζονται στις ίδιες αναζητήσεις (π.χ. Αχαρνές, Γέρακας).",
     )
-    ranked = _ranked(listings, _stamp(listings)) if listings else []
+    budget = int(st.session_state.get("find_budget", ai.DEFAULT_BUDGET))
+    ranked = _ranked(listings, _stamp(listings), budget) if listings else []
     shown = [x for x in ranked if is_ne(x.area)] if ne_only else ranked
-    st.caption(coverage_line(shown, listings))
-    _method()
     if not shown:
         st.info(
             f"Καμία περιοχή δεν έχει ακόμα ≥{ai.MIN_FRESH} πρόσφατες αγγελίες για "
@@ -407,13 +452,23 @@ def page_areas(listings: list[dict]) -> None:
         )
         return
 
-    st.markdown("### Οι 3 καλύτερες για αγορά προς ενοικίαση")
-    for col, (i, x) in zip(st.columns(3), enumerate(shown[:3], 1), strict=False):
-        with col:
-            _card(i, x)
+    with st.container(border=True):
+        st.markdown("**Για αγορά προς ενοικίαση**")
+        for line in ai.decision(shown, budget):
+            st.markdown(line)
+    st.caption(coverage_line(shown, listings) + ". " + FILTERS_CAPTION)
 
-    st.markdown("### Όλες οι περιοχές")
-    _table(shown)
+    st.markdown("### Οι 3 πρώτες")
+    for i, x in enumerate(shown[:3], 1):
+        _card(i, x, key=str(i))
+
+    with st.expander(f"Όλες οι περιοχές ({len(shown)})"):
+        _table(shown)
+        pick = st.selectbox(
+            "Αναλυτικά στοιχεία περιοχής", [x.area for x in shown], key="areas_detail"
+        )
+        _card(None, next(x for x in shown if x.area == pick), key="detail")
 
     st.markdown("### Χάρτης")
     _map(shown, listings)
+    _method()
