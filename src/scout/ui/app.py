@@ -1384,7 +1384,7 @@ def _map_filter(
 def page_map(listings: list[dict]) -> None:
     st.subheader("Χάρτης")
     if not listings:
-        st.info("Δεν υπάρχουν αγγελίες ακόμα — πάτα «Ανανέωση» πάνω.")
+        st.info("Δεν υπάρχουν αγγελίες ακόμα. Πάτα «Ανανέωση δεδομένων» στο μενού.")
         return
     # One score everywhere: colours and legend use the buyer score on the cards.
     scores = buyer.buyer_scores(listings)
@@ -1431,8 +1431,12 @@ def page_map(listings: list[dict]) -> None:
     st.markdown(f"**{fmt._gr_int(len(shown))} {noun} στον χάρτη**")
     exact = len(shown) - approx
     st.caption(
-        f"Μόνο {fmt._gr_int(exact)} αγγελίες έχουν ακριβή θέση· οι υπόλοιπες στο κέντρο της "
-        "περιοχής τους."
+        (
+            "Μόνο 1 αγγελία έχει ακριβή θέση· "
+            if exact == 1
+            else f"Μόνο {fmt._gr_int(exact)} αγγελίες έχουν ακριβή θέση· "
+        )
+        + "οι υπόλοιπες στο κέντρο της περιοχής τους."
         if exact
         else "Καμία αγγελία δεν έχει ακριβή θέση· όλες είναι στο κέντρο της περιοχής τους."
     )
@@ -2231,56 +2235,33 @@ def _go_find() -> None:
     st.session_state["page"] = HOME
 
 
-def _compare_rows(d: dict, adv: dict) -> dict[str, str]:
-    """One flat's facts as text (field -> value). Every figure names its basis in the field."""
-    from scout import finance, picks
+UNKNOWN = "άγνωστο"
 
-    cmp, age = adv["cmp"], adv["age"]
-    built = d.get("renovated_year") or d.get("year_built")
+
+def _compare_rows(d: dict) -> dict[str, str]:
+    """One flat's eight facts (field -> one value). Status, comparables, net yield and days on
+    market are on the compact cards under the table, or one tap away in their expander."""
+    from scout import picks
+
     rent = d.get("listed_rent") or d.get("est_monthly_rent")
     gy = buyer.gross_yield(d)
-    ny = (
-        finance.net_yield(d["price"], rent * 12, d.get("area_m2"), bool(d.get("is_private_seller")))
-        if rent
-        else None
-    )
-    if d.get("is_unfinished"):
-        status = "Υπό κατασκευή"
-    else:
-        status = "Ελέγχθηκε η περιγραφή" if d.get("page_checked") else "Δεν έχει ελεγχθεί ακόμα"
     return {
         "Τιμή": fmt.euro(d["price"]),
-        "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")),
-        "Εμβαδόν": f"{d['area_m2']:g} τ.μ." if d.get("area_m2") else "—",
-        "Όροφος": buyer._floor(d["floor"]) if d.get("floor") is not None else "—",
-        "Έτος": (
-            f"{built} ({age} {'έτους' if age == 1 else 'ετών'})"
-            if built and age is not None
-            else "—"
-        ),
-        "Ενοίκιο (εκτίμηση)": (
-            f"~{fmt.euro(round(rent, -1))}/μήνα"
-            + ("" if not d.get("listed_rent") else " (αγγελία)")
-            if rent
-            else "—"
-        ),
-        "Μικτή απόδοση": buyer.pct1(gy) if gy else "—",
-        "Καθαρή απόδοση": buyer.pct1(ny) if ny else "—",
-        "Παρόμοια": (
-            f"{cmp['pct']:+.0%} €/τ.μ. · {cmp['n']} παρόμοια, {buyer.confidence(cmp).lower()}"
-            if cmp
-            else "—"
-        ).replace("-", "−"),
-        "Κατάσταση": status,
-        "Σταθμός": picks.station_text(d) or "—",
-        "Στην αγορά": (
-            f"{d['days_on_market']} μέρες" if d.get("days_on_market") is not None else "—"
-        ),
+        "€/τ.μ.": fmt.euro_per_m2(d.get("price_per_m2")) if d.get("price_per_m2") else UNKNOWN,
+        "τ.μ.": f"{d['area_m2']:g}".replace(".", ",") if d.get("area_m2") else UNKNOWN,
+        "Όροφος": buyer._floor(d["floor"]) if d.get("floor") is not None else UNKNOWN,
+        "Έτος": str(d["year_built"]) if d.get("year_built") else UNKNOWN,
+        "Ενοίκιο (εκτίμηση)": f"~{fmt.euro(round(rent, -1))}/μήνα" if rent else UNKNOWN,
+        "Μικτή απόδοση": buyer.pct1(gy) if gy else UNKNOWN,
+        # no station from the point or the neighbourhood name is not «unknown»: we cannot tell
+        "Σταθμός": picks.station_text(d) or "δεν προκύπτει",
     }
 
 
 def page_compare(listings: list[dict]) -> None:
-    """Two flats side by side as a field · Α · Β facts table (3 columns fits a phone)."""
+    """Two flats: pick them (favourites first), an eight-row field · Α · Β table (three
+    columns fit a 390 px phone), then the two compact cards."""
+    buyer._css()
 
     st.subheader("Σύγκριση")
     st.caption("Διάλεξε 2 αγγελίες (τα αγαπημένα πρώτα).")
@@ -2290,8 +2271,11 @@ def page_compare(listings: list[dict]) -> None:
     elig = sorted(  # starred first — the usual "which of my favourites?" question
         nl_search.candidates(listings), key=lambda d: shortlist.lkey(d) not in starred
     )
-    if not elig:
-        st.info("Δεν υπάρχουν ακόμα αγγελίες για σύγκριση.")
+    if len(elig) < 2:
+        st.info(
+            "Δεν υπάρχουν ακόμα δύο αγγελίες για σύγκριση. Πάτα «Ανανέωση δεδομένων» στο "
+            "μενού ή δοκίμασε ξανά αργότερα."
+        )
         return
 
     def _name(d: dict) -> str:
@@ -2333,34 +2317,33 @@ def page_compare(listings: list[dict]) -> None:
         placeholder="Γράψε περιοχή, τ.μ. ή τιμή",
     )
     if not pick_a or not pick_b:
-        st.info(f"Διάλεξε δύο αγγελίες — ή άνοιξε «{HOME}» για να δεις τις καλύτερες.")
+        st.info("Διάλεξε δύο αγγελίες παραπάνω ή πάτα το κουμπί για να δεις τις καλύτερες.")
         st.button(HOME, key="cmp_to_find", on_click=_go_find)
         return
     if pick_a == pick_b:
-        st.info("Διάλεξε δύο διαφορετικές αγγελίες.")
+        st.info("Διάλεξε δύο διαφορετικές αγγελίες: άλλαξε την Α ή τη Β.")
         return
     chosen = [by_id[opts[pick_a]], by_id[opts[pick_b]]]
 
     from scout import market_intel
 
     intel = market_intel.build(listings)
-    views = [_compare_rows(d, buyer.buyer_view(d, intel)) for d in chosen]
-    st.markdown(
-        "\n\n".join(
-            f"**{tag}** · {_name(d).rsplit(' · #', 1)[0]}"
-            for tag, d in zip("ΑΒ", chosen, strict=True)
-        )
-    )
+    views = [_compare_rows(d) for d in chosen]
     rows = "".join(f"| {k} | {views[0][k]} | {views[1][k]} |\n" for k in views[0])
     st.markdown(f"| | Α | Β |\n|---|---|---|\n{rows}")
     st.caption(
-        "Ενοίκιο: εκτίμηση από ζητούμενα ενοίκια της περιοχής (εκτός αν αναφέρεται στην αγγελία). "
-        "Μικτή απόδοση = 12 × ενοίκιο ÷ τιμή. Καθαρή = μετά από κόστη αγοράς και λειτουργίας. "
-        "Παρόμοια: €/τ.μ. σε σχέση με τη διάμεσο ίδιας περιοχής, ηλικίας και μεγέθους· "
-        "αρνητικό = φθηνότερο.",
+        "Ενοίκιο: εκτίμηση από ζητούμενα ενοίκια της περιοχής (εκτός αν το γράφει η αγγελία). "
+        "Μικτή απόδοση = 12 × ενοίκιο ÷ τιμή. Τα υπόλοιπα στις κάρτες από κάτω."
     )
     for tag, d in zip("ΑΒ", chosen, strict=True):
-        st.link_button(f"Άνοιγμα {tag} στο {buyer.source_label(d)}", d["url"], width="stretch")
+        st.markdown(f"**{tag}**")
+        buyer.result_card(
+            d,
+            buyer.buyer_view(d, intel),
+            f"cmp{tag}",
+            [("Λεπτομέρειες", buyer.open_detail, (d["id"],)), buyer._star_action(d)],
+            compact=True,
+        )
 
 
 # The home page: the guided flow (W8) when present, else «Βρες μου σπίτι».
@@ -2444,12 +2427,15 @@ def main() -> None:
     admin = bool(st.query_params.get("admin"))
     pages = {**NAV, **(ADMIN_NAV if admin else {})}
     with st.sidebar:  # desktop / keyboard navigation; on a phone the pills below do the job
-        st.markdown("### Σκάουτ ακινήτων")
         account.login_ui()
         # «Αγγελία» needs a selected listing: reachable from cards only, listed only while open.
         shown = [p for p in pages if p != buyer.NAV_DETAIL or st.session_state.get("page") == p]
         page = st.radio("Σελίδα", shown, key="page", label_visibility="collapsed")
         st.button("Ανανέωση δεδομένων", key="refresh", on_click=_refresh_data, width="stretch")
+    # One header line, the data line under it, then the pills (every page).
+    listings = get_listings()
+    st.markdown('<div class="hg-app-head">Σκάουτ ακινήτων</div>', unsafe_allow_html=True)
+    st.caption(_data_status(listings))
     # Pills mirror the current page (pages also navigate by setting session_state["page"]).
     st.session_state["nav_pill"] = _PILL_OF.get(page)
     st.pills(
@@ -2459,8 +2445,6 @@ def main() -> None:
         on_change=_pick_page,
         label_visibility="collapsed",
     )
-    listings = get_listings()
-    st.caption(_data_status(listings))
 
     if pages[page] in (page_opportunities, page_today):
         st.markdown(f"## {page}")

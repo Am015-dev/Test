@@ -106,16 +106,22 @@ def test_compare_is_a_three_column_facts_table_for_two_flats(env):  # noqa: F811
     rows = [r for r in table.splitlines() if r.startswith("|")]
     assert all(r.count("|") == 4 for r in rows)  # field · Α · Β
     fields = [r.split("|")[1].strip() for r in rows[2:]]
-    for want in (
+    assert fields == [
+        "Τιμή",
         "€/τ.μ.",
+        "τ.μ.",
+        "Όροφος",
+        "Έτος",
         "Ενοίκιο (εκτίμηση)",
         "Μικτή απόδοση",
-        "Καθαρή απόδοση",
-        "Παρόμοια",
-        "Κατάσταση",
         "Σταθμός",
-    ):
-        assert want in fields, fields
+    ]
+    assert len(fields) <= 8  # C3: at most eight rows, one value per cell
+    for r in rows[2:-1]:  # «Μετρό Χολαργός · 360 μ.» (the station row) is one value
+        assert all(" · " not in c for c in r.split("|")[2:4]), r
+    # then the two compact cards, two buttons each
+    assert sum(1 for b in at.button if b.label == "Λεπτομέρειες") == 2
+    assert not any(b.label.startswith("Άνοιγμα") for b in at.main.button)
     # two flats at most: exactly two pickers, no multiselect (its notice is English)
     assert len(at.selectbox) == 2 and not at.multiselect
     at.selectbox(key="compare_b").set_value(opts[0]).run()
@@ -146,6 +152,9 @@ def test_map_page_is_the_map_with_the_ranked_list_under_it(env):  # noqa: F811
 
 def test_status_is_one_short_line_and_refresh_lives_in_the_sidebar(env):  # noqa: F811
     at = _app()
+    # one header line «Σκάουτ ακινήτων», the data line right under it
+    heads = [m.value for m in at.main.markdown if m.value.startswith('<div class="hg-app-head"')]
+    assert len(heads) == 1 and "Σκάουτ ακινήτων" in heads[0]
     line = next(c.value for c in at.caption if c.value.startswith("XE.gr ·"))
     assert len(line) <= 48  # one line at 390 px
     assert any(b.key == "refresh" for b in at.sidebar.button)

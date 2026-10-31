@@ -656,6 +656,22 @@ footer {{ visibility: hidden; height: 0; }}
 /* Nothing may push a page wider than the phone (the select's hidden input did on the map). */
 [data-testid="stMain"] {{ overflow-x: clip; }}
 [data-testid="stMain"] [data-baseweb="select"] input {{ max-width: 100%; }}
+
+/* ------------------------------------------------------------------ *
+ * Finish (round 4): one header line, one type scale for every page.
+ * Header 1.05rem · page title 1.3rem (## and ### alike) · section 1rem · body .95rem ·
+ * small print .875rem. Spacing: 1rem between blocks, .5rem inside a card.
+ * ------------------------------------------------------------------ */
+.hg-app-head {{ font-size: 1.05rem; font-weight: 750; color: var(--hg-ink);
+    letter-spacing: -0.01em; line-height: 1.3; margin: 0; }}
+[data-testid="stMain"] h2, [data-testid="stMain"] h3 {{
+    font-size: 1.3rem; font-weight: 700; margin: .25rem 0 .35rem; padding: 0; }}
+[data-testid="stMain"] h4 {{ font-size: 1rem; font-weight: 650; margin: .75rem 0 .35rem; }}
+[data-testid="stMain"] p, [data-testid="stMain"] li {{ font-size: .95rem; }}
+[data-testid="stMain"] [data-testid="stCaptionContainer"] p {{ font-size: .875rem; }}
+[data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"] {{ padding: .85rem 1rem; }}
+.hg-card[data-compact] > div + div {{ margin-top: 3px; }}
+.hg-card[data-compact] details {{ margin-top: 4px; }}
 </style>
 """
 

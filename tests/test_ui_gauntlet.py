@@ -329,8 +329,9 @@ def test_compare_lines_up_every_picked_listing(env):
     at.selectbox(key="compare_a").set_value(opts[0]).run()
     at.selectbox(key="compare_b").set_value(opts[1]).run()
     ok(at, "compare")
-    legend = next(m.value for m in at.markdown if m.value.startswith("**Α**"))
-    assert "**Β**" in legend
+    # one compact card per picked flat, each its own listing
+    lids = {re.search(r'data-lid="(\d+)"', c).group(1) for c in _cards(at)}
+    assert len(lids) == 2, lids
     table = next(m.value for m in at.markdown if m.value.startswith("| | Α | Β |"))
     assert all(r.count("|") == 4 for r in table.splitlines())
 
@@ -626,9 +627,9 @@ def test_compare_opens_with_favourites_and_shows_yield(env):
     picked = [at.selectbox(key="compare_a").value, at.selectbox(key="compare_b").value]
     assert len(set(picked)) == 2 and all(v.endswith(" · αγαπημένο") for v in picked)
     table = next(m.value for m in at.markdown if m.value.startswith("| | Α | Β |"))
-    assert all(
-        f"| {f} |" in table for f in ("Ενοίκιο (εκτίμηση)", "Μικτή απόδοση", "Καθαρή απόδοση")
-    )
+    assert all(f"| {f} |" in table for f in ("Ενοίκιο (εκτίμηση)", "Μικτή απόδοση"))
+    # C3: eight rows; net yield is on the listing page, one tap away via «Λεπτομέρειες»
+    assert len(table.splitlines()) == 2 + 8
 
 
 DEV_WORDS = ("GITHUB_TOKEN", "GITHUB", "ANTHROPIC", "agent", "Agent", "🤖", "Κατάλαβα", "token")
