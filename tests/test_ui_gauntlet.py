@@ -330,13 +330,13 @@ def test_where_to_buy_cards_table_and_handoff(env):
     text = " ".join(m.value for m in at.markdown)
     cards = [m.value[5:] for m in at.markdown if m.value.startswith("#### ")]
     assert sorted(cards) == ["1. Γαλάτσι", "2. Χαλάνδρι"], cards
-    assert "δείγματα ενοικίου: 42" in text and "δείγματα ενοικίου: —" in text
-    assert "Γιατί" in text and "Προσοχή" in text
+    assert "n=42" in text and "δείγμα ενοικίων μη καταγεγραμμένο" in text
+    assert "Για απόδοση:" in text and "Προσοχή" in text
     df = at.dataframe[0].value
     assert list(df["Περιοχή"]) == ["Γαλάτσι", "Χαλάνδρι"]
-    assert df["Σκορ"].is_monotonic_decreasing
+    assert len(df.columns) <= 4  # phone: the rest is in the card
     go = [b for b in at.button if b.label == "Δες τις αγγελίες"]
-    assert len(go) == 2
+    assert len(go) == 3  # two top cards + the detail card under «Όλες οι περιοχές»
     go[1].click().run()
     ok(at, "handoff")
     assert at.session_state["page"] == SEARCH

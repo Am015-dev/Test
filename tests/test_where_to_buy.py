@@ -68,16 +68,16 @@ def test_confidence_levels():
 
 def test_greek_number_formats():
     assert areas.gr_ppm(2922.4) == "2.922 €/τ.μ."
-    assert areas.gr_pct(0.0543) == "5,4%"
-    assert areas.gr_pct(0.054, sign=True) == "+5,4%"
-    assert areas.gr_pct(-0.017, sign=True) == "-1,7%"
+    assert areas.gr_pct(0.0543) == "5,4 %"
+    assert areas.gr_pct(0.054, sign=True) == "+5,4 %"
+    assert areas.gr_pct(-0.017, sign=True) == "-1,7 %"
     assert areas.gr_rent(13.08) == "13,1 €/τ.μ."
     assert areas.gr_num(12345.67, 1) == "12.345,7"
     assert areas.gr_ppm(None) == areas.gr_pct(float("nan")) == "—"
 
 
 def test_trend_and_samples_text_show_n_and_dash():
-    assert areas.trend_text(_insight()) == "+1,0% (n=40/120)"
+    assert areas.trend_text(_insight()) == "+1,0 % (n=40/120)"
     assert areas.trend_text(_insight(trend_pct=None, trend_early_n=4)) == "— (n=4/120)"
     assert areas.samples_text(_insight(rent_samples=None)) == "—"
 
@@ -111,3 +111,31 @@ def test_ranking_feeds_the_page_helpers():
     ranked = ai.rank_areas(rows, rents, areas=ai.NE_ATHENS_AREAS, year=YEAR)
     assert {x.area for x in ranked} == {"Χολαργός", "Αχαρνές"}
     assert [x.area for x in ranked if areas.is_ne(x.area)] == ["Χολαργός"]
+
+
+def test_card_texts_show_n_over_m_and_unchecked():
+    assert areas.uc_text(_insight(uc_unfinished=33, uc_checked=51)) == "33/51 ελεγμένα"
+    assert "δεν έχει ελεγχθεί" in areas.uc_text(_insight())
+    assert areas.confidence_text(_insight(n_fresh=150, rent_samples=40)) == ("Υψηλή (n=150)")
+    assert "n=—" not in areas.confidence_text(_insight(rent_samples=None))
+
+
+def test_new_vs_old_text():
+    x = _insight(n_new=51, ppm_new=4000.0, n_old=275, ppm_old=2500.0, new_premium=0.6)
+    assert areas.new_old_text(x) == "4.000 €/τ.μ. (n=51) έναντι 2.500 €/τ.μ. (n=275), +60 %"
+    assert "n=3/275" in areas.new_old_text(_insight(n_new=3, n_old=275))
+
+
+def test_phone_table_has_at_most_four_columns():
+    assert len(areas.PHONE_COLUMNS) <= 4
+    assert set(areas.PHONE_COLUMNS) <= set(areas.table_frame([_insight()]).columns)
+
+
+def test_percent_has_a_space_in_greek_style():
+    assert areas.gr_pct(0.049) == "4,9 %"
+
+
+def test_yield_text_shows_old_and_new():
+    assert areas.yield_text(_insight(gross_yield=0.055)) == "5,5 %"
+    x = _insight(gross_yield=0.055, gross_yield_new=0.036)
+    assert areas.yield_text(x) == "5,5 % στα παλιά · 3,6 % στα νεόδμητα"
