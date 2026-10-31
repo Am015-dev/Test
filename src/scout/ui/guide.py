@@ -323,7 +323,11 @@ def recommend(
     out = (
         f"Πρόταση: **{html.escape(area)}** · μικτή απόδοση "
         f"{picks.gr_pct(med(ps, lambda p: p.gross))}  \n"
-        f"Διάμεση στις {len(ps)} από τις {len(found)} αγγελίες της λίστας εκεί"
+        + (
+            "Η μόνη αγγελία της λίστας"
+            if len(found) == 1
+            else f"Διάμεση στις {len(ps)} από τις {len(found)} αγγελίες της λίστας εκεί"
+        )
     )
     extra = []
     if goal == "yield" and x is not None and x.rent_ppm:
@@ -839,9 +843,18 @@ def _results(g: dict, listings: list[dict]) -> None:
         if sentence := recommend(every, area_facts, rules["goal"], budget):
             st.markdown(sentence)
         checked = sum(p.checked for p in every)
-        st.markdown(
-            f"**{len(every)}** αγγελίες {what}. Ελέγχθηκε η περιγραφή σε **{checked}** από αυτές."
-        )
+        if len(every) == 1:
+            tail = (
+                "Ελέγχθηκε η περιγραφή της."
+                if checked
+                else "Η περιγραφή της δεν έχει ελεγχθεί ακόμα."
+            )
+            st.markdown(f"**1** αγγελία {what}. {tail}")
+        else:
+            st.markdown(
+                f"**{len(every)}** αγγελίες {what}. "
+                f"Ελέγχθηκε η περιγραφή σε **{checked}** από αυτές."
+            )
         if g.get("loan") and (loan := loan_summary(every)):
             st.markdown(loan)
         if relax:
@@ -895,6 +908,11 @@ def page(listings: list[dict]) -> None:
     if g.get("mode") != "buy":
         from scout.ui import rent_guide
 
+        if g.get("mode") == "rent" and not rent_guide.rentals():
+            # No rentals stored yet (the first weekly run with rentals has not happened): a
+            # saved «rent» mode must not strand the visitor on an empty flow. Back to step 0.
+            rent_guide.set_mode(None)
+            g = state()
         return rent_guide.page(g) if g.get("mode") == "rent" else rent_guide.mode_step(g)
     step = int(g.get("step") or 1)
     if step > 1 and not g.get("budget"):

@@ -382,3 +382,40 @@ errors), one glossary (`docs/COORDINATION.md` «Glossary»), Greek only.
 
 **Not in scope.** Dark mode (Streamlit's theme is light; note it as a follow-up), web fonts,
 new pages, any change to what a card says.
+
+### C7 — never a thin list, and the score on every card (W22, `picks.py`, `picks_rent.py`, guide/rent-guide result sections, `buyer` card chip)
+
+Owner's words: «The amount of suggestions are extremely low, you should give more when user
+presses more. Where is the score?»
+
+**Never thin.** `picks.find` (and `picks_rent.find`) return the strict matches first and then
+**near matches**: the same ranking applied after loosening ONE answer at a time, in this fixed
+order, until at least `3 × PAGE` candidates exist or the pool is exhausted: price band 12 % →
+20 % → 30 % over the budget; building age one step up (10 → 20 → any); station rule off;
+chosen areas → all areas; bedrooms off. Each near match carries `relaxed: str` naming the one
+loosened answer in the user's words («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού»,
+«Μαρούσι», «3 υπν.») and sorts after every strict match; within the near matches the
+smallest loosening first. Nothing is relaxed twice on one candidate.
+- The result sentence says both counts: «**4** αγγελίες ακριβώς όπως ζήτησες και **31** κοντινές
+  (ένας όρος χαλαρωμένος, γραμμένος σε κάθε κάρτα).» With no strict match: «Καμία ακριβώς όπως
+  ζήτησες· **31** κοντινές.»
+- «Δείξε άλλες 10» keeps paging through strict then near, always ten more while any exist.
+  The relaxation buttons stay as a shortcut to make a loosening permanent.
+- On a near-match card, line 3 gets one chip in the neutral tone: «Έξω από: ποσό +18 %».
+- The assistant facts carry `relaxed` per listing; the brief must not call a near match exact.
+
+**The score.** One number per listing, the same definition everywhere, the buyer score 0–100
+from `nl_search.advise` (already the map colour and the search advice): on every card (compact
+and full) as the chip «Βαθμολογία 78» right of the price in line 1, on the compare table as the
+first row, on the listing page with «Πώς βγαίνει η βαθμολογία» (the components and their
+weights, in words, from `nl_search`). Rentals show the rent-value score («Βαθμολογία» from
+`vs_area_pct` and freshness, 0–100, basis in the expander). The guide keeps its goal ordering;
+if the top-ten order and the scores disagree by more than two places on the published DB,
+say so in the PR with examples (the coordinator decides whether the guide ranks by the score).
+
+**Definition of done.** On the published DB with the answers 160 χιλ. · απόδοση · κοντά σε
+μετρό · νεόδμητο (the owner's own), the result shows at least 30 candidates in total, each near
+match labelled; every card on every page shows the score; `tests/test_guide.py` covers the
+near-match order, the labels and the counts; `tests/test_copy.py` stays green; screenshots of
+the result at 390 px before and after in `docs/qa/more/`. No visual redesign (W21 owns the
+look): add classes and chips only through `buyer.card_html`'s existing slots.

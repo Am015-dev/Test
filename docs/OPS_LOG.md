@@ -13,6 +13,40 @@ LIMIT 5;
 
 ---
 
+## 2026-10-31 (evening) — Round 4 "buy or rent, professional finish" merged; round 5 design finish started
+- Merged to `main` (squash, CI green on each head): #85 photo check (`scripts/check_photos.py`,
+  vision classification photo/render/plan/site/stock into `photo_kind`/`photo_checked_at`, a
+  15-min weekly step that runs only with the repository secret `ANTHROPIC_API_KEY`; actions pinned
+  by commit), #86 stations (75-station Greek table from Wikidata, real walking distance only for
+  exact points, «(από το όνομα της γειτονιάς)» otherwise; `near_rail` among active rows 1,009 →
+  2,540; `scripts/recompute_metro.py` runs weekly before the rescore), #87 rentals as listing rows
+  (`listing_type`, `furnished`, `available_from`; separate retirement passes; `scoring.score`
+  excludes rentals; weekly rent comps from stored rentals with `samples`/`updated_at`;
+  `queries.load_rent_listings`; collect cap 140 → 160 min, job 220 → 250), #88 compact five-line
+  cards everywhere, eight-row compare with the two cards under it, one header line and one type
+  scale (guide result 7,184 → 4,554 px tall at 390), #89 rent guide («Τι ψάχνεις;» step 0, five
+  rent steps, value-vs-comparables ranking, renter rules for the assistant, starred rentals on
+  «Αγαπημένα», honest empty state until the first weekly run with rentals).
+- Schema additions this round (owner-requested in chat, no Telegram escalation): `listing_type`,
+  `furnished`, `available_from`, `photo_kind`, `photo_checked_at`; index `ix_listing_type_status`.
+  Forward migration is idempotent; verified twice on a copy of the published DB.
+- Pending owner decision: add the repository Actions secret `ANTHROPIC_API_KEY` (a separate key
+  with a spend cap) or the photo step stays skipped. Streamlit secrets do not reach Actions.
+- Known leftovers: admin-only pages (`?admin=1`) still print raw metre distances and a hard-coded
+  «(Γραμμή 3)»; `scripts/daily.py` step 2 (Oracle cron, unused by the Streamlit deployment) still
+  writes one-off scraped comps; `test_ui_gauntlet::test_no_developer_text_without_keys` failed
+  once in a full run for W16 and passed on rerun (order or timing dependent, not reproduced).
+- Round 5 opened on the owner's words «fix the app to look pretty without flaws»: vendored
+  `.claude/skills/impeccable/` (pbakaus/impeccable 4.8.0 text references, Apache 2.0; no binary)
+  and `.claude/skills/apple-hig-designer/` (MIT); contract C6 in `docs/COORDINATION.md` with a
+  measured definition of done. W21 phase-1 baseline on e3f490d: heuristics 22/40, audit 10/20,
+  448 of 481 controls under 44 px at 390, 242 contrast failures (231 decorative separators),
+  15 font sizes, 172 of 495 controls without a focus ring, scrollWidth 390 everywhere
+  (`docs/qa/design/AUDIT.md`, `measure.js`). Phase 2 (polish) started 19:21 UTC on b296a14.
+- Weekly four-source refresh run 41224248305 (dispatched 17:22) still in progress at 19:20.
+
+---
+
 ## 2026-10-31 — Round 3 "one guided flow, everything connected" merged
 - Merged to `main` (squash, CI green on each head): #73 map+list as one selection
   (`ui/maplist.py`), #74 «Οδηγός» five-screen guide as the home page with goal weights, loan
