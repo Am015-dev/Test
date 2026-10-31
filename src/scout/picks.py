@@ -35,12 +35,26 @@ safety     0.4    0.6    1.0     0.25
 growth     0.4    0.6    0.25    1.0
 =========  =====  =====  ======  ======
 
+Never a thin list (C7). ``find(..., near=True)`` returns the strict matches first and then
+**near matches**: listings that fail exactly ONE of the buyer's answers, loosened one step at
+a time in this fixed order until at least ``NEAR_MIN`` (3 × ``PAGE``) candidates exist or the
+steps run out: price band 12 % → 20 % → 30 % over the budget; building age one step up
+(10 → 20 → any); station rule off; chosen areas → all areas; bedrooms off. Each near match
+carries ``relaxed``, the loosened answer in the user's words («ποσό +18 %», «κτίριο 1998»,
+«χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»); near matches sort after every strict one, the
+earlier (smaller) step first, then by the usual sort. A listing that fails two answers is never
+shown — nothing is loosened twice on one candidate.
+
+The buyer score (``buyer_score``) on every pick is the 0–100 score of ``nl_search.advise``,
+the same number the map colour and the search advice use.
+
 With ``loan=True`` each pick carries the monthly instalment of a 70 % loan at 4 % over 25
 years (annuity) and ``cashflow`` = rent estimate − instalment.
 """
 
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
@@ -49,6 +63,7 @@ from . import stations
 from .area_insights import area_name
 from .finance import acquisition_costs
 from .market_intel import Intel
+from .nl_search import advise
 
 # XE sub-areas that ARE a rail station's neighbourhood (walkable), by name. Listings carry only
 # the neighbourhood (no exact address), so this is the honest proximity signal we have.
@@ -68,6 +83,9 @@ AGE_STEPS = (5, 10, 15, 20)  # the building-age limits the page offers
 BUDGET_BAND = 0.12  # ± around the stated budget
 TOP = 3
 PAGE = 10  # the «Οδηγός» shows the ranking 10 at a time
+NEAR_MIN = 3 * PAGE  # near matches are added until at least this many candidates exist
+PRICE_STEPS = (0.20, 0.30)  # the price band over the budget, after BUDGET_BAND
+AGE_LOOSEN = (10, 20, None)  # building-age limits a near match may step up to
 
 GOALS = ("yield", "safety", "growth")
 GOAL_WEIGHTS: dict[str, dict[str, float]] = {
@@ -215,6 +233,8 @@ class Pick:
     loan: bool = False  # the buyer said «με δάνειο»: show the instalment line
     goal: str = "yield"
     offer_line: str = ""
+    buyer_score: int = 0  # 0–100, ``nl_search.advise`` (the score on every card)
+    relaxed: str = ""  # near match: the one loosened answer («ποσό +18 %»); "" = strict
 
     @property
     def loan_line(self) -> str:
@@ -317,6 +337,7 @@ def _build(
     net = net_income / (d["price"] + costs)
     cmp = intel.comps(d)
     gap = -cmp["pct"] if cmp else 0.0
+    bscore = advise(d, cmp["pct"] if cmp else None)["score"]
     dom = d.get("days_on_market") or 0
     offer_cut = 0.03 + (0.03 if dom >= 90 else 0) + (0.02 if d.get("is_private_seller") else 0)
     offer = _r(d["price"] * (1 - offer_cut), 1000)
@@ -446,7 +467,15 @@ def _build(
         instalment=_r(inst, 10),
         cashflow=_r(rent - inst, 10),
         offer_line=offer_line,
+        buyer_score=bscore,
     )
+
+
+def buyer_score(d: dict, intel: Intel) -> int:
+    """The buyer score 0–100 for one listing: ``nl_search.advise`` with the listing's
+    comparables from ``intel`` — one definition for cards, map and search advice."""
+    cmp = intel.comps(d)
+    return advise(d, cmp["pct"] if cmp else None)["score"]
 
 
 def score(parts: dict[str, float], goal: str) -> float:
@@ -460,6 +489,58 @@ def _bedrooms_ok(d: dict, bedrooms: int | None) -> bool:
         return True
     n = d.get("bedrooms")
     return n is not None and (n >= 3 if bedrooms >= 3 else n == bedrooms)
+
+
+def _age_ok(d: dict, max_age: int | None, year: int) -> bool:
+    built = d.get("renovated_year") or d.get("year_built")
+    return max_age is None or bool(built and year - max_age <= built <= year)
+
+
+def _misses(
+    d: dict,
+    budget: int,
+    year: int,
+    max_age: int | None,
+    near_rail: bool,
+    areas: list[str] | None,
+    bedrooms: int | None,
+) -> list[tuple[str, int, str]]:
+    """The buyer's answers this listing fails, each as (answer, step, label): ``step`` is the
+    loosening it needs (1 = the first step of that answer), ``label`` the user's words.
+    A step of 0 means no allowed loosening admits it."""
+    out: list[tuple[str, int, str]] = []
+    price = d["price"]
+    if price > budget * (1 + BUDGET_BAND):
+        step = next((i + 1 for i, b in enumerate(PRICE_STEPS) if price <= budget * (1 + b)), 0)
+        out.append(("price", step, f"ποσό +{math.ceil((price / budget - 1) * 100)} %"))
+    if not _age_ok(d, max_age, year):
+        wider = [a for a in AGE_LOOSEN if a is None or (max_age is not None and a > max_age)]
+        step = next((i + 1 for i, a in enumerate(wider) if _age_ok(d, a, year)), 0)
+        built = d.get("renovated_year") or d.get("year_built")
+        out.append(("age", step, f"κτίριο {built}" if built else "κτίριο χωρίς έτος"))
+    if near_rail and not _near_rail(d):
+        out.append(("rail", 1, "χωρίς όρο σταθμού"))
+    if areas and (area := area_name(d.get("neighborhood"))) not in areas:
+        out.append(("areas", 1, area))
+    if not _bedrooms_ok(d, bedrooms):
+        n = d.get("bedrooms")
+        out.append(("bedrooms", 1, f"{n} υπν." if n is not None else "υπν. άγνωστα"))
+    return out
+
+
+def near_steps(max_age: int | None, near_rail: bool, areas, bedrooms) -> list[tuple[str, int]]:
+    """The loosening steps in the fixed C7 order, only for answers the buyer gave."""
+    steps = [("price", i + 1) for i in range(len(PRICE_STEPS))]
+    if max_age is not None:
+        wider = [a for a in AGE_LOOSEN if a is None or a > max_age]
+        steps += [("age", i + 1) for i in range(len(wider))]
+    if near_rail:
+        steps.append(("rail", 1))
+    if areas:
+        steps.append(("areas", 1))
+    if bedrooms is not None:
+        steps.append(("bedrooms", 1))
+    return steps
 
 
 def find(
@@ -479,54 +560,66 @@ def find(
     year: int | None = None,
     top: int = TOP,
     memo: dict | None = None,
+    near: bool = False,
 ) -> list[Pick]:
     """The ``top`` listings for ``budget`` (± BUDGET_BAND): read pages first, then real
     photos, then ``rank_score`` for ``goal`` (module docstring). ``max_age=None`` = any
     building age; ``areas`` = area names (``area_insights.area_name``); ``bedrooms`` see
     ``_bedrooms_ok``; ``area_facts`` = area → ``AreaInsight`` for the growth part. ``memo``
-    caches the per-listing work between calls that only differ in the filters."""
+    caches the per-listing work between calls that only differ in the filters.
+    ``near=True`` appends the near matches after the strict ones (module docstring)."""
     year = year or date.today().year
     rents = rent_index(rent_rows)
     memo = {} if memo is None else memo
     if "_stats" not in memo:
         memo["_stats"] = area_stats(listings)
     stats = memo["_stats"]
-    lo, hi = budget * (1 - BUDGET_BAND), budget * (1 + BUDGET_BAND)
-    out: list[Pick] = []
+    lo = budget * (1 - BUDGET_BAND)
+    strict: list[Pick] = []
+    loose: dict[tuple[str, int], list[Pick]] = {}
     for d in listings:
         if not d.get("is_fresh", True) or d.get("excluded") or d.get("is_suspect"):
             continue
         if d.get("is_unfinished") or not d.get("price") or not d.get("area_m2"):
             continue
-        if not lo <= d["price"] <= hi or (d.get("floor") is not None and d["floor"] < 1):
-            continue
-        built = d.get("renovated_year") or d.get("year_built")
-        if max_age is not None and not (built and year - max_age <= built <= year):
-            continue
-        if near_rail and not _near_rail(d):
+        if d["price"] < lo or (d.get("floor") is not None and d["floor"] < 1):
             continue
         if checked_only and not d.get("page_checked"):
             continue
-        if areas and area_name(d.get("neighborhood")) not in areas:
-            continue
-        if not _bedrooms_ok(d, bedrooms):
+        miss = _misses(d, budget, year, max_age, near_rail, areas, bedrooms)
+        if miss and not (near and len(miss) == 1 and miss[0][1]):
             continue
         if id(d) not in memo:
             memo[id(d)] = _build(d, intel, rents, year, stats, area_facts)
-        if (p := memo[id(d)]) is not None:
-            out.append(replace(p, rank_score=score(p.parts, goal), loan=loan, goal=goal))
-    out.sort(key=Pick.sort_key, reverse=True)
+        if (p := memo[id(d)]) is None:
+            continue
+        p = replace(p, rank_score=score(p.parts, goal), loan=loan, goal=goal)
+        if miss:
+            answer, step, label = miss[0]
+            loose.setdefault((answer, step), []).append(replace(p, relaxed=label))
+        else:
+            strict.append(p)
     # One flat per building/listing group: skip near-identical units of the same block.
     seen: set[tuple] = set()
-    unique = []
-    for p in out:
-        d = p.listing
-        key = (d.get("neighborhood"), d.get("year_built"), round(d["price"], -4))
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(p)
-    return unique[:top]
+
+    def unique(group: list[Pick]) -> list[Pick]:
+        group.sort(key=Pick.sort_key, reverse=True)
+        kept = []
+        for p in group:
+            d = p.listing
+            key = (d.get("neighborhood"), d.get("year_built"), round(d["price"], -4))
+            if key not in seen:
+                seen.add(key)
+                kept.append(p)
+        return kept
+
+    out = unique(strict)
+    if near:
+        for step in near_steps(max_age, near_rail, areas, bedrooms):
+            if len(out) >= NEAR_MIN:
+                break
+            out += unique(loose.get(step, []))
+    return out[:top]
 
 
 @dataclass
