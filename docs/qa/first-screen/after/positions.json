@@ -5,29 +5,29 @@
       {
         "name": "counts line",
         "top": 391,
-        "bottom": 551,
+        "bottom": 503,
         "verdict": "ok",
         "text": "20 αγγελίες 264.000 €–336.000 €, νεόδμητο, κοντά σε σταθμό ακριβώς όπως ζήτησες, 80 κοντιν"
       },
       {
         "name": "recommendation",
-        "top": 547,
-        "bottom": 611,
+        "top": 499,
+        "bottom": 563,
         "verdict": "ok",
         "text": "Σου προτείνω Νέα Ιωνία: εκεί βγαίνει 3,7 % και 6 από τα 20 σπίτια είναι εκεί."
       },
       {
         "name": "first card",
-        "top": 623,
-        "bottom": 887,
-        "verdict": "BELOW FOLD (bottom 887 > 844)",
+        "top": 575,
+        "bottom": 839,
+        "verdict": "ok",
         "text": "1. 335.000 € · 93 τ.μ. · 3.602 €/τ.μ. · Βαθμολογία 58 1ος όροφος · κτίριο 2025 · Άγιος Δημ"
       },
       {
         "name": "link to the ad",
-        "top": 883,
-        "bottom": 927,
-        "verdict": "BELOW FOLD (bottom 927 > 844)",
+        "top": 835,
+        "bottom": 879,
+        "verdict": "BELOW FOLD (bottom 879 > 844)",
         "text": "Δες την αγγελία στο XE.gr"
       }
     ]
