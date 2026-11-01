@@ -113,6 +113,28 @@ def test_verdict_lines_are_three_short_spoken_sentences():
     )
 
 
+def test_recommendation_needs_more_than_one_flat_in_the_area():
+    """One high-yield flat alone in an area does not make the area the recommendation."""
+    from scout import area_insights, market_intel, picks
+
+    from .test_picks import RENTS, YEAR, flat
+
+    rents = [*RENTS, {"neighborhood": "Χολαργός (Κέντρο)", "rent_per_m2": 11.0, "samples": 20}]
+    # five different ordinary flats (same m² and price would collapse as twins) …
+    rows = [flat(i, 190_000 + 4_000 * i, m2=60 + 5 * i) for i in range(5)]
+    # … and one alone in another area, inside the band, with the highest yield of all
+    rows.append(flat(9, 180_000, hood="Χολαργός (Κέντρο)", m2=100))
+    found = picks.find(
+        rows, market_intel.build(rows, YEAR), rents, 200_000, year=YEAR, top=50, near_rail=False
+    )
+    lone = next(p for p in found if p.listing["id"] == 9)
+    assert lone.gross == max(p.gross for p in found) and len(found) >= 3
+    sentence = guide.recommend(found, {}, "yield")
+    want = guide.accusative(area_insights.area_name(rows[0]["neighborhood"]))
+    assert sentence.startswith(f"Σου προτείνω {want}:")
+    assert f"{len(found) - 1} από τα {len(found)} σπίτια" in sentence
+
+
 def test_area_names_in_the_accusative():
     for nom, acc in (
         ("Χολαργός", "Χολαργό"),

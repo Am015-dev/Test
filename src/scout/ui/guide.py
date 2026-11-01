@@ -289,6 +289,8 @@ def covered_areas(listings: list[dict]) -> list[tuple[str, int]]:
     return [(a, c) for a, c in n.most_common() if c >= MIN_AREA]
 
 
+RECOMMEND_MIN = 3  # an area needs this many of the list's flats to be recommended
+
 _ACC = (  # nominative → accusative, unaccented and accented endings
     ("ος", "ο"), ("ός", "ό"), ("ας", "α"), ("άς", "ά"), ("ης", "η"), ("ής", "ή"),
     ("οι", "ους"), ("οί", "ούς"),
@@ -338,7 +340,11 @@ def recommend(
             med(by[a], lambda p: p.gross),
         ),
     }
-    area = max(by, key=keys.get(goal, keys["yield"]))
+    # An area with one flat is no recommendation: among areas with at least three of the
+    # list's flats (or as many as the fullest area has), the best for the goal.
+    floor = min(RECOMMEND_MIN, max(len(ps) for ps in by.values()))
+    pool = [a for a, ps in by.items() if len(ps) >= floor]
+    area = max(pool, key=keys.get(goal, keys["yield"]))
     ps, x = by[area], facts.get(area)
     why = f"εκεί βγαίνει {picks.gr_pct(med(ps, lambda p: p.gross))}"
     if goal == "safety" and x is not None and x.n_fresh:
