@@ -130,7 +130,7 @@ def test_loan_maths_on_a_synthetic_listing():
     # 300.000 €: 70 % = 210.000 at 4 % over 25 years → 1.108,46 €/month (annuity)
     assert picks.instalment(300_000) == pytest.approx(1108.46, abs=0.01)
     assert picks.instalment(100_000, ltv=1, rate=0, years=10) == pytest.approx(100_000 / 120)
-    rows = [flat(1, 300_000, m2=100)]  # 11 €/m² × 100 m² (2024 = new, +10 %) = 1.210 €
+    rows = [flat(1, 300_000, m2=110)]  # the stored estimate: 11 €/m² × 110 m² = 1.210 €
     p = picks.find(rows, market_intel.build(rows, YEAR), RENTS, 300_000, year=YEAR, loan=True)[0]
     assert (p.rent, p.instalment, p.cashflow) == (1210, 1110, 100)
     assert p.loan and p.loan_line == (
