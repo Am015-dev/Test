@@ -103,7 +103,7 @@ def _text(at) -> str:
 
 
 def _cards(at) -> list[str]:
-    return [b.key for b in at.button if (b.key or "").startswith("rent-no-")]
+    return [b.key for b in at.button if (b.key or "").startswith("rent-det-")]
 
 
 def walk_rent(at, budget="guide-rb800", beds="2", where="best", age="any", furnished=False):
@@ -126,7 +126,7 @@ def walk_rent(at, budget="guide-rb800", beds="2", where="best", age="any", furni
     at.button_group(key="rent_age").set_value(age).run()
     at.button(key="guide-rshow").click().run()
     ok(at, "step 4")
-    assert "Βήμα" not in _text(at) and "### Η πρότασή μου" in _text(at)
+    assert "Βήμα" not in _text(at) and "## Η πρότασή μου" in _text(at)
     return at
 
 
@@ -142,8 +142,10 @@ def test_rent_flow_end_to_end(rent_env):
     text = _text(at)
     total = int(re.search(r"\*\*(\d+)\*\* αγγελίες ενοικίασης έως 1\.100 €/μήνα", text).group(1))
     assert total == len(picks_rent.find(RENTALS, 1000, top=10**6))
-    assert total > 10 and "Σου προτείνω: **" in text
-    assert "Παρόμοια:" in text and "Ιδιώτης ή μεσιτικό" in text
+    assert total > 10 and "Σου προτείνω " in text
+    # C17: exactly two buttons per card, no «Εγκρίνω» / «Δεν μου κάνει» in the guide
+    assert not any(b.label in ("Εγκρίνω", "Δεν μου κάνει") for b in at.button)
+    assert "από τα διπλανά (" in text and "Ιδιώτης ή μεσιτικό" in text
     assert "/μήνα" in text and "Από πού βγαίνουν" in text
     assert "Δεν έχει ελεγχθεί ακόμα" not in text  # no rental page is read: no page-check chip
     assert 'hg-st-neu">Επιπλωμένο<' in text and 'hg-st-neu">Διαθέσιμο από 01/12<' in text
@@ -159,8 +161,13 @@ def test_rent_flow_end_to_end(rent_env):
     req = rent_env[0]
     assert "απόδοση" in req["system"] and "εγγύηση" in req["system"]  # «Δεν μιλάς για απόδοση»
     assert '"mode": "rent"' in req["messages"][0]["content"]
-    # drop moves the next one up
-    at.button(key=first[0]).click().run()
+    # a «Δεν μου κάνει» verdict (saved-searches page) drops the card and the next moves up
+    from scout import shortlist
+
+    lid = int(first[0].removeprefix("rent-det-"))
+    d = next(x for x in RENTALS if x["id"] == lid)
+    at.session_state["pick_review"] = {shortlist.lkey(d): "no"}
+    at.run()
     ok(at, "drop")
     assert first[0] not in _cards(at) and any(e.label == "Απέρριψες 1" for e in at.expander)
     # details open inline
@@ -376,7 +383,7 @@ def test_rent_flow_on_the_real_loader(env):  # noqa: F811
     text = _text(at)
     want = len(picks_rent.find(real, 1000, bedrooms=2, furnished=True, top=10**6))
     assert want and f"**{want}** αγγελίες ενοικίασης" in text
-    assert "Παρόμοια:" in text and "Επιπλωμένο" in text
+    assert "από τα διπλανά (" in text and "Επιπλωμένο" in text
 
 
 def test_rent_card_has_the_value_score_its_basis_and_the_near_chip():

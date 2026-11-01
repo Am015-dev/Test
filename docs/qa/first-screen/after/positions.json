@@ -1,0 +1,61 @@
+{
+  "guide result": {
+    "ok": true,
+    "rows": [
+      {
+        "name": "counts line",
+        "top": 391,
+        "bottom": 455,
+        "verdict": "ok",
+        "text": "39 αγγελίες 264.000 €–336.000 €, νεόδμητο, κοντά σε σταθμό."
+      },
+      {
+        "name": "recommendation",
+        "top": 451,
+        "bottom": 515,
+        "verdict": "ok",
+        "text": "Σου προτείνω Δάφνη Αττική: εκεί βγαίνει 3,0 % και 1 από τα 39 σπίτια είναι εκεί."
+      },
+      {
+        "name": "first card",
+        "top": 527,
+        "bottom": 791,
+        "verdict": "ok",
+        "text": "1. 335.000 € · 93 τ.μ. · 3.602 €/τ.μ. · Βαθμολογία 58 1ος όροφος · κτίριο 2025 · Άγιος Δημ"
+      },
+      {
+        "name": "link to the ad",
+        "top": 787,
+        "bottom": 831,
+        "verdict": "ok",
+        "text": "Δες την αγγελία στο XE.gr"
+      }
+    ]
+  },
+  "listing page": {
+    "ok": true,
+    "rows": [
+      {
+        "name": "link to the ad",
+        "top": 271,
+        "bottom": 315,
+        "verdict": "ok",
+        "text": "Δες την αγγελία στο XE.gr"
+      },
+      {
+        "name": "price line",
+        "top": 340,
+        "bottom": 393,
+        "verdict": "ok",
+        "text": "170.000 € · 50 τ.μ. · 3.400 €/τ.μ. · Βαθμολογία 63"
+      },
+      {
+        "name": "verdict («Τι να κάνεις»)",
+        "top": 619,
+        "bottom": 825,
+        "verdict": "ok",
+        "text": "Τι να κάνεις Καλή τιμή: 28 % κάτω από τα διπλανά (14 σπίτια). Ενοίκιο ~560 € τον μήνα, 3,9"
+      }
+    ]
+  }
+}

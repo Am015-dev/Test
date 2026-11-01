@@ -200,7 +200,9 @@ def covered_areas(rentals: list[dict]) -> list[tuple[str, int]]:
 
 
 def recommend(found: list[picks_rent.RentPick]) -> str | None:
-    """One sentence: the area of the list where rents sit lowest against their comparables."""
+    """One spoken sentence: the area of the list where rents sit lowest against their
+    comparables: «Σου προτείνω Χολαργό: εκεί τα ενοίκια είναι 8 % κάτω από τα διπλανά και 5
+    από τα 12 σπίτια είναι εκεί.»"""
     by: dict[str, list[picks_rent.RentPick]] = {}
     for p in found:
         if p.vs_area_pct is not None and not p.too_cheap:
@@ -215,15 +217,16 @@ def recommend(found: list[picks_rent.RentPick]) -> str | None:
     ps = by[area]
     vs = med(ps, lambda p: p.vs_area_pct)
     rel = (
-        "όσο και τα παρόμοια"
+        "όσο τα διπλανά"
         if abs(vs) < 0.02
-        else f"{round(abs(vs) * 100)} % {'κάτω' if vs < 0 else 'πάνω'} από τα παρόμοια"
+        else f"{round(abs(vs) * 100)} % {'κάτω' if vs < 0 else 'πάνω'} από τα διπλανά"
     )
-    return (
-        f"Σου προτείνω: **{html.escape(area)}**. Εκεί είναι {len(ps)} από τις {len(found)} αγγελίες "
-        f"της λίστας. Ζητούν συνήθως {picks_rent.gr_num(med(ps, lambda p: p.rent_per_m2))} "
-        f"€/τ.μ. τον μήνα, {rel}."
+    where = (
+        "είναι το μόνο σπίτι που βρήκα"
+        if len(found) == 1
+        else f"{len(ps)} από τα {len(found)} σπίτια είναι εκεί"
     )
+    return f"Σου προτείνω {html.escape(guide.accusative(area))}: εκεί τα ενοίκια είναι {rel} και {where}."
 
 
 def coverage(rentals: list[dict]) -> str:
@@ -611,9 +614,9 @@ def counts_line(exact: int, near: int, what: str, wide: int = 0) -> str:
         joint = ", " if near and wide else " και "
         return (
             f"**{buyer._num(exact)}** {buyer._noun(exact)} ενοικίασης {what} ακριβώς όπως ζήτησες"
-            f"{joint}{rest}. Σε κάθε κάρτα γράφουμε τι δεν ταιριάζει."
+            f"{joint}{rest}."
         )
-    return f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}. Σε κάθε κάρτα γράφουμε τι δεν ταιριάζει."
+    return f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}."
 
 
 def card_more(p: picks_rent.RentPick) -> list[str]:
@@ -646,9 +649,9 @@ def card_adv(p: picks_rent.RentPick) -> dict:
 
 def card(i: int | None, p: picks_rent.RentPick, k: str, verdicts: bool = False,
          approved: bool = False) -> None:  # fmt: skip
-    """The compact rent card (C3's five lines) and its buttons: «Λεπτομέρειες» (inline: the
-    listing page is for sales) and «Αγαπημένο», then «Εγκρίνω» / «Δεν μου κάνει» when
-    ``verdicts``."""
+    """The compact rent card (C3's five lines), the link to the ad, then exactly two buttons:
+    «Λεπτομέρειες» (inline: the listing page is for sales) and «Αγαπημένο». ``verdicts`` and
+    ``approved`` are kept for the callers (C17: no «Εγκρίνω» / «Δεν μου κάνει» here)."""
     d = p.listing
     lid = d["id"]
     with st.container(border=True, key=f"pick-{k}{lid}"):
@@ -660,6 +663,7 @@ def card(i: int | None, p: picks_rent.RentPick, k: str, verdicts: bool = False,
         )
         if lid in st.session_state.get("rent_details", set()):
             _details(d)
+        buyer.ad_link(d, f"{k}-{lid}")
         star, toggle, args, kind = buyer._star_action(d)
         cols = st.columns(2)
         cols[0].button(
@@ -669,18 +673,6 @@ def card(i: int | None, p: picks_rent.RentPick, k: str, verdicts: bool = False,
         cols[1].button(
             star, key=f"{k}-star-{lid}", on_click=toggle, args=args, type=kind, width="stretch"
         )
-        if not verdicts and not approved:
-            return
-        key = shortlist.lkey(d)
-        cols = st.columns(2)
-        if approved:
-            cols[0].button("Αναίρεση", key=f"{k}-undo-{lid}", on_click=guide.set_verdict,
-                           args=(key, None), width="stretch")  # fmt: skip
-        else:
-            cols[0].button("Εγκρίνω", key=f"{k}-ok-{lid}", on_click=guide.set_verdict,
-                           args=(key, "ok"), type="primary", width="stretch")  # fmt: skip
-        cols[1].button("Δεν μου κάνει", key=f"{k}-no-{lid}", on_click=guide.set_verdict,
-                       args=(key, "no"), width="stretch")  # fmt: skip
 
 
 def _details(d: dict) -> None:
@@ -697,8 +689,6 @@ def _details(d: dict) -> None:
         + "</div>",
         unsafe_allow_html=True,
     )
-    src = guide.SOURCES.get(d.get("source") or "xe", (d.get("source") or "").upper())
-    st.link_button(f"Άνοιγμα στο {src}", d["url"], width="stretch")
     st.caption(
         "Ρώτα τον ιδιοκτήτη: εγγύηση, κοινόχρηστα και θέρμανση, διάρκεια συμβολαίου, "
         "πιστοποιητικό ενεργειακής απόδοσης."
@@ -763,22 +753,13 @@ def _results(r: dict, rows: list[dict]) -> None:
         else:
             st.info("Ούτε με έναν όρο λιγότερο βρίσκω κάτι. Άλλαξε το ποσό.")
     else:
-        if sentence := recommend(exact or every):
-            st.markdown(sentence)
+        # C17: above the first card only the counts line and the recommendation.
         if near or wide:
             st.markdown(counts_line(len(exact), near, what, wide))
         else:
             st.markdown(f"**{len(every)}** {buyer._noun(len(every))} ενοικίασης {what}.")
-        if relax:
-            _relax(
-                relax,
-                f"Μόνο {len(exact)} ακριβώς όπως ζήτησες. Βγάλε έναν όρο για να δεις "
-                "περισσότερες (σε παρένθεση πόσες προστίθενται):",
-            )
-        facts = rent_facts(every, r, rows)
-        if any(p.relaxed for p in every[:10]):
-            facts["near_matches_note"] = guide.NEAR_NOTE
-        _brief(facts)
+        if sentence := recommend(exact or every):
+            st.markdown(sentence)
         n = st.session_state.setdefault("rent_shown", picks.PAGE)
         visible = every[:n]
         for i, p in enumerate(visible, start=1):
@@ -793,6 +774,16 @@ def _results(r: dict, rows: list[dict]) -> None:
                     width="stretch",
                 )
         st.caption(f"Βλέπεις {buyer._num(len(visible))} από {buyer._num(len(every))}.")
+        if relax:  # below the list (C17), with the assistant's note and «Ρώτα με»
+            _relax(
+                relax,
+                f"Μόνο {len(exact)} ακριβώς όπως ζήτησες. Βγάλε έναν όρο για να δεις "
+                "περισσότερες (σε παρένθεση πόσες προστίθενται):",
+            )
+        facts = rent_facts(every, r, rows)
+        if any(p.relaxed for p in every[:10]):
+            facts["near_matches_note"] = guide.NEAR_NOTE
+        _brief(facts)
         _panel(facts)
     if dropped:
         _dropped(dropped)
