@@ -218,7 +218,8 @@ def test_map_page_is_the_map_with_the_ranked_list_under_it(env):  # noqa: F811
     at.pills(key="nav_pill").set_value("Χάρτης").run()
     ok(at, "map")
     assert not at.dataframe  # no table to scroll to in order to understand a dot
-    assert [e.label for e in at.main.expander] == ["Φίλτρα"]  # the filters stay in one place
+    # the filters stay in one place; the counts behind the map's one fact line are one tap away
+    assert [e.label for e in at.main.expander] == ["Φίλτρα", "Τι δεν φαίνεται στον χάρτη"]
     try:
         import scout.ui.maplist  # noqa: F401
     except ImportError:  # before W9: today's map + top cards

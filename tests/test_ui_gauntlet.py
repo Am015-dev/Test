@@ -605,18 +605,21 @@ def test_show_all_button_relaxes_floor_and_age(env):
         m = next(m.value for m in at.markdown if 'class="hg-count"' in m.value)
         return int(re.search(r"<b>([\d.]+)</b>", m).group(1).replace(".", ""))
 
+    def breakdown():  # the reasons behind «Τι κρύβω και γιατί» (C18); '' when nothing is hidden
+        return next((m.value for m in at.markdown if m.value.startswith("Κρύβ")), "")
+
     before = count()
-    note = next(m.value for m in at.markdown if 'class="hg-count"' in m.value)
+    note = breakdown()
     assert "ισόγεια/υπόγεια" in note and f"κτίριο πριν το {date.today().year - 40}" in note
     btn = at.button(key="show_all_btn")
-    back = int(re.search(r"\(\+([\d.]+)\)", btn.label).group(1).replace(".", ""))
+    back = int(re.search(r"Δείξε και τις ([\d.]+) ", btn.label).group(1).replace(".", ""))
     btn.click().run()
     ok(at, "show all")
     assert count() == before + back
     ver = at.session_state["f_ver"] if "f_ver" in at.session_state else 0
     assert at.number_input(key=f"fe_floor_{ver}").value == 0
     assert at.number_input(key=f"fe_year_{ver}").value == 0
-    note = next(m.value for m in at.markdown if 'class="hg-count"' in m.value)
+    note = breakdown()
     assert "ισόγεια" not in note and "κτίριο πριν" not in note
     # clearing brings the defaults back
     at.button(key="ex0").click().run()

@@ -94,9 +94,10 @@ def _n(s: str) -> int:
 
 
 def _hidden(at) -> tuple[int, dict[str, int], int]:
-    """(N in "Κρύβονται N", {label: n}, n without declared floor/year) — the one result line."""
-    line = next(m.value for m in at.markdown if 'class="hg-count"' in m.value)
-    m = re.search(r"Κρύβ(?:ονται|εται) ([\d.]+): (.*)</small>", line)
+    """(N in "Κρύβονται N", {label: n}, n without declared floor/year) — the breakdown behind
+    the «Τι κρύβω και γιατί» tap (the first screen carries only «Κρύβω N: …», C18)."""
+    line = next((m.value for m in at.markdown if m.value.startswith("Κρύβ")), "")
+    m = re.search(r"Κρύβ(?:ονται|εται) ([\d.]+): (.*)$", line)
     if not m:
         return 0, {}, 0
     groups = {}
@@ -193,7 +194,7 @@ def _prove(
 
     # 5. «Δείξε όλες» brings back exactly the floor/year groups (and the undeclared)
     btn = at.button(key="show_all_btn")
-    assert _n(re.search(r"\(\+([\d.]+)\)", btn.label).group(1)) == len(back)
+    assert _n(re.search(r"Δείξε και τις ([\d.]+) ", btn.label).group(1)) == len(back)
     btn.click()
     _run(at)
     assert _count(at) == shown + len(back)
