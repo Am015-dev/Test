@@ -13,6 +13,44 @@ LIMIT 5;
 
 ---
 
+## 2026-11-01 00:30 UTC — stopped for the week at the owner's request (usage limit)
+
+**Merged to main tonight (main = fb1daa3):** round 5 complete — #91 design finish, #92 near
+matches + score on every card, #93 trust-ordered lists, #94 one navigation, #95 Greek place
+names (+ weekly repair step), #96 card photos from every portal, #97 voice pass (220 strings),
+#98 card thumbnail, #99 speed (every tap ≤ 1,5 s except the map at 1,6–1,8 s, server part
+≤ 0,7 s); round 6 started — #100 link to the ad first on every card and on the listing page, no
+empty photo box; #101 one rent / yield / score per flat (the guide's own rent model removed).
+
+**Open draft PRs, each needing one small follow-up before merge (contracts in COORDINATION.md
+round 6; workers archived, branches pushed):**
+- #102 `ws/no-clutter` (C18, head 824f271, CI green): header 215 → 160 px, sources line to the
+  footer, badges hidden, «Σημείωμα επενδυτή» off the result, search/map/areas one line each.
+  Leftover: components.py «Εμφανίζονται οι πρώτες 1.500» note and the rent guide's brief.
+- #104 `ws/verdict-first` (C17, head e8ab193, CI green): three lines above the first card, two
+  buttons per card, listing page link → card → «Τι να κάνεις». Blocker: guide.accusative mangles
+  «… Αττικής» («Δάφνη Αττική»); needs an explicit accusative table for the 55 areas and the
+  speed golden regenerated on the current published DB.
+- #103 `ws/wide-guide` (C15, head f152f44, CI green): no floor under the budget (flagged
+  instead), NEAR_MIN 100, costs line, rentals band 0,5–1,1 × budget. Decided but not yet
+  applied: NEAR_MIN = 300 and a ONE-line counts sentence («154 ακριβώς, 80 κοντινές, 2.338
+  ευρύτερα.») with the per-answer costs on the relax buttons; measure the result tap ≤ 1,5 s.
+Merge order when resuming: #102 → #104 → #103, each re-merging main (speed_golden.json will
+conflict: regenerate on the published DB).
+
+**Data:** weekly run 41238566878 published 23:38 UTC: 28.701 active, 1.864 rentals in 14 areas
+(first rentals ever → «Να νοικιάσω» becomes available), 1.860 with image_url, 250 Latin
+neighbourhoods (the repair step was not in that run's main). A new weekly refresh was
+dispatched at 00:12 UTC on main fb1daa3 (collectors with photos + place-name repair); it
+publishes ≈ 03:15 UTC — expect ≈ 13.000 listings with photos and 0 Latin names except Renault.
+
+**Owner's verdict at 23:10 (drives round 6):** «full of AI prose», «link hidden, click and
+scroll», «very bad UI», «limited answers». Coordinator's own walk of the owner's flow (250 χιλ.
+· απόδοση · μετρό · οποιαδήποτε ηλικία · 1 υπν.) and findings: docs/COORDINATION.md round 6
+preamble; shots in the coordinator session only (/tmp/qa/use). After round 6 merges: re-walk,
+compare, report with screenshots. Not yet done: final phone QA on merged main, round-5/6
+screenshots to the owner, the ANTHROPIC_API_KEY repository secret reminder (owner undecided).
+
 ## 2026-10-31 (evening) — Round 4 "buy or rent, professional finish" merged; round 5 design finish started
 - Merged to `main` (squash, CI green on each head): #85 photo check (`scripts/check_photos.py`,
   vision classification photo/render/plan/site/stock into `photo_kind`/`photo_checked_at`, a
