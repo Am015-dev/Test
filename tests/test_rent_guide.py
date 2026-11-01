@@ -140,7 +140,8 @@ def test_rent_flow_end_to_end(rent_env):
         "οποιαδήποτε ηλικία",
     ]
     text = _text(at)
-    total = int(re.search(r"\*\*(\d+)\*\* αγγελίες ενοικίασης έως 1\.100 €/μήνα", text).group(1))
+    # C15: the band is 500–1.100 €/μήνα (half the budget to +10 %)
+    total = int(re.search(r"\*\*(\d+)\*\* αγγελίες ενοικίασης 500 €–1\.100 €/μήνα", text).group(1))
     assert total == len(picks_rent.find(RENTALS, 1000, top=10**6))
     assert total > 10 and "Σου προτείνω: **" in text
     assert "Παρόμοια:" in text and "Ιδιώτης ή μεσιτικό" in text
@@ -282,7 +283,7 @@ def test_rank_by_value_against_the_neighbourhood_then_freshness():
     hood = [rental(i, 800, 80, days_on_market=10) for i in range(6)]  # 10 €/τ.μ. ×6
     cheap = rental(50, 720, 80, days_on_market=40)  # 9 €/τ.μ. → 10 % under
     cheap_fresh = rental(51, 720, 80, days_on_market=2)  # same value, fresher
-    bait = rental(52, 400, 80)  # 5 €/τ.μ. → 50 % under: a warning, sorted after
+    bait = rental(52, 510, 80)  # 6,4 €/τ.μ. → 36 % under: a warning, sorted after (C15: ≥ 500 €)
     over = rental(53, 1120, 80)  # over the 1.000 × 1,10 band
     rows = [*hood, cheap, cheap_fresh, bait, over]
     got = picks_rent.find(rows, 1000, top=50)

@@ -1,5 +1,7 @@
 """C7 — never a thin list: near matches after the strict ones, one loosened answer each, and
-the score on every pick."""
+the score on every pick. C15 — a wide, honest guide: no floor under the budget (a flag
+instead), near matches while the strict list is under ``NEAR_MIN`` (100), and the costs line
+that says what each answer costs."""
 
 from __future__ import annotations
 
@@ -129,21 +131,105 @@ def test_areas_and_bedrooms_are_loosened_last():
     ]
 
 
+N = picks.NEAR_MIN
+
+
+def test_near_threshold_is_one_hundred():
+    assert N == 100
+
+
 def test_no_near_matches_after_a_long_strict_list():
-    rows = [flat(i, 280_000 + i * 500, year=1990 + i) for i in range(30)]  # distinct blocks
-    rows += [flat(100, 350_000)]  # +17 %: would be a near match
+    rows = [flat(i, 280_000 + i * 500, year=1900 + i) for i in range(N)]  # distinct blocks
+    rows += [flat(1000, 350_000)]  # +17 %: would be a near match
     got = run(rows, max_age=None)
-    assert len(got) == 30 and all(not p.relaxed for p in got)
+    assert len(got) == N and all(not p.relaxed for p in got)
 
 
-def test_each_step_keeps_at_most_three_pages_and_the_rest_go_wider():
-    # 36 off-station flats in distinct blocks: the station step keeps NEAR_MIN, the other 6
-    # go to «ευρύτερα» with their own label — every flat in the band appears exactly once.
-    rows = [flat(i, 280_000 + i * 500, hood="Γαλάτσι (Λαμπρινή)", year=1990 + i) for i in range(36)]
+def test_near_matches_fill_a_list_just_under_the_threshold():
+    rows = [flat(i, 280_000 + i * 500, year=1900 + i) for i in range(N - 1)]
+    rows += [flat(1000, 350_000)]  # +17 %: a near match now
     got = run(rows, max_age=None)
-    assert [p.tier for p in got] == [1] * picks.NEAR_MIN + [2] * 6
+    assert len(got) == N and got[-1].relaxed == "ποσό +17 %"
+
+
+def test_each_step_keeps_near_min_and_the_rest_go_wider():
+    # N + 6 off-station flats in distinct blocks: the station step keeps NEAR_MIN, the other
+    # 6 go to «ευρύτερα» with their own label — every flat in the band appears exactly once.
+    rows = [
+        flat(i, 280_000 + i * 500, hood="Γαλάτσι (Λαμπρινή)", year=1900 + i) for i in range(N + 6)
+    ]
+    got = run(rows, max_age=None)
+    assert [p.tier for p in got] == [1] * N + [2] * 6
     assert all(p.relaxed == "χωρίς όρο σταθμού" for p in got)
-    assert {p.listing["id"] for p in got} == set(range(36))
+    assert {p.listing["id"] for p in got} == set(range(N + 6))
+
+
+# ---- C15: no floor under the budget, a flag instead ----------------------------------------
+
+
+def test_no_floor_under_the_budget_only_a_flag():
+    rows = [flat(1, 300_000), flat(2, 180_000, year=2023), flat(3, 264_000, year=2022)]
+    got = {p.listing["id"]: p for p in run(rows)}
+    assert set(got) == {1, 2, 3}  # the 180.000 € flat is shown to the 300.000 € buyer
+    assert got[1].under_budget == 0 and got[3].under_budget == 0  # inside the 12 % band
+    assert got[2].under_budget == 300_000 * (1 - picks.BUDGET_BAND) - 180_000
+    assert got[2].risks[-1] == picks.under_line(300_000, 180_000)
+    assert "120.000 € κάτω από τα 300.000 € που είπες" in got[2].risks[-1]
+    assert all(r != got[2].risks[-1] for r in got[1].risks)
+    assert all(not p.relaxed for p in got.values())  # strict matches, not near ones
+
+
+def test_too_cheap_against_comparables_is_still_a_warning_not_a_filter():
+    rows = [flat(i, 300_000, year=2000 + i) for i in range(8)] + [flat(50, 150_000, year=2004)]
+    got = {p.listing["id"]: p for p in run(rows, max_age=None)}
+    assert 50 in got and got[50].under_budget > 0
+    assert any("φθηνό" in r for r in got[50].risks)
+    assert got[50].parts["value"] < got[0].parts["value"]  # −20 value points
+
+
+# ---- C15: the costs line ------------------------------------------------------------------
+
+
+def test_answer_costs_count_with_the_same_find():
+    intel = market_intel.build(ROWS, YEAR)
+    costs = picks.answer_costs(
+        ROWS, intel, RENTS, BUDGET, max_age=None, near_rail=True, bedrooms=2, year=YEAR
+    )
+    assert [c[0] for c in costs] == ["300 χιλ.", "κοντά σε μετρό", "2 υπν."]
+    counts = [c[1] for c in costs]
+    assert counts == sorted(counts, reverse=True)  # each answer can only cost
+    assert counts[-1] == len(
+        picks.find(ROWS, intel, RENTS, BUDGET, max_age=None, bedrooms=2, year=YEAR, top=99)
+    )
+    assert counts[0] == len(
+        picks.find(ROWS, intel, RENTS, BUDGET, max_age=None, near_rail=False, year=YEAR, top=99)
+    )
+    only = picks.answer_costs(ROWS, intel, RENTS, BUDGET, max_age=None, near_rail=False, year=YEAR)
+    assert len(only) == 1
+
+
+def test_answer_labels_follow_the_guide_order_and_skip_unanswered():
+    assert [a for a, _ in picks.answer_labels(10, True, None, 1)] == [
+        "κοντά σε μετρό",
+        "νεόδμητο",
+        "1 υπν.",
+    ]
+    assert [a for a, _ in picks.answer_labels(20, False, ["Μαρούσι", "Χαλάνδρι"], 3)] == [
+        "Μαρούσι, Χαλάνδρι",
+        "έως 20 ετών",
+        "3+ υπν.",
+    ]
+    assert picks.answer_labels(None, False, None, None) == []
+
+
+def test_costs_line_wording():
+    line = picks.costs_line([("250 χιλ.", 1420), ("κοντά σε μετρό", 410), ("1 υπν.", 95)])
+    assert line == "Με 250 χιλ. βρίσκω 1.420 σπίτια· «κοντά σε μετρό» αφήνει 410, «1 υπν.» 95."
+    assert picks.costs_line([("250 χιλ.", 1420)]) == "Με 250 χιλ. βρίσκω 1.420 σπίτια."
+    assert picks.costs_line([("250 χιλ.", 1), ("Μαρούσι", 0)]) == (
+        "Με 250 χιλ. βρίσκω 1 σπίτι· «Μαρούσι» αφήνει κανένα."
+    )
+    assert picks.thousands(250_000) == "250 χιλ." and picks.thousands(187_500) == "187.500 €"
 
 
 def test_every_pick_carries_the_buyer_score_of_advise():
@@ -214,9 +300,28 @@ def test_rent_near_matches_and_labels():
 
 
 def test_rent_long_strict_list_has_no_near_matches():
-    rows = [rental(i, 700 + i, hood=f"Χαλάνδρι ({i})") for i in range(30)] + [rental(99, 950)]
+    rows = [rental(i, 700 + i, hood=f"Χαλάνδρι ({i})") for i in range(N)] + [rental(999, 950)]
     got = picks_rent.find(rows, 800, top=10**6, near=True)
-    assert len(got) == 30 and not any(p.relaxed for p in got)
+    assert len(got) == N and not any(p.relaxed for p in got)
+    got = picks_rent.find(rows[1:], 800, top=10**6, near=True)  # N − 1 strict: near fills
+    assert len(got) == N and got[-1].relaxed == "ποσό +19 %"
+
+
+def test_rent_floor_is_half_the_budget():
+    rows = [rental(1, 150), rental(2, 400), rental(3, 399), rental(4, 880), rental(5, 890)]
+    got = {p.listing["id"] - 10_000 for p in picks_rent.find(rows, 800, top=10**6, near=True)}
+    assert got == {2, 4, 5}  # under 400 €: a room, not a home for a 800 € renter
+    assert picks_rent.RENT_FLOOR == 0.5
+
+
+def test_rent_answer_costs_and_line():
+    rows = RENTALS + [rental(30, 700, furnished=True), rental(31, 300)]
+    costs = picks_rent.answer_costs(rows, 800, bedrooms=2, furnished=True)
+    # 400–880 €: six 2-bedroom, one 3-bedroom, one furnished; the 300 € one is under the floor
+    assert costs == [("800 €/μήνα", 8), ("2 υπν.", 7), ("επιπλωμένο", 1)]
+    assert picks_rent.costs_line(costs) == (
+        "Με 800 €/μήνα βρίσκω 8 σπίτια· «2 υπν.» αφήνει 7, «επιπλωμένο» 1."
+    )
 
 
 def test_rent_value_score_and_basis():
@@ -307,7 +412,38 @@ def test_rent_order_is_the_score():
 
 
 def test_rent_overflow_past_a_step_cap_goes_wider():
-    rows = [rental(i, 700 + i, hood=f"Χαλάνδρι ({i})", bedrooms=3) for i in range(35)]
+    rows = [rental(i, 700 + i, hood=f"Χαλάνδρι ({i})", bedrooms=3) for i in range(N + 5)]
     got = picks_rent.find(rows, 800, bedrooms=2, top=10**6, near=True)
-    assert [p.tier for p in got] == [1] * picks.NEAR_MIN + [2] * 5
-    assert len({p.listing["id"] for p in got}) == 35
+    assert [p.tier for p in got] == [1] * N + [2] * 5
+    assert len({p.listing["id"] for p in got}) == N + 5
+
+
+OWNER = dict(max_age=None, near_rail=True, bedrooms=1, goal="yield")
+
+
+def test_owner_answers_are_wide_and_honest(published):
+    """250 χιλ. · απόδοση · κοντά σε μετρό · οποιαδήποτε ηλικία · 1 υπν.: the list the owner
+    saw stop at 35. No floor, so the flats under 220.000 € are in (flagged), nothing repeats,
+    and the costs line ends on the strict count the list shows."""
+    listings, rents = published
+    intel = market_intel.build(listings)
+    got = picks.find(listings, intel, rents, 250_000, top=10**6, near=True, **OWNER)
+    assert len(got) > 35
+    assert len({id(p.listing) for p in got}) == len(got)
+    assert [p.tier for p in got] == sorted(p.tier for p in got)
+    exact = [p for p in got if p.tier == 0]
+    assert any(p.listing["price"] < 250_000 * (1 - picks.BUDGET_BAND) for p in exact)
+    assert all((p.under_budget > 0) == (p.listing["price"] < 220_000) for p in exact)
+    if len(exact) < picks.NEAR_MIN:
+        assert len(got) > len(exact)  # near and wider matches fill a short list
+    costs = picks.answer_costs(listings, intel, rents, 250_000, **OWNER)
+    assert [c[0] for c in costs] == ["250 χιλ.", "κοντά σε μετρό", "1 υπν."]
+    assert costs[-1][1] == len(exact)
+    assert costs[0][1] > 1000  # the budget alone, without the old floor
+    line = picks.costs_line(costs)
+    assert line.startswith("Με 250 χιλ. βρίσκω") and "«κοντά σε μετρό» αφήνει" in line
+    # The button counts what that one change adds to THIS list (``relaxations``); the costs
+    # line counts the list after each answer. One flat per building (``unique``) can pick a
+    # different unit once more compete, so the button is at least the difference, never less.
+    relax = {r.label: r.added for r in picks.relaxations(listings, intel, rents, 250_000, **OWNER)}
+    assert relax["Χωρίς όρο υπνοδωματίων"] >= costs[1][1] - costs[2][1]

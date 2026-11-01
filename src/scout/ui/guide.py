@@ -908,13 +908,13 @@ def _results(g: dict, listings: list[dict]) -> None:
     exact = [p for p in every if not p.relaxed]
     near = sum(p.tier == 1 for p in every)
     wide = sum(p.tier == 2 for p in every)
-    lo, hi = budget * (1 - picks.BUDGET_BAND), budget * (1 + picks.BUDGET_BAND)
-    what = f"{buyer.eur(lo)}–{buyer.eur(hi)}, {age_text(g.get('age'))}" + (
+    hi = budget * (1 + picks.BUDGET_BAND)  # C15: a ceiling, no floor under the budget
+    what = f"έως {buyer.eur(hi)}, {age_text(g.get('age'))}" + (
         ", κοντά σε σταθμό" if where == "rail" else ""
     )
     relax = (
-        picks.relaxations(listings, intel, rents, budget, **rules)
-        if len(exact) < picks.PAGE
+        picks.relaxations(listings, intel, rents, budget, memo=find_memo, **rules)
+        if len(exact) < picks.NEAR_MIN
         else []
     )
     if not every:
@@ -926,6 +926,9 @@ def _results(g: dict, listings: list[dict]) -> None:
     else:
         if sentence := recommend(exact or every, area_facts, rules["goal"], budget):
             st.markdown(sentence)
+        costs = picks.answer_costs(listings, intel, rents, budget, memo=find_memo, **rules)
+        if len(costs) > 1:  # C15: what each answer beyond the budget costs, in one line
+            st.markdown(picks.costs_line(costs))
         checked = sum(p.checked for p in every)
         if near or wide:
             st.markdown(counts_line(len(exact), near, what, checked, wide))
