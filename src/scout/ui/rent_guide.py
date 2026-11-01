@@ -614,9 +614,9 @@ def counts_line(exact: int, near: int, what: str, wide: int = 0) -> str:
         joint = ", " if near and wide else " και "
         return (
             f"**{buyer._num(exact)}** {buyer._noun(exact)} ενοικίασης {what} ακριβώς όπως ζήτησες"
-            f"{joint}{rest}. Σε κάθε κάρτα γράφουμε τι δεν ταιριάζει."
+            f"{joint}{rest}."
         )
-    return f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}. Σε κάθε κάρτα γράφουμε τι δεν ταιριάζει."
+    return f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}."
 
 
 def card_more(p: picks_rent.RentPick) -> list[str]:

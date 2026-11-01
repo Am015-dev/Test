@@ -254,7 +254,7 @@ def test_near_matches_follow_with_their_label_counts_and_score(env, monkeypatch)
     at = walk(fresh(FIND), budget="guide-b200", where="rail", age="10")
     ok(at, "near")
     text = _text(at)
-    m = re.search(r"Καμία ακριβώς όπως ζήτησες \([^)]*\)· (.*?)\. Σε κάθε κάρτα", text)
+    m = re.search(r"Καμία ακριβώς όπως ζήτησες \([^)]*\)· (.*?)\.(?: |$)", text)
     assert m, text[-2000:]
     near = sum(int(n) for n in re.findall(r"\*\*(\d+)\*\*", m.group(1)))
     cards = [m.value for m in at.markdown if 'class="hg-card"' in m.value]

@@ -481,11 +481,16 @@ def counts_line(exact: int, near: int, what: str, checked: int, wide: int = 0) -
         head = f"**{buyer._num(exact)}** {buyer._noun(exact)} {what} ακριβώς όπως ζήτησες{joint}{rest}."
     else:
         head = f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}."
-    return (
-        head
-        + " Σε κάθε κάρτα γράφουμε τι δεν ταιριάζει."
-        + f" Ελέγχθηκε η περιγραφή σε **{checked}** από όλες."
-    )
+    return head  # C17: what each card is outside of is on the card; ``checked`` → «Πώς υπολογίζω»
+
+
+def checked_line(checked: int, total: int) -> str:
+    """«Ελέγχθηκε η περιγραφή σε **12** από τις 35.» — behind «Πώς υπολογίζω» (C17)."""
+    if total == 1:
+        return (
+            "Ελέγχθηκε η περιγραφή της." if checked else "Η περιγραφή της δεν έχει ελεγχθεί ακόμα."
+        )
+    return f"Ελέγχθηκε η περιγραφή σε **{buyer._num(checked)}** από τις {buyer._num(total)}."
 
 
 def arrange(
@@ -921,18 +926,8 @@ def _results(g: dict, listings: list[dict]) -> None:
         checked = sum(p.checked for p in every)
         if near or wide:
             st.markdown(counts_line(len(exact), near, what, checked, wide))
-        elif len(every) == 1:
-            tail = (
-                "Ελέγχθηκε η περιγραφή της."
-                if checked
-                else "Η περιγραφή της δεν έχει ελεγχθεί ακόμα."
-            )
-            st.markdown(f"**1** αγγελία {what}. {tail}")
         else:
-            st.markdown(
-                f"**{len(every)}** αγγελίες {what}. "
-                f"Ελέγχθηκε η περιγραφή σε **{checked}** από αυτές."
-            )
+            st.markdown(f"**{len(every)}** {buyer._noun(len(every))} {what}.")
         if sentence := recommend(exact or every, area_facts, rules["goal"], budget):
             st.markdown(sentence)
         n = st.session_state.setdefault("guide_shown", picks.PAGE)
@@ -979,6 +974,8 @@ def _results(g: dict, listings: list[dict]) -> None:
     if dropped:
         _dropped(dropped)
     with st.expander("Πώς υπολογίζω"):
+        if every:
+            st.markdown(checked_line(checked, len(every)))
         st.markdown(METHOD)
     st.caption(derived.memo(listings, "coverage", lambda: coverage(listings)))  # C13: per data
     if _store() is None:
