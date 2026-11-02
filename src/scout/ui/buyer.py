@@ -846,7 +846,7 @@ def ad_link(d: dict, key: str, *, primary: bool = False) -> None:
 
 
 def result_card(
-    d: dict, adv: dict, k: str, actions: list, advice=None, *, compact: bool = True
+    d: dict, adv: dict, k: str, actions: list, advice=None, *, compact: bool = True, lead: str = ""
 ) -> None:
     """One listing. ``actions`` = [(label, callback, args[, type])], each rendered as a button.
     The link to the ad on the portal is always the first thing under the card, full width
@@ -856,7 +856,7 @@ def result_card(
     key = shortlist.lkey(d)
     uid = f"{k}-{d['id']}"
     with st.container(border=True, key=f"card-{uid}"):
-        st.markdown(card_html(d, adv, compact=compact), unsafe_allow_html=True)
+        st.markdown(card_html(d, adv, compact=compact, lead=lead), unsafe_allow_html=True)
         if advice is not None:
             st.markdown(_advice_html(advice), unsafe_allow_html=True)
         with st.container(key=f"act-{uid}"):  # one row: the ad, then the actions

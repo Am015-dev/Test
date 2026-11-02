@@ -226,12 +226,8 @@ def test_map_page_is_the_map_with_the_ranked_list_under_it(env):  # noqa: F811
     ok(at, "map")
     assert not at.dataframe  # no table to scroll to in order to understand a dot
     # the filters stay in one place; the counts behind the map's one fact line are one tap away
-    assert [e.label for e in at.main.expander] == ["Φίλτρα", "Τι δεν φαίνεται στον χάρτη"]
-    try:
-        import scout.ui.maplist  # noqa: F401
-    except ImportError:  # before W9: today's map + top cards
-        return
-    assert any(m.value.startswith("#### Όλες με τη σειρά") for m in at.markdown)
+    assert [e.label for e in at.main.expander] == ["Φίλτρα"]
+    assert any(m.value.startswith("#### Οι καλύτερες σε όλες τις περιοχές") for m in at.markdown)
 
 
 def test_status_is_one_short_line_and_refresh_lives_in_the_sidebar(env):  # noqa: F811

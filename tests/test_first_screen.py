@@ -141,12 +141,11 @@ def test_search_counts_are_one_line_with_the_breakdown_behind_a_tap(env):
         assert any(m.value.startswith("Κρύβ") for m in exp.markdown)
 
 
-def test_map_first_screen_has_one_fact_line(env):
+def test_map_first_screen_is_the_map_the_legend_and_the_picker(env):
     at = fresh(MAP)
-    line = next(m.value for m in at.markdown if "στον χάρτη**" in m.value)
-    assert re.search(r"· (μόνο [\d.]+ με ακριβή θέση|καμία με ακριβή θέση)\.$", line), line
-    exp = next(e for e in at.expander if e.label == "Τι δεν φαίνεται στον χάρτη")
-    assert any("ακριβή θέση" in c.value for c in exp.caption)
+    assert any(m.value.startswith('<div class="hg-legend"') for m in at.markdown)
+    assert at.selectbox(key="map_area").placeholder.startswith("Διάλεξε περιοχή")
+    assert not any("ακριβή θέση" in m.value for m in at.markdown)  # no position caveats
 
 
 def test_areas_box_is_four_verdicts_with_the_sentences_behind(env):

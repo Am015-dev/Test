@@ -16,7 +16,6 @@ from __future__ import annotations
 import os
 import statistics
 import sys
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -1455,13 +1454,11 @@ def page_map(listings: list[dict]) -> None:
     base = listings
     ranked, intel = _map_ranked(base)
     visible = ranked["visible"]
-    options = [g for g, _ in Counter(_map_area_group(d) for d in visible).most_common()]
     prices = sorted(d["price"] for d in visible if d.get("price"))
     p_hi = int(-(-prices[min(len(prices) * 99 // 100, len(prices) - 1)] // 10_000) * 10_000)
     p_hi = max(p_hi if prices else 1_000_000, 50_000)
 
     with st.expander("Φίλτρα", expanded=False):
-        areas = st.multiselect("Περιοχή", options, key="map_areas", placeholder="Όλες οι περιοχές")
         c1, c2 = st.columns(2)
         k_max = c1.slider(
             "Τιμή έως",
@@ -1471,7 +1468,6 @@ def page_map(listings: list[dict]) -> None:
             step=10,
             format="%d χιλ. €",
             key="map_price",
-            help="Στο τέρμα δεξιά = χωρίς όριο.",
         )
         this_year = datetime.utcnow().year
         year = c2.slider(
@@ -1481,60 +1477,24 @@ def page_map(listings: list[dict]) -> None:
             value=MAP_YEAR_MIN,
             step=5,
             key="map_year",
-            help="Στο τέρμα αριστερά = χωρίς όριο. Αγγελίες χωρίς έτος κρύβονται όταν βάλεις όριο.",
         )
     matched = _map_filter(
         visible,
-        areas=areas,
+        areas=[],
         price_max=None if k_max * 1000 >= p_hi else k_max * 1000,
         min_year=None if year <= MAP_YEAR_MIN else year,
     )
     shown = [d for d in matched if d.get("lat") and d.get("lng")]
-    no_loc = len(matched) - len(shown)
-    approx = sum(1 for d in shown if d.get("location_precision") != "exact")
-    noun = "αγγελία" if len(shown) == 1 else "αγγελίες"
-    exact = len(shown) - approx
-    # One line on the first screen: the count and the honest «μόνο N με ακριβή θέση» fact.
-    st.markdown(
-        f"**{fmt._gr_int(len(shown))} {noun} στον χάρτη** · "
-        + (f"μόνο {fmt._gr_int(exact)} με ακριβή θέση." if exact else "καμία με ακριβή θέση.")
-    )
-    hidden_unfinished = sum(1 for d in base if d.get("is_unfinished"))
-    unchecked = sum(1 for d in shown if not d.get("page_checked"))
-    notes = []
-    if hidden_unfinished:
-        notes.append(f"{fmt._gr_int(hidden_unfinished)} υπό κατασκευή δεν εμφανίζονται")
-    if unchecked:
-        notes.append(
-            f"{fmt._gr_int(unchecked)} δεν έχουν ελεγχθεί ακόμα (δεν ξέρουμε αν είναι έτοιμες)"
-        )
-    if no_loc:
-        notes.append(f"{fmt._gr_int(no_loc)} ταιριάζουν αλλά δεν έχουν θέση")
-    with st.expander("Τι δεν φαίνεται στον χάρτη"):  # the counts and their reasons, one tap
-        st.caption(
-            (
-                "Μόνο 1 αγγελία έχει ακριβή θέση· "
-                if exact == 1
-                else f"Μόνο {fmt._gr_int(exact)} αγγελίες έχουν ακριβή θέση· "
-            )
-            + "οι υπόλοιπες στο κέντρο της περιοχής τους."
-            if exact
-            else "Καμία αγγελία δεν έχει ακριβή θέση· όλες είναι στο κέντρο της περιοχής τους."
-        )
-        if notes:
-            st.caption(" · ".join(notes) + ".")
     if not shown:
-        st.info("Καμία αγγελία δεν ταιριάζει — χαλάρωσε την τιμή, το έτος ή την περιοχή.")
+        st.info("Καμία αγγελία δεν ταιριάζει. Άνοιξε λίγο την τιμή ή το έτος.")
         return
-    # Same ranking as the search page's default sort, so the two pages agree. The order of
-    # every visible listing is computed once per data version (_map_ranked); filtering that
-    # ordered list keeps exactly the order a sort of ``shown`` gives (stable sort, same keys).
+    # Same ranking as the search page's default sort (computed once per data version).
     keep = {id(d) for d in shown}
     in_order = [d for d in ranked["order"] if id(d) in keep]
     views = ranked["views"]
 
-    if maplist is not None:  # one map, one selection, the ranked list directly under it
-        maplist.render(in_order, key="map", intel=intel)
+    if maplist is not None:  # one circle per area; the chosen area's flats under the map
+        maplist.render_areas(in_order, key="map", intel=intel)
         return
     components.results_map(shown, key="map_chart", height=420)
     # The best few as the same cards as the search page (not a wide table).
@@ -2454,6 +2414,14 @@ _PILL_OF = {key: short for short, key in SHORT_NAV.items()}
 
 def _goto(page: str) -> None:
     st.session_state["page"] = page
+    st.session_state["close_sidebar"] = True  # a menu link: on a phone the menu covers the page
+
+
+CLOSE_SIDEBAR_JS = (  # Streamlit has no API to close the sidebar: tap its own «<<» on a phone
+    "<script>(function(){var d=parent.document;if(parent.innerWidth>=640)return;"
+    "var b=d.querySelector('[data-testid=\"stSidebarCollapseButton\"] button')"
+    "||d.querySelector('[data-testid=\"stSidebarHeader\"] button');if(b)b.click();})();</script>"
+)
 
 
 def _pick_page() -> None:
@@ -2504,6 +2472,8 @@ def main() -> None:
         for label, target in (("Αναζήτηση με λέξεις", "Αναζήτηση"), ("Χάρτης", "Χάρτης"),
                               ("Σύγκριση", "Σύγκριση")):  # fmt: skip
             st.button(label, key=f"nav_{target}", type="tertiary", on_click=_goto, args=(target,))
+    if st.session_state.pop("close_sidebar", False):
+        st.html(CLOSE_SIDEBAR_JS, unsafe_allow_javascript=True)
     # One header line, the data line under it, then the pills (every page).
     listings = get_listings()
     with st.container(key="app-head"):  # theme.py: the wordmark alone; the data line is the footer

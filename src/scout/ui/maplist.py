@@ -187,3 +187,182 @@ def render(ranked: list[dict], *, key: str, height: int = 380, intel=None) -> No
             width="stretch",
         )
         st.caption(f"Εμφανίζονται {fmt._gr_int(n)} από {fmt._gr_int(len(ranked))}.")
+
+
+# ---- the area map (the «Χάρτης» page) ------------------------------------------------------
+#
+# Most listings carry only their area's centre, so one dot per flat is a pile of fake positions.
+# The page maps areas instead: one circle per area (size = how many flats, colour = the typical
+# yield), and the selected area's best flats as cards under it.
+
+AREA = "map_area"  # session key: the selected area's name (the map tap and the list both set it)
+AREA_LAYER = "areas"
+
+
+def area_of(d: dict) -> str:
+    """The area a listing was collected for (its search area, in Greek): the unit the positions
+    are good for. Neighbourhood names are not: dozens of them share one point."""
+    from scout.place_names import SEARCH_AREA_GREEK
+
+    sa = d.get("search_area") or ""
+    return SEARCH_AREA_GREEK.get(sa, sa).replace(" Αττικής", "")
+
+
+def area_groups(ranked: list[dict]) -> list[dict]:
+    """One row per area with a position: name, count, centre, median yield and €/τ.μ.; most
+    flats first."""
+    import statistics
+
+    by: dict[str, list[dict]] = {}
+    for d in ranked:
+        if d.get("lat") and d.get("lng") and (a := area_of(d)):
+            by.setdefault(a, []).append(d)
+    out = []
+    for a, rows in by.items():
+        ys = [y for d in rows if (y := components.gross_yield_of(d)) is not None]
+        ppm = [d["price_per_m2"] for d in rows if d.get("price_per_m2")]
+        out.append(
+            {
+                "name": a,
+                "n": len(rows),
+                "lat": statistics.median(d["lat"] for d in rows),
+                "lon": statistics.median(d["lng"] for d in rows),
+                "gy": statistics.median(ys) if ys else None,
+                "ppm": statistics.median(ppm) if ppm else None,
+            }
+        )
+    return sorted(out, key=lambda g: (-g["n"], g["name"]))
+
+
+def area_line(g: dict) -> str:
+    """«**Κυψέλη** · 312 αγγελίες · απόδοση ~4,6 % · ~2.900 €/τ.μ.»"""
+    parts = [
+        f"**{g['name']}**",
+        f"{fmt._gr_int(g['n'])} {'αγγελία' if g['n'] == 1 else 'αγγελίες'}",
+    ]
+    if g["gy"] is not None:
+        parts.append(f"απόδοση ~{components._pct_gr(g['gy'])}")
+    if g["ppm"]:
+        parts.append(f"~{fmt._gr_int(round(g['ppm'] / 10) * 10)} €/τ.μ.")
+    return " · ".join(parts)
+
+
+def _on_area(key: str) -> None:
+    state = st.session_state.get(f"{key}-areas")
+    try:
+        objs = state["selection"]["objects"].get(AREA_LAYER) or []
+    except (KeyError, TypeError, AttributeError):
+        return
+    if objs and objs[0].get("name"):
+        st.session_state[AREA] = objs[0]["name"]
+        st.session_state[f"{key}-n"] = PAGE
+
+
+def _area_picked(key: str) -> None:
+    st.session_state[f"{key}-n"] = PAGE
+
+
+def _area_deck(groups: list[dict], chosen: str | None, view: tuple[float, float, float]):
+    import math
+
+    import pandas as pd
+    import pydeck as pdk
+
+    df = pd.DataFrame(
+        {
+            "name": g["name"],
+            "n": g["n"],
+            "lat": g["lat"],
+            "lon": g["lon"],
+            "fill": [*components.yield_color(g["gy"]), 255 if g["name"] == chosen else 190],
+            "r": 180 + 14 * math.sqrt(g["n"]),  # metres: shrinks with the zoom
+            "line": [17, 24, 39, 255] if g["name"] == chosen else [255, 255, 255, 220],
+            "w": 3 if g["name"] == chosen else 1,
+            "tip": area_line(g).replace("**", ""),
+        }
+        for g in groups
+    )
+    lat_c, lng_c, zoom = view
+    if chosen and (row := next((g for g in groups if g["name"] == chosen), None)):
+        lat_c, lng_c, zoom = row["lat"], row["lon"], max(zoom, 12.5)
+    layers = [
+        pdk.Layer(
+            "ScatterplotLayer", id=AREA_LAYER, data=df, get_position="[lon, lat]",
+            get_fill_color="fill", get_radius="r", radius_min_pixels=7, radius_max_pixels=26,
+            stroked=True, get_line_color="line", get_line_width="w", line_width_units="'pixels'",
+            pickable=True,
+        ),
+        pdk.Layer(  # the names, so a circle is a place and not a puzzle
+            "TextLayer", id="names", data=df[df["n"] >= 20], get_position="[lon, lat]",
+            get_text="name", get_size=12, get_color=[15, 23, 42, 255],
+            get_pixel_offset=[0, 16], font_family="'Inter, system-ui, sans-serif'",
+            character_set="'auto'", outline_width=3, outline_color=[255, 255, 255, 230],
+            font_settings={"sdf": True},
+        ),
+    ]  # fmt: skip
+    return components._compact_deck_class()(
+        map_style="light",
+        initial_view_state=pdk.ViewState(latitude=lat_c, longitude=lng_c, zoom=zoom),
+        layers=layers,
+        tooltip={"html": "{tip}", "style": {"fontSize": "14px", "maxWidth": "240px"}},
+    )
+
+
+def area_legend() -> str:
+    dots = [
+        (components._YIELD_COLORS["low"], "κάτω από 3,5 %"),
+        (components._YIELD_COLORS["mid"], "3,5–5 %"),
+        (components._YIELD_COLORS["high"], "πάνω από 5 %"),
+    ]
+    items = "".join(
+        f'<span style="margin-right:12px;white-space:nowrap"><span style="display:inline-block;'
+        f"width:11px;height:11px;border-radius:50%;background:rgb({c[0]},{c[1]},{c[2]});"
+        f'margin-right:5px;vertical-align:middle"></span>{label}</span>'
+        for c, label in dots
+    )
+    return f'<div class="hg-legend" style="line-height:1.7">Απόδοση: {items}</div>'
+
+
+def render_areas(ranked: list[dict], *, key: str, intel, height: int = 380) -> None:
+    """The area map, the area picker under it, then the chosen area's flats (best first)."""
+    buyer._css()
+    groups = area_groups(ranked)
+    if not groups:
+        st.info("Καμία αγγελία δεν ταιριάζει.")
+        return
+    names = [g["name"] for g in groups]
+    if st.session_state.get(AREA) not in names:
+        st.session_state[AREA] = None
+    chosen = st.session_state.get(AREA)
+    pts = [d for d in ranked if d.get("lat") and d.get("lng")]  # frame where the flats are
+    lats, lngs = sorted(d["lat"] for d in pts), sorted(d["lng"] for d in pts)
+    view = (lats[len(lats) // 2], lngs[len(lngs) // 2], 10.8)  # every area on a phone
+    st.pydeck_chart(
+        _area_deck(groups, chosen, view), height=height, key=f"{key}-areas",
+        on_select=lambda: _on_area(key), selection_mode="single-object",
+    )  # fmt: skip
+    st.markdown(area_legend(), unsafe_allow_html=True)
+    count = {g["name"]: g["n"] for g in groups}
+    st.selectbox(
+        "Περιοχή", names, key=AREA, index=None, placeholder="Διάλεξε περιοχή ή πάτα έναν κύκλο",
+        format_func=lambda a: f"{a} · {fmt._gr_int(count[a])} {'αγγελία' if count[a] == 1 else 'αγγελίες'}", on_change=_area_picked,
+        args=(key,), label_visibility="collapsed",
+    )  # fmt: skip
+    if chosen:
+        rows = [d for d in ranked if area_of(d) == chosen]
+        st.markdown(area_line(next(g for g in groups if g["name"] == chosen)))
+    else:
+        rows = ranked
+        st.markdown("#### Οι καλύτερες σε όλες τις περιοχές")
+    n = min(st.session_state.get(f"{key}-n", PAGE), len(rows))
+    for i, d in enumerate(rows[:n], start=1):
+        buyer.result_card(
+            d, buyer.buyer_view(d, intel), f"{key}-l",
+            [("Λεπτομέρειες", buyer.open_detail, (d["id"],)), buyer._star_action(d)],
+            lead=f"{i}.",
+        )  # fmt: skip
+    if n < len(rows):
+        st.button(
+            f"Δείξε άλλες {min(PAGE, len(rows) - n)}", key=f"{key}-more", on_click=_more,
+            args=(key,), width="stretch",
+        )  # fmt: skip
