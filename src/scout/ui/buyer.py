@@ -1136,7 +1136,8 @@ def _save_mandate(text: str, f: SearchFilters) -> None:
 
 
 def hidden_line(counts: dict[str, int], f: SearchFilters) -> str:
-    """'Κρύβονται 1.234: 800 εκτός περιοχής · 300 ισόγεια/υπόγεια · …' ('' if none)."""
+    """'Κρύβονται 1.234: 800 εκτός περιοχής · 300 ισόγεια/υπόγεια · …' ('' if none) — the
+    breakdown, shown behind one tap (``hidden_short`` is the line on the first screen)."""
     labels = hide_labels(f)
     total = sum(counts.values())
     if not total:
@@ -1144,6 +1145,38 @@ def hidden_line(counts: dict[str, int], f: SearchFilters) -> str:
     verb = "Κρύβεται" if total == 1 else "Κρύβονται"
     parts = " · ".join(f"{_num(n)} {labels[k]}" for k, n in counts.items())
     return f"{verb} {_num(total)}: {parts}"
+
+
+def hide_short_labels(f: SearchFilters) -> dict[str, str]:
+    """Reason code → the two-word name used on the first screen (plural, «αγγελίες» implied)."""
+    floor = f.floor_min or 0
+    return {
+        "area": "εκτός περιοχής",
+        "not_home": "όχι κατοικίες",
+        "excluded": "εκτός κριτηρίων",
+        "suspect": "με αμφίβολα στοιχεία",
+        "price": "εκτός τιμής",
+        "size": "εκτός τ.μ.",
+        "bedrooms": "με άλλα υπνοδωμάτια",
+        "kind": "μεζονέτες" if set(f.kinds) == set(DEFAULT_KINDS) else "άλλου τύπου",
+        "private": "από μεσίτη",
+        "unfinished": "υπό κατασκευή",
+        "floor": "ισόγεια" if floor <= 1 else f"κάτω από {floor:g}ο όροφο",
+        "year": "παλιές",
+        "undeclared": "χωρίς όροφο/έτος",
+    }
+
+
+def hidden_short(counts: dict[str, int], f: SearchFilters) -> str:
+    """One short line: «Κρύβω 10.121: παλιές, μεζονέτες, υπό κατασκευή, ισόγεια και άλλες.»
+    The four biggest reasons by count; the full breakdown is ``hidden_line``."""
+    total = sum(counts.values())
+    if not total:
+        return ""
+    names = hide_short_labels(f)
+    top = sorted(counts, key=lambda k: -counts[k])
+    tail = " και άλλες" if len(top) > 4 else ""
+    return f"Κρύβω {_num(total)}: {', '.join(names[k] for k in top[:4])}{tail}."
 
 
 def _apply_area_pick() -> None:
@@ -1203,17 +1236,20 @@ def page_search(listings: list[dict]) -> None:
     hits = [(m, d, buyer_view(d, intel)) for d in pool if (m := match(d, f))]
     counts = hidden_counts(pool, f)
     word = "αγγελία" if len(hits) == 1 else "αγγελίες"
-    line = hidden_line(counts, f)
+    short = hidden_short(counts, f)
     st.markdown(
         f'<div class="hg-count"><b>{_num(len(hits))}</b> {word}'
-        + (f'<br><small class="hg-hidden">{html.escape(line)}</small>' if line else "")
+        + (f'<br><small class="hg-hidden">{html.escape(short)}</small>' if short else "")
         + "</div>",
         unsafe_allow_html=True,
     )
+    if short:  # the breakdown by reason, one tap away
+        with st.expander("Τι κρύβω και γιατί"):
+            st.markdown(hidden_line(counts, f))
     back = sum(counts.get(k, 0) for k in ("floor", "year", "undeclared"))
     if back:
         st.button(
-            f"Δείξε όλες, χωρίς όροφο/έτος (+{_num(back)})",
+            f"Δείξε και τις {_num(back)} χωρίς όροφο/έτος",
             key="show_all_btn",
             on_click=_show_all,
             args=(st.session_state.get("f_ver", 0),),
@@ -1255,7 +1291,7 @@ def page_search(listings: list[dict]) -> None:
         )
     if len(hits) > limit:
         st.button(
-            f"Δείξε περισσότερες ({_num(len(hits) - limit)} ακόμα)",
+            f"Δείξε άλλες {_num(len(hits) - limit)}",
             key="more",
             on_click=_more,
             width="stretch",

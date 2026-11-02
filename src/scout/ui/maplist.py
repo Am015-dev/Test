@@ -170,7 +170,7 @@ def render(ranked: list[dict], *, key: str, height: int = 380, intel=None) -> No
 
     # The ranked list, 10 at a time.
     n = min(st.session_state.get(f"{key}-n", PAGE), len(ranked))
-    st.markdown(f"#### Όλες με τη σειρά ({fmt._gr_int(len(ranked))})")
+    st.markdown(f"#### Όλες με τη σειρά · {fmt._gr_int(len(ranked))}")
     for d in ranked[:n]:
         actions = [
             ("Στον χάρτη", select, (key, d["id"]), "primary" if d is chosen else "secondary"),

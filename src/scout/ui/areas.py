@@ -225,6 +225,41 @@ FILTERS_CAPTION = (
 )
 
 
+def verdicts(ranked: list[ai.AreaInsight], budget: int) -> list[str]:
+    """The decision box's four one-line verdicts for the first screen: the area first in bold,
+    one number each. The same picks as ``ai.decision`` (best yield; deepest market without
+    falling prices; strongest €/τ.μ. trend; most new flats within budget near a station), whose
+    full sentences with their basis go behind one tap (``test_where_to_buy`` keeps them equal)."""
+    solid = [x for x in ranked if x.n_fresh >= ai.SMALL_SAMPLE] or ranked
+    out = []
+    ys = [x for x in solid if x.gross_yield is not None]
+    if ys:
+        x = max(ys, key=lambda a: a.gross_yield)
+        out.append(f"**{x.area}** · απόδοση {ai._pct(x.gross_yield, 1)}")
+    ok = [x for x in solid if x.trend_pct is None or x.trend_pct > ai.FALLING_TREND]
+    if ok:
+        known = [a for a in ok if a.gone_60 is not None or a.gone_30 is not None]
+        if known:
+            x = max(known, key=lambda a: (a.gone_60 if a.gone_60 is not None else a.gone_30))
+            days, gone = (60, x.gone_60) if x.gone_60 is not None else (30, x.gone_30)
+            out.append(f"**{x.area}** · ρευστότητα: {ai._pct(gone)} έφυγαν σε {days} μέρες")
+        else:
+            x = max(ok, key=lambda a: a.n_fresh)
+            out.append(f"**{x.area}** · ρευστότητα: {x.n_fresh} αγγελίες")
+    grow = [(t, x) for x in solid if (t := ai.exit_trend(x)) is not None]
+    if grow:
+        t, x = max(grow, key=lambda p: p[0][0])
+        out.append(f"**{x.area}** · ανατίμηση {ai._signed(t[0])} €/τ.μ. {t[1]}")
+    else:
+        out.append("Ανατίμηση: δεν υπάρχει αρκετό ιστορικό τιμών ακόμα.")
+    near = max(ranked, key=lambda a: a.near_station_in_budget, default=None)
+    if near is not None and near.near_station_in_budget:
+        out.append(f"**{near.area}** · {near.near_station_in_budget} νεόδμητα κοντά σε σταθμό")
+    else:
+        out.append("Νεόδμητο κοντά σε σταθμό: κανένα στο ποσό σου.")
+    return out
+
+
 def coverage_line(insights: list[ai.AreaInsight], listings: list[dict]) -> str:
     seen = [d["last_seen"] for d in listings if d.get("last_seen") is not None]
     when = f" έως {max(seen):%d/%m}" if seen else ""
@@ -609,11 +644,13 @@ def page_areas(listings: list[dict]) -> None:
 
     with st.container(border=True):
         st.markdown("**Για αγορά προς ενοικίαση**")
-        for line in ai.decision(shown, budget):
+        for line in verdicts(shown, budget):
             st.markdown(line)
-        with st.expander("Από πού βγαίνουν"):
+        with st.expander("Από πού βγαίνουν"):  # the sentences, their counts and the method
+            for line in ai.decision(shown, budget):
+                st.markdown(line)
             st.markdown("\n".join(f"- {line}" for line in ai.decision_basis(shown)))
-    st.caption(coverage_line(shown, listings) + ". " + FILTERS_CAPTION)
+            st.caption(coverage_line(shown, listings) + ". " + FILTERS_CAPTION)
 
     st.markdown("### Οι 3 περιοχές με την καλύτερη βαθμολογία")
     for i, x in enumerate(shown[:3], 1):

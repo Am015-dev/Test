@@ -315,6 +315,10 @@ a, [data-testid="stMarkdownContainer"] a {{ color: var(--hg-accent); }}
 #MainMenu, [data-testid="stDecoration"], [data-testid="stStatusWidget"] {{ display: none !important; }}
 [data-testid="stToolbarActions"], [data-testid="stMainMenu"] {{ display: none !important; }}
 [data-testid="stAppDeployButton"], .stDeployButton {{ display: none !important; }}
+/* Streamlit Cloud's «Hosted with Streamlit» badge and the running-man widget. The owner's own
+ * «Manage app» avatar is drawn for signed-in owners only and is not reachable by CSS. */
+[class*="viewerBadge"], [data-testid*="ViewerBadge"], [data-testid*="HostedBadge"],
+a[href*="streamlit.io/cloud"], [data-testid="stStatusWidget"] {{ display: none !important; }}
 header[data-testid="stHeader"] {{
     background: transparent; height: auto; min-height: 0; pointer-events: none;
 }}
@@ -1000,19 +1004,46 @@ footer {{ visibility: hidden; height: 0; }}
     padding: var(--hg-s2) 0; border-top: 1px solid var(--hg-line);
 }}
 
-/* Identity: the wordmark set with intent, the data line as a quiet second line. */
+/* Identity: the wordmark alone at the top; the sources and counts are the footer (C18). */
 [data-testid="stMain"] .st-key-app-head {{ gap: 2px; padding-bottom: var(--hg-s1); }}
 [data-testid="stMain"] .st-key-app-head [data-testid="stMarkdownContainer"] {{ margin: 0; }}
 [data-testid="stMain"] .hg-app-head {{
     font-size: var(--hg-fs-headline); font-weight: 750; letter-spacing: -0.01em;
     color: var(--hg-accent); line-height: 1.3;
 }}
-[data-testid="stMain"] .st-key-app-head [data-testid="stCaptionContainer"] p {{
-    color: var(--hg-muted); margin: 0;
+/* On a phone the wordmark shares the top row with the sidebar opener (44 px at 8 px from the
+ * top, 4 px from the left), so the pills start 40 px higher. */
+@media (max-width: 640px) {{
+    [data-testid="stMainBlockContainer"] {{ padding-top: var(--hg-s2); }}
+    [data-testid="stMain"] .st-key-app-head {{
+        min-height: var(--hg-target); padding-left: 52px; justify-content: center;
+    }}
+}}
+[data-testid="stMain"] .st-key-app-foot {{
+    margin-top: var(--hg-s8); padding-top: var(--hg-s3); border-top: 1px solid var(--hg-line);
+}}
+[data-testid="stMain"] .st-key-app-foot [data-testid="stCaptionContainer"] p {{
+    color: var(--hg-muted); font-size: var(--hg-fs-caption); margin: 0;
 }}
 /* Page pills: quiet until chosen. */
 [data-testid="stMain"] .st-key-nav_pill button[aria-checked="false"] {{
     background: transparent; border-color: var(--hg-line); color: var(--hg-ink-soft);
+}}
+/* On a phone the six pills are two even rows of three (one row does not fit at 390 px with
+ * «Αναζήτηση» and «Αγαπημένα» at a readable size), never a ragged wrap. */
+@media (max-width: 640px) {{
+    [data-testid="stMain"] .st-key-nav_pill [data-testid="stButtonGroup"]:has(> button),
+    [data-testid="stMain"] .st-key-nav_pill [data-testid="stButtonGroup"] :has(> button) {{
+        display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--hg-s2);
+    }}
+    [data-testid="stMain"] .st-key-nav_pill [data-testid="stButtonGroup"] button {{
+        width: 100%; justify-content: center; padding: 4px 8px; margin: 0;
+    }}
+}}
+/* The listing page: its title and «Πίσω» share one line (the button is pulled up beside the
+ * title that precedes it; the rule applies only in that order). */
+[data-testid="stMain"] [data-testid="stElementContainer"]:has(h2) + .st-key-listing-back {{
+    margin-top: -40px; align-self: flex-end;
 }}
 /* The sidebar opener: a hairline control, not a floating card. */
 header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {{
