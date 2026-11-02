@@ -490,17 +490,21 @@ def tier_text(near: int, wide: int) -> str:
     return " και ".join(parts)
 
 
+def short_counts(exact: int, near: int, wide: int) -> str:
+    """One line, numbers only (round 6): «**154** ακριβώς, **80** κοντινές, **2.338**
+    ευρύτερα.» The answers are the chips above it; what each card is outside of is on the
+    card."""
+    parts = [f"**{buyer._num(exact)}** ακριβώς" if exact else "Καμία ακριβώς"]
+    if near:
+        parts.append(f"**{buyer._num(near)}** {'κοντινή' if near == 1 else 'κοντινές'}")
+    if wide:
+        parts.append(f"**{buyer._num(wide)}** ευρύτερα")
+    return ", ".join(parts) + "."
+
+
 def counts_line(exact: int, near: int, what: str, checked: int, wide: int = 0) -> str:
-    """C7's result sentence with the three counts: «**2** αγγελίες … ακριβώς όπως ζήτησες,
-    **55** κοντινές (…) και **410** ευρύτερα (…)», or «Καμία ακριβώς όπως ζήτησες· …». What
-    each card is outside of is written on the card."""
-    rest = tier_text(near, wide)
-    if exact:
-        joint = ", " if near and wide else " και "
-        head = f"**{buyer._num(exact)}** {buyer._noun(exact)} {what} ακριβώς όπως ζήτησες{joint}{rest}."
-    else:
-        head = f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}."
-    return head  # C17: what each card is outside of is on the card; ``checked`` → «Πώς υπολογίζω»
+    """The result's counts line (kept signature; ``what`` and ``checked`` live elsewhere)."""
+    return short_counts(exact, near, wide)
 
 
 def checked_line(checked: int, total: int) -> str:
@@ -911,13 +915,13 @@ def _results(g: dict, listings: list[dict]) -> None:
     exact = [p for p in every if not p.relaxed]
     near = sum(p.tier == 1 for p in every)
     wide = sum(p.tier == 2 for p in every)
-    lo, hi = budget * (1 - picks.BUDGET_BAND), budget * (1 + picks.BUDGET_BAND)
-    what = f"{buyer.eur(lo)}–{buyer.eur(hi)}, {age_text(g.get('age'))}" + (
+    hi = budget * (1 + picks.BUDGET_BAND)  # C15: a ceiling, no floor under the budget
+    what = f"έως {buyer.eur(hi)}, {age_text(g.get('age'))}" + (
         ", κοντά σε σταθμό" if where == "rail" else ""
     )
     relax = (
-        picks.relaxations(listings, intel, rents, budget, **rules)
-        if len(exact) < picks.PAGE
+        picks.relaxations(listings, intel, rents, budget, memo=find_memo, **rules)
+        if len(exact) < picks.NEAR_MIN
         else []
     )
     if not every:

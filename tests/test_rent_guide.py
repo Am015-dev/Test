@@ -140,7 +140,12 @@ def test_rent_flow_end_to_end(rent_env):
         "οποιαδήποτε ηλικία",
     ]
     text = _text(at)
-    total = int(re.search(r"\*\*(\d+)\*\* αγγελίες ενοικίασης έως 1\.100 €/μήνα", text).group(1))
+    # C15: the band is 500–1.100 €/μήνα (half the budget to +10 %)
+    total = int(
+        re.search(r"\*\*(\d+)\*\* (?:αγγελίες ενοικίασης 500 €–1\.100 €/μήνα|ακριβώς)", text).group(
+            1
+        )
+    )
     assert total == len(picks_rent.find(RENTALS, 1000, top=10**6))
     assert total > 10 and "Σου προτείνω " in text
     # C17: exactly two buttons per card, no «Εγκρίνω» / «Δεν μου κάνει» in the guide
@@ -157,7 +162,7 @@ def test_rent_flow_end_to_end(rent_env):
     ok(at, "more")
     assert len([b for b in at.button if (b.key or "").startswith("rent-star-")]) == min(20, total)
     # the assistant note rendered from facts["listings"] with renter rules
-    assert "**Σημείωμα**" in _text(at) and rent_env
+    assert "**Σημείωμα**" not in _text(at) and rent_env  # no model-written brief (C18)
     req = rent_env[0]
     assert "απόδοση" in req["system"] and "εγγύηση" in req["system"]  # «Δεν μιλάς για απόδοση»
     assert '"mode": "rent"' in req["messages"][0]["content"]
@@ -210,11 +215,11 @@ def test_relaxation_has_exact_counts(rent_env):
     first = relax[0]
     added = int(first.label.split("(+")[1].rstrip(")"))
     # the exact matches before (C7: near matches follow them and are not counted here)
-    m0 = re.search(r"\*\*(\d+)\*\* αγγελί\w+ ενοικίασης", _text(at))
+    m0 = re.search(r"\*\*(\d+)\*\* (?:αγγελί\w+ ενοικίασης|ακριβώς)", _text(at))
     before = int(m0.group(1)) if m0 else 0
     first.click().run()
     ok(at, "relax")
-    m = re.search(r"\*\*(\d+)\*\* αγγελίες ενοικίασης", _text(at))
+    m = re.search(r"\*\*(\d+)\*\* (?:αγγελίες ενοικίασης|ακριβώς)", _text(at))
     assert m and int(m.group(1)) == before + added
 
 
@@ -289,7 +294,7 @@ def test_rank_by_value_against_the_neighbourhood_then_freshness():
     hood = [rental(i, 800, 80, days_on_market=10) for i in range(6)]  # 10 €/τ.μ. ×6
     cheap = rental(50, 720, 80, days_on_market=40)  # 9 €/τ.μ. → 10 % under
     cheap_fresh = rental(51, 720, 80, days_on_market=2)  # same value, fresher
-    bait = rental(52, 400, 80)  # 5 €/τ.μ. → 50 % under: a warning, sorted after
+    bait = rental(52, 510, 80)  # 6,4 €/τ.μ. → 36 % under: a warning, sorted after (C15: ≥ 500 €)
     over = rental(53, 1120, 80)  # over the 1.000 × 1,10 band
     rows = [*hood, cheap, cheap_fresh, bait, over]
     got = picks_rent.find(rows, 1000, top=50)
@@ -382,7 +387,7 @@ def test_rent_flow_on_the_real_loader(env):  # noqa: F811
     at = walk_rent(fresh(FIND), budget="guide-rb1000", beds="2", furnished=True)
     text = _text(at)
     want = len(picks_rent.find(real, 1000, bedrooms=2, furnished=True, top=10**6))
-    assert want and f"**{want}** αγγελίες ενοικίασης" in text
+    assert want and (f"**{want}** αγγελίες ενοικίασης" in text or f"**{want}** ακριβώς" in text)
     assert "από τα διπλανά (" in text and "Επιπλωμένο" in text
 
 

@@ -608,15 +608,8 @@ METHOD = f"""
 
 
 def counts_line(exact: int, near: int, what: str, wide: int = 0) -> str:
-    """C7's result sentence with the three counts (rentals)."""
-    rest = guide.tier_text(near, wide)
-    if exact:
-        joint = ", " if near and wide else " και "
-        return (
-            f"**{buyer._num(exact)}** {buyer._noun(exact)} ενοικίασης {what} ακριβώς όπως ζήτησες"
-            f"{joint}{rest}."
-        )
-    return f"Καμία ακριβώς όπως ζήτησες ({what})· {rest}."
+    """The rent result's counts line: numbers only, like the sale guide's."""
+    return guide.short_counts(exact, near, wide)
 
 
 def card_more(p: picks_rent.RentPick) -> list[str]:
@@ -742,10 +735,11 @@ def _results(r: dict, rows: list[dict]) -> None:
     exact = [p for p in every if not p.relaxed]
     near = sum(p.tier == 1 for p in every)
     wide = sum(p.tier == 2 for p in every)
-    what = f"έως {eur(budget * (1 + picks_rent.BUDGET_BAND))}/μήνα (το ποσό σου + 10 %)" + (
+    lo, hi = budget * picks_rent.RENT_FLOOR, budget * (1 + picks_rent.BUDGET_BAND)
+    what = f"{eur(lo)}–{eur(hi)}/μήνα (το ποσό σου + 10 %)" + (
         ", κοντά σε σταθμό" if where == "rail" else ""
     )
-    relax = picks_rent.relaxations(rows, budget, **rules) if len(exact) < picks.PAGE else []
+    relax = picks_rent.relaxations(rows, budget, **rules) if len(exact) < picks.NEAR_MIN else []
     if not every:
         st.markdown(f"Καμία αγγελία ενοικίασης {what}.")
         if relax:

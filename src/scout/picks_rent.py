@@ -10,15 +10,20 @@ rental's €/τ.μ. against the median €/τ.μ. of the OTHER active rentals in
 ``TOO_CHEAP`` under its comparables is a warning (often a room, a typo or a bait ad) and
 sorts after the ones that compare normally; rentals without comparables come last.
 
-Band: monthly rent ≤ budget × (1 + ``BUDGET_BAND``); no lower bound. ``relaxations`` loosens
-one rule at a time and counts exactly what it adds (same ``find``, not an estimate).
+Band: monthly rent between budget × ``RENT_FLOOR`` and budget × (1 + ``BUDGET_BAND``). The
+floor (C15) is the one filter under the budget this module keeps, at half the budget: a
+400 € renter is not shown 150 € rooms, a 1.000 € renter still sees a 500 € flat. Sales
+(``picks``) have no floor at all — a flat far under the budget is still a buy; a rental far
+under it is usually a room, a parking space or a typo. ``relaxations`` loosens one rule at a
+time and counts exactly what it adds (same ``find``, not an estimate); ``answer_costs`` /
+``costs_line`` say in one line what each answer costs, as ``picks`` does for sales.
 
 Near matches (C7, ``find(..., near=True)``): after the strict matches, rentals that fail
 exactly ONE answer. Steps (``picks.near_steps``): rent band 10 % → 20 % → 30 % over the
 budget; building age one step up (10 → 20); station rule off; chosen areas → all areas;
 bedrooms off; last, any building age. Each step keeps its best ``picks.NEAR_MIN`` by value;
 all near matches are then sorted by ``score`` (smaller loosening first on a tie), after every
-strict one — and only when the strict matches are fewer than ``picks.NEAR_MIN``. Each carries
+strict one — whenever the strict matches are fewer than ``picks.NEAR_MIN`` (100). Each carries
 ``relaxed`` («ποσό +18 %», «κτίριο 1998», «χωρίς όρο σταθμού», «Μαρούσι», «3 υπν.»).
 Then «ευρύτερα» (``tier=2``): every remaining rental within rent × 1,30 (two or more answers
 failed, or one past a step's cap), by ``score``, no cap; ``relaxed`` names what it fails. «Επιπλωμένο» is not loosened
@@ -40,7 +45,8 @@ from datetime import date, datetime
 from . import picks
 from .area_insights import area_name
 
-BUDGET_BAND = 0.10
+BUDGET_BAND = 0.10  # a strict match costs at most this much over the monthly budget
+RENT_FLOOR = 0.50  # and at least this share of it: below, it is a room or a typo (C15)
 MIN_COMPS = 5
 TOO_CHEAP = 0.35
 AGE_STEPS = picks.AGE_STEPS
@@ -342,8 +348,8 @@ def find(
     near: bool = False,
     _index: tuple[dict, dict] | None = None,
 ) -> list[RentPick]:
-    """Rentals with rent ≤ ``budget_month`` × 1,10 that pass the answers, best value first
-    (module docstring). ``bedrooms`` 1/2 exact, 3 = 3+, None any; ``furnished=True`` keeps only
+    """Rentals with rent between ``budget_month`` × 0,50 and × 1,10 that pass the answers,
+    best value first (module docstring). ``bedrooms`` 1/2 exact, 3 = 3+, None any; ``furnished=True`` keeps only
     rentals that say «Επιπλωμένο»; ``max_age=None`` any building age. ``near=True`` appends
     the near matches after the strict ones."""
     year = year or date.today().year
@@ -352,7 +358,7 @@ def find(
     loose: dict[tuple[str, int], list[RentPick]] = {}
     wide: list[RentPick] = []
     for d in rentals:
-        if not usable(d):
+        if not usable(d) or d["price"] < budget_month * RENT_FLOOR:
             continue
         if furnished and d.get("furnished") is not True:
             continue
@@ -382,6 +388,41 @@ def find(
         out += [p for *_, p in ranked]
         out += sorted(wide, key=lambda p: (-p.score, p.sort_key()))  # «ευρύτερα», no cap
     return out[:top]
+
+
+def answer_costs(
+    rentals: list[dict],
+    budget_month: int,
+    bedrooms: int | None = None,
+    near_rail: bool = False,
+    areas: list[str] | None = None,
+    max_age: int | None = None,
+    furnished: bool = False,
+    *,
+    year: int | None = None,
+) -> list[tuple[str, int]]:
+    """[(answer, strict matches left)]: the monthly budget alone («800 €/μήνα»), then each
+    further answer on top of the previous ones — where, building age, bedrooms
+    (``picks.answer_labels``), then «επιπλωμένο». Same ``find`` as the list."""
+    index = comps_index(rentals)
+    base: dict = dict(max_age=None, near_rail=False, areas=None, bedrooms=None, furnished=False)
+
+    def n(**kw) -> int:
+        return len(find(rentals, budget_month, **kw, top=10**9, year=year, _index=index))
+
+    out = [(f"{eur(budget_month)}/μήνα", n(**base))]
+    steps = picks.answer_labels(max_age, near_rail, areas, bedrooms)
+    if furnished:
+        steps.append(("επιπλωμένο", {"furnished": True}))
+    for label, change in steps:
+        base |= change
+        out.append((label, n(**base)))
+    return out
+
+
+def costs_line(costs: list[tuple[str, int]]) -> str:
+    """«Με 800 €/μήνα βρίσκω 230 σπίτια· «1 υπν.» αφήνει 80.» (``picks.costs_line``)."""
+    return picks.costs_line(costs)
 
 
 @dataclass

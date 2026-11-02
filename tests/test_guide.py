@@ -64,7 +64,8 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
         and "Δόση ~" in text
         and "Πηγές: XE.gr · " in " ".join(c.value for c in at.caption)
     )
-    total = int(re.search(r"\*\*(\d+)\*\* αγγελίες", text).group(1))
+    line = re.search(r"[^\n]*\*\*[\d.]+\*\* (?:αγγελίες|ακριβώς)[^\n]*", text).group(0)
+    total = sum(int(n.replace(".", "")) for n in re.findall(r"\*\*([\d.]+)\*\*", line))
     assert total > picks.PAGE
     first = _cards(at)
     assert len(first) == picks.PAGE
@@ -101,14 +102,14 @@ def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env, monkeypatch
         and "νεόδμητο" in at.button_group(key="guide_chips").options
     )
     # no seed flat is within the (zero) walking limit: no exact match, the near ones follow
-    assert "Καμία αγγελία" in text or "Καμία ακριβώς όπως ζήτησες" in text
+    assert "Καμία αγγελία" in text or "Καμία ακριβώς" in text
     relax = [b for b in at.button if b.key and b.key.startswith("relax-")]
     no_rail = next(b for b in relax if b.label.startswith("Χωρίς όρο σταθμού (+"))
     added = int(no_rail.label.split("(+")[1].split(",")[0].rstrip(")"))
     no_rail.click().run()
     ok(at, "relax")
     assert at.session_state["guide"]["where"] == "best"
-    assert f"**{added}** αγγελίες" in _text(at)
+    assert f"**{added}** αγγελίες" in _text(at) or f"**{added}** ακριβώς" in _text(at)
     cards = _cards(at)
     assert cards and "Δεν έχει ελεγχθεί ακόμα" in _text(at)
     # a «Δεν μου κάνει» verdict (saved-searches page) still drops the card from the guide
@@ -254,7 +255,7 @@ def test_near_matches_follow_with_their_label_counts_and_score(env, monkeypatch)
     at = walk(fresh(FIND), budget="guide-b200", where="rail", age="10")
     ok(at, "near")
     text = _text(at)
-    m = re.search(r"Καμία ακριβώς όπως ζήτησες \([^)]*\)· (.*?)\.(?: |$)", text)
+    m = re.search(r"Καμία ακριβώς, (.*?)\.(?: |$)", text)
     assert m, text[-2000:]
     near = sum(int(n) for n in re.findall(r"\*\*(\d+)\*\*", m.group(1)))
     cards = [m.value for m in at.markdown if 'class="hg-card"' in m.value]
@@ -266,16 +267,15 @@ def test_near_matches_follow_with_their_label_counts_and_score(env, monkeypatch)
 
 
 def test_counts_line_wording():
-    line = guide.counts_line(2, 55, "140.800 €–179.200 €, νεόδμητο", 3, 410)
-    assert line.startswith(
-        "**2** αγγελίες 140.800 €–179.200 €, νεόδμητο ακριβώς όπως ζήτησες, **55** κοντινές "
-        "(με έναν όρο πιο χαλαρό) και **410** ευρύτερα (πιο μακριά από αυτό που ζήτησες)."
+    assert guide.counts_line(2, 55, "x", 3, 410) == (
+        "**2** ακριβώς, **55** κοντινές, **410** ευρύτερα."
     )
-    assert "**1.286** ευρύτερα" in guide.counts_line(0, 5, "x", 0, 1286)
-    assert "και **31** κοντινές (με έναν όρο πιο χαλαρό)." in guide.counts_line(4, 31, "x", 0)
-    assert guide.counts_line(0, 1, "x", 0).startswith(
-        "Καμία ακριβώς όπως ζήτησες (x)· **1** κοντινή"
+    assert (
+        guide.counts_line(0, 5, "x", 0, 1286)
+        == "Καμία ακριβώς, **5** κοντινές, **1.286** ευρύτερα."
     )
+    assert guide.counts_line(4, 1, "x", 0) == "**4** ακριβώς, **1** κοντινή."
+    assert len(guide.counts_line(154, 80, "x", 0, 2338).replace("**", "")) <= 60
 
 
 def test_assistant_facts_mark_near_matches():
