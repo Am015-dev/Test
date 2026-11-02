@@ -599,7 +599,7 @@ footer {{ visibility: hidden; height: 0; }}
 /* Card actions: compact, equal buttons; the active "★" star is amber, not teal. */
 [class*="st-key-act-"] {{ margin-top: 4px; }}
 [class*="st-key-act-"] button, [class*="st-key-act-"] a {{
-    min-height: var(--hg-target) !important; padding: 4px 12px !important;
+    min-height: var(--hg-target) !important; padding: 4px 4px !important;
 }}
 [class*="st-key-act-"] button p, [class*="st-key-act-"] a p {{ font-size: var(--hg-fs-subhead) !important; }}
 [class*="st-key-act-"] [data-testid="stBaseButton-primary"] {{
@@ -724,6 +724,14 @@ footer {{ visibility: hidden; height: 0; }}
 }}
 [data-testid="stMain"] [class*="st-key-guide-"] button p {{
     font-size: var(--hg-fs-headline); font-weight: 600;
+}}
+/* Three answers across a phone (goal, where): let a long label take two lines, never «…». */
+[data-testid="stMain"] :is(.st-key-guide-gs, .st-key-guide-ws, .st-key-guide-rwhere) button p {{
+    white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.2;
+    font-size: var(--hg-fs-subhead);
+}}
+[data-testid="stMain"] :is(.st-key-guide-gs, .st-key-guide-ws, .st-key-guide-rwhere) button {{
+    padding-left: 4px; padding-right: 4px;
 }}
 [data-testid="stMain"] [data-testid="stAlert"] p {{ font-size: var(--hg-fs-subhead); }}
 [data-testid="stMain"] [data-testid="stMetricValue"] {{ font-size: var(--hg-fs-title); }}
@@ -931,7 +939,7 @@ footer {{ visibility: hidden; height: 0; }}
     font-size: var(--hg-fs-footnote); border-radius: var(--hg-r-chip); padding: 2px 8px;
 }}
 [data-testid="stMain"] .hg-st-ok, .hg-b-good {{ background: var(--hg-ok-bg); color: var(--hg-ok-fg); }}
-[data-testid="stMain"] .hg-st-unk, .hg-b-warn, .hg-b-drop {{
+[data-testid="stMain"] .hg-st-unk, .hg-st-warn, .hg-b-warn, .hg-b-drop {{
     background: var(--hg-warn-bg); color: var(--hg-warn-fg);
 }}
 [data-testid="stMain"] .hg-st-bad, .hg-b-bad {{ background: var(--hg-bad-bg); color: var(--hg-bad-fg); }}

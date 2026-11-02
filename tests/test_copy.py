@@ -63,6 +63,8 @@ def visible_strings(at) -> list[tuple[str, str]]:
                 if isinstance(v, str) and v.strip() and kind not in ("text_input",):
                     out.append(("button" if "button" in kind else kind, v))
             opts = getattr(el, "options", None)
+            if getattr(el, "key", None) == "nav_pill" and at.query_params.get("admin"):
+                opts = None  # the owner's link adds the owner's tool pills, not buyer copy
             if isinstance(opts, (list, tuple)):
                 out.extend((kind, str(o)) for o in opts if isinstance(o, str))
     return out
@@ -124,7 +126,7 @@ def _guide_step(n: int):
 
 
 def _search_example_with_advice(env):
-    at = fresh("Αναζήτηση")
+    at = fresh("Αναζήτηση", owner=True)
     at.button(key="ex0").click().run()
     at.button(key="advice_again").click().run()
     return at
@@ -138,7 +140,7 @@ def _favourite_and_details(env):
 
 
 def _saved_search(env):
-    at = fresh("Αναζήτηση")
+    at = fresh("Αναζήτηση", owner=True)
     at.button(key="ex0").click().run()
     at.button(key="save_mandate").click().run()
     goto(at, "Αποθηκευμένες αναζητήσεις")

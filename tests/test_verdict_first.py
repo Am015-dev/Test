@@ -174,17 +174,19 @@ def test_guide_result_has_two_buttons_per_card_and_the_link(env):
 
 
 def test_saved_searches_keep_their_verdict_buttons(env):
-    at = fresh(SEARCH)
+    at = fresh(SEARCH, owner=True)
     at.button(key="ex0").click().run()
     ok(at, "example")
     next(b for b in at.button if b.label == "Αποθήκευση αναζήτησης").click().run()
     ok(at, "save")
-    at = fresh(SHORTLIST)
+    at = fresh(SHORTLIST, owner=True)
     labels = {b.label for b in at.button}
     assert "Έγκριση" in labels and "Απόρριψη" in labels and "Ανάλυση" in labels
 
 
-def test_listing_page_order_link_card_verdict_then_collapsed_sections(env):
+def test_listing_page_is_three_blocks(env):
+    """The flat (card + one row «Αγγελία | Πίσω | Αγαπημένο»), «Τι να κάνεις», then three
+    collapsed sections: the price, the rent, the checks."""
     at = fresh(SEARCH)
     next(b for b in at.button if b.label == "Ανάλυση").click().run()
     ok(at, "details")
@@ -194,14 +196,16 @@ def test_listing_page_order_link_card_verdict_then_collapsed_sections(env):
     verdict = next(i for i, v in enumerate(md) if v.startswith("**Τι να κάνεις**"))
     assert card < verdict
     assert md[verdict].count("\n- ") == 3
-    # every section after the verdict is a collapsed expander
-    labels = [e.label for e in at.expander]
-    for want in ("Πώς βγαίνει η βαθμολογία", "Ενοίκιο και απόδοση", "Έξι έλεγχοι επενδυτή",
-                 "Τι λέει η αγγελία", "Ιστορικό τιμής"):  # fmt: skip
-        assert want in labels, want
-    buttons = [b.label for b in at.main.button]
-    assert "Πίσω" in buttons and "Αγαπημένο" in buttons
-    assert not any(b.startswith("Άνοιγμα") for b in buttons)
+    top = [e.label for e in at.main.expander if e.label != "Σύνδεση" and "παρόμοια" not in e.label]
+    assert top[1:3] == ["Ενοίκιο και απόδοση", "Έλεγχοι και βαθμολογία"]
+    assert "διπλανά" in top[0]  # the price section says the verdict in its label
+    text = " ".join(md)
+    for want in ("**Ιστορικό τιμής**", "**Τι λέει η αγγελία**", "Βαθμολογία"):
+        assert want in text, want
+    row = [b.label for b in at.main.button if (b.key or "") == "listing-back"
+           or (b.key or "").startswith("l-1-")]  # fmt: skip
+    assert row == ["Πίσω", "Αγαπημένο"]
+    assert [x.label for x in at.main.get("link_button")][:1] == ["Αγγελία"]
 
 
 def test_accusative_of_every_area_name():

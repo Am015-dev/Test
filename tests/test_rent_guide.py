@@ -107,25 +107,25 @@ def _cards(at) -> list[str]:
 
 
 def walk_rent(at, budget="guide-rb800", beds="2", where="best", age="any", furnished=False):
+    """Every rent question on one screen: a tap selects, «Η πρότασή μου» shows the list."""
     assert "### Τι ψάχνεις;" in _text(at)
     at.button(key="guide-mode-rent").click().run()
     ok(at, "mode")
     assert at.session_state["guide"]["mode"] == "rent"
-    assert "Βήμα 1 από 5" in _text(at) and "### Πόσο τον μήνα;" in _text(at)
+    text = _text(at)
+    for q in ("### Πόσο τον μήνα;", "### Πόσα υπνοδωμάτια;", "### Πού;", "### Τι σπίτι;"):
+        assert q in text, q
+    assert "Βήμα" not in text and at.button(key="guide-rshow").disabled
     at.button(key=budget).click().run()
-    ok(at, "step 1")
-    assert "Βήμα 2 από 5" in _text(at) and "### Πόσα υπνοδωμάτια;" in _text(at)
     at.button(key=f"guide-rbd-{beds}").click().run()
-    ok(at, "step 2")
-    assert "Βήμα 3 από 5" in _text(at) and "### Πού;" in _text(at)
     at.button(key=f"guide-rw-{where}").click().run()
-    ok(at, "step 3")
-    assert "Βήμα 4 από 5" in _text(at) and "### Τι σπίτι;" in _text(at)
     if furnished:
         at.toggle(key="rent_furn").set_value(True).run()
     at.button_group(key="rent_age").set_value(age).run()
+    ok(at, "answers")
+    assert "## Η πρότασή μου" not in _text(at)
     at.button(key="guide-rshow").click().run()
-    ok(at, "step 4")
+    ok(at, "result")
     assert "Βήμα" not in _text(at) and "## Η πρότασή μου" in _text(at)
     return at
 
@@ -184,19 +184,16 @@ def test_rent_flow_end_to_end(rent_env):
     assert "## Αγαπημένα (1)" in _text(at) and "### Ενοίκια" in _text(at)
     assert any((b.key or "").startswith("wrent-star-") for b in at.button)
     goto(at, "Οδηγός")
-    # a chip reopens its question; the mode chip reopens step 0
+    # a chip reopens the questions (all on one screen, answers kept); «Πίσω» goes to step 0
     at.button_group(key="rent_chips").set_value("υπν. αδιάφορο").run()
-    assert "Βήμα 2 από 5" in _text(at)
+    assert "### Πόσα υπνοδωμάτια;" in _text(at) and "## Η πρότασή μου" not in _text(at)
     at.button(key="guide-rbd-2").click().run()
-    assert at.session_state["guide"]["rent"]["step"] == 3
-    at.button(key="guide-back").click().run()
-    assert "Βήμα 2 από 5" in _text(at)
-    at.button(key="guide-back").click().run()
+    assert at.session_state["guide"]["rent"]["beds"] == "2"
     at.button(key="guide-back").click().run()
     assert "### Τι ψάχνεις;" in _text(at) and at.session_state["guide"]["mode"] is None
     # switching to buy keeps the rent answers, and back again
     at.button(key="guide-mode-buy").click().run()
-    assert "Βήμα 1 από 5" in _text(at) and "Πόσα θες να βάλεις;" in _text(at)
+    assert "Πόσα θες να βάλεις;" in _text(at)
     at.button(key="guide-back").click().run()
     at.button(key="guide-mode-rent").click().run()
     assert at.session_state["guide"]["rent"]["budget"] == 1000

@@ -1,17 +1,19 @@
-"""Favourites at a glance: ranked by score, one line each, the price linking to the ad."""
+# ruff: noqa: F811  (the imported `env` fixture is re-declared as a test argument)
+"""Favourites: one short card per flat, best score first, no second list of the same flats."""
 
 from __future__ import annotations
 
-from scout.ui import buyer
+from .test_ui_gauntlet import SEARCH, env, fresh, goto, ok  # noqa: F401
 
 
-def test_shortlist_lines_rank_link_and_numbers():
-    a = {"price": 220_000, "area_m2": 50.0, "url": "https://x/a", "neighborhood": "Αθήνα (Κυψέλη)",
-         "est_monthly_rent": 580}  # fmt: skip
-    b = {"price": 180_000, "area_m2": 60.0, "url": "https://x/b", "neighborhood": "Χολαργός"}
-    text = buyer.shortlist_lines([(a, {"score": 61}), (b, {"score": 40})])
-    first, second = text.split("  \n")
-    assert first.startswith("1. [220.000 €](https://x/a) · 50 τ.μ. · 3,2 % · Βαθμολογία 61")
-    assert first.endswith("Αθήνα (Κυψέλη)")
-    assert second.startswith("2. [180.000 €](https://x/b) · 60 τ.μ.")
-    assert "Βαθμολογία 40" in second
+def test_favourites_are_cards_once_each(env):
+    at = fresh(SEARCH)
+    for _ in range(2):
+        next(b for b in at.button if b.label == "Αγαπημένο").click().run()
+    goto(at, "Αγαπημένα")
+    ok(at, "favourites")
+    assert any(m.value == "## Αγαπημένα (2)" for m in at.markdown)
+    cards = [m.value for m in at.markdown if 'class="hg-card"' in m.value]
+    assert len(cards) == 2 and all('data-compact="1"' in c for c in cards)
+    assert not any(m.value.startswith("1. [") for m in at.markdown)  # no duplicate text list
+    assert at.button(key="watch_compare").label == "Σύγκρινε δύο από αυτά"

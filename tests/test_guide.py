@@ -26,23 +26,25 @@ def _verdict_rows(at) -> list[str]:
 
 
 def walk(at, budget="guide-b250", goal="yield", where="best", age="any"):
-    assert "### Τι ψάχνεις;" in _text(at) and "Βήμα" not in _text(at)
+    """Every question is on one screen: a tap selects, «Η πρότασή μου» shows the list."""
+    assert "### Τι ψάχνεις;" in _text(at)
     at.button(key="guide-mode-buy").click().run()
     assert at.session_state["guide"]["mode"] == "buy"
-    assert "Βήμα 1 από 5" in _text(at) and "Πόσα θες να βάλεις;" in _text(at)
+    text = _text(at)
+    for q in ("Πόσα θες να βάλεις;", "Τι σε νοιάζει πιο πολύ;", "### Πού;", "Τι σπίτι;"):
+        assert q in text, q
+    assert "Βήμα" not in text
+    assert at.button(key="guide-show").disabled  # the amount has no default
     at.toggle(key="guide_loan").set_value(True).run()
     at.button(key=budget).click().run()
-    ok(at, "step 1")
-    assert "Βήμα 2 από 5" in _text(at) and "Τι σε νοιάζει πιο πολύ;" in _text(at)
+    ok(at, "amount")
     at.button(key=f"guide-g-{goal}").click().run()
-    ok(at, "step 2")
-    assert "Βήμα 3 από 5" in _text(at) and "### Πού;" in _text(at)
     at.button(key=f"guide-w-{where}").click().run()
-    ok(at, "step 3")
-    assert "Βήμα 4 από 5" in _text(at) and "Τι σπίτι;" in _text(at)
     at.button_group(key="guide_age").set_value(age).run()
+    ok(at, "answers")
+    assert "## Η πρότασή μου" not in _text(at)  # selecting never jumps ahead
     at.button(key="guide-show").click().run()
-    ok(at, "step 4")
+    ok(at, "result")
     # the result has no step line (C6) and no «Πίσω»: the title, then the answers editor
     assert "Βήμα" not in _text(at) and "## Η πρότασή μου" in _text(at)
     return at
@@ -87,7 +89,7 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     # «Από την αρχή» clears the answers and starts at the first question
     at.button(key="guide-restart").click().run()
     ok(at, "restart")
-    assert "Βήμα 1 από 5" in _text(at) and at.session_state["guide"]["budget"] is None
+    assert "Πόσα θες να βάλεις;" in _text(at) and at.session_state["guide"]["budget"] is None
 
 
 def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env, monkeypatch):  # noqa: F811

@@ -556,7 +556,6 @@ def _table(insights: list[ai.AreaInsight]) -> None:
             "Πρόσφατες αγγελίες": cc.NumberColumn("Αγγελίες"),
         },
     )
-    st.caption("Πάτα μια επικεφαλίδα για ταξινόμηση. Η παύλα «—» σημαίνει λίγες αγγελίες.")
 
 
 def _map(insights: list[ai.AreaInsight], listings: list[dict]) -> None:

@@ -209,8 +209,13 @@ def goto(at, page: str):
     return at.run()
 
 
-def fresh(page: str):
-    at = AppTest.from_file(APP, default_timeout=60).run()
+def fresh(page: str, owner: bool = False):
+    """A new session on ``page``; ``owner`` opens the owner's link (?admin=1), where saved
+    searches, the AI second opinion and the manual refresh live."""
+    at = AppTest.from_file(APP, default_timeout=60)
+    if owner:
+        at.query_params["admin"] = "1"
+    at.run()
     assert not at.exception, [e.value for e in at.exception]
     if page != PAGES[0]:  # the app opens on the first menu entry
         if page != DETAIL:
@@ -235,7 +240,7 @@ def test_every_page_renders(env):
 
 def test_buyer_journey(env):
     """Search → card actions → details → star → favourites → saved search → review → delete."""
-    at = fresh(SEARCH)
+    at = fresh(SEARCH, owner=True)
     # landing state shows the best listings with working card buttons
     assert any(b.label == "Αγαπημένο" for b in at.button)
     # an example search runs and shows what was understood
@@ -265,7 +270,7 @@ def test_buyer_journey(env):
     text = " ".join(m.value for m in at.markdown)
     labels = [e.label for e in at.expander]
     assert "**Τι να κάνεις**" in text
-    assert "Τι λέει η αγγελία" in labels and "Ενοίκιο και απόδοση" in labels
+    assert "**Τι λέει η αγγελία**" in text and "Ενοίκιο και απόδοση" in labels
     assert any("από τα διπλανά (" in x or "Λίγα διπλανά" in x for x in labels)
     assert "12 × ενοίκιο ÷ τιμή" in " ".join(c.value for c in at.caption)
     assert "Έξοδα αγοράς" in text and "Καθαρή απόδοση" in text
@@ -280,7 +285,7 @@ def test_buyer_journey(env):
         for m in at.markdown
     )
     # unstar from the listing page
-    next(b for b in at.button if b.label == "Αφαίρεση από αγαπημένα").click().run()
+    next(b for b in at.button if b.label == "Αφαίρεση").click().run()
     ok(at, "unstar")
     goto(at, STARRED)
     assert any("Δεν έχεις αγαπημένα" in i.value for i in at.info)
@@ -308,7 +313,7 @@ def test_buyer_journey(env):
 
 
 def test_search_filter_editor_sort_and_clear(env):
-    at = fresh(SEARCH)
+    at = fresh(SEARCH, owner=True)
     at.button(key="ex0").click().run()
     ver = at.session_state["f_ver"]
     calls = at.session_state["advice_calls"] if "advice_calls" in at.session_state else 0

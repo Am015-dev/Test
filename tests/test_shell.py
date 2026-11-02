@@ -24,8 +24,11 @@ SHORT_TO_KEY = {  # three pages in the bar; search, map and compare open from th
 }
 
 
-def _app() -> AppTest:
-    at = AppTest.from_file(APP, default_timeout=60).run()
+def _app(owner: bool = False) -> AppTest:
+    at = AppTest.from_file(APP, default_timeout=60)
+    if owner:  # the owner's link (?admin=1)
+        at.query_params["admin"] = "1"
+    at.run()
     ok(at, "start")
     return at
 
@@ -89,16 +92,20 @@ def test_one_navigation_no_page_menu_in_the_sidebar(env):  # noqa: F811
     at = _app()
     assert not at.radio  # the old sidebar menu is gone everywhere
     assert [b.key for b in at.sidebar.button] == [
-        "login_go", "login_new", "refresh", "nav_saved", "nav_Αναζήτηση", "nav_Χάρτης",
+        "login_go",
+        "login_new",
+        "nav_Αναζήτηση",
+        "nav_Χάρτης",
         "nav_Σύγκριση",
-    ]  # fmt: skip
+    ]  # fmt: skip  (saved searches and the manual refresh are on the owner's link only)
     assert not any(b.label in SHORT_TO_KEY for b in at.sidebar.button)
+    at = _app(owner=True)
     assert at.sidebar.button(key="nav_saved").label == "Αποθηκευμένες αναζητήσεις"
     assert at.sidebar.button(key="nav_saved").proto.type == "tertiary"  # link-style
 
 
 def test_saved_searches_open_from_the_sidebar_and_from_search(env):  # noqa: F811
-    at = _app()
+    at = _app(owner=True)
     at.sidebar.button(key="nav_saved").click().run()
     ok(at, "sidebar saved")
     assert at.session_state["page"] == "Αποθηκευμένες αναζητήσεις"
@@ -234,8 +241,8 @@ def test_status_is_one_short_line_and_refresh_lives_in_the_sidebar(env):  # noqa
     assert len(heads) == 1 and "Σκάουτ ακινήτων" in heads[0]
     line = next(c.value for c in at.caption if c.value.startswith("XE.gr ·"))
     assert len(line) <= 48  # one line at 390 px
-    assert any(b.key == "refresh" for b in at.sidebar.button)
-    assert not any(b.key == "refresh" for b in at.main.button)
+    assert not any(b.key == "refresh" for b in [*at.sidebar.button, *at.main.button])
+    assert any(b.key == "refresh" for b in _app(owner=True).sidebar.button)  # owner only
 
 
 # ---- accounts in the shell ---------------------------------------------------------------

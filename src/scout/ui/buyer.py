@@ -151,6 +151,12 @@ def pct_int(v: float) -> str:
     return f"{v * 100:.0f} %"
 
 
+def owner_mode() -> bool:
+    """The owner's link (?admin=1): unfinished extras (saved searches, the AI second opinion,
+    the manual refresh) show only there, so a buyer sees what works and nothing else."""
+    return bool(st.query_params.get("admin"))
+
+
 def has_ai() -> bool:
     """Whether the optional AI features (text parsing, second opinion) are configured."""
     from scout.config import get_settings
@@ -523,7 +529,7 @@ def verdict_chip(adv: dict) -> tuple[str, str] | None:
     if not cmp or cmp.get("pct") is None:
         return None
     pct = cmp["pct"]
-    if pct < -BAIT:
+    if -pct > nl_search.TOO_CHEAP:  # the same line as «Τι να κάνεις» draws
         return "warn", "Έλεγξε: πολύ φθηνό"
     if pct <= -0.05:
         return "ok", f"Καλή τιμή: {pct_int(-pct)} κάτω"
@@ -538,7 +544,7 @@ def short_place(name: str) -> str:
     return rest.rstrip(")") if head == "Αθήνα" and rest else name
 
 
-def compact_card_html(d: dict, adv: dict, *, lead: str = "") -> str:
+def compact_card_html(d: dict, adv: dict, *, lead: str = "", hero: bool = False) -> str:
     """The list card, four short lines and the photo: 1 price · τ.μ.; 2 place · floor · year;
     3 rent · yield; 4 one word for the price against the neighbours (and, for a near match,
     what it is outside of). Everything else is on the flat's own page («Λεπτομέρειες»)."""
@@ -575,7 +581,7 @@ def compact_card_html(d: dict, adv: dict, *, lead: str = "") -> str:
     rank = f' data-rank="{e(lead.rstrip("."))}"' if lead else ""
     return (
         f'<div class="hg-card" data-compact="1"{rank} data-lid="{d.get("id")}">'
-        + photo_html(d)
+        + photo_html(d, hero=hero)
         + f'<div class="hg-l1">{_join(l1)}</div>'
         + (f'<div class="hg-l2">{_join(l2)}</div>' if l2 else "")
         + (f'<div class="hg-l4">{l3}</div>' if l3 else "")
@@ -1351,7 +1357,8 @@ def page_search(listings: list[dict]) -> None:
     with st.container(key="search-links", horizontal=True, gap="small"):
         if asked:
             st.button("Καθαρισμός αναζήτησης", key="clear_q", on_click=_clear_query)
-        st.button("Αποθηκευμένες", key="to_saved", on_click=open_saved)
+        if owner_mode():
+            st.button("Αποθηκευμένες", key="to_saved", on_click=open_saved)
 
     stale_ok = st.session_state.get("include_stale", False)
     pool = [d for d in listings if stale_ok or d.get("is_fresh", True)]
@@ -1404,7 +1411,7 @@ def page_search(listings: list[dict]) -> None:
         return
     hits.sort(key=lambda h: SORTS[sort](h[0][0], h[2], h[1]))
 
-    verdicts = _search_advice(hits, f, intel) if ai else {}
+    verdicts = _search_advice(hits, f, intel) if ai and owner_mode() else {}
     limit = st.session_state.get("limit", PAGE_SIZE)
     for _m, d, adv in hits[:limit]:
         result_card(
@@ -1422,13 +1429,14 @@ def page_search(listings: list[dict]) -> None:
             on_click=_more,
             width="stretch",
         )
-    st.button(
-        "Αποθήκευση αναζήτησης",
-        key="save_mandate",
-        on_click=_save_mandate,
-        args=(st.session_state.get("nl_text") or nl_search.describe(f), f),
-        width="stretch",
-    )
+    if owner_mode():
+        st.button(
+            "Αποθήκευση αναζήτησης",
+            key="save_mandate",
+            on_click=_save_mandate,
+            args=(st.session_state.get("nl_text") or nl_search.describe(f), f),
+            width="stretch",
+        )
     _market_panel(intel, named[:3])
     if st.toggle("Χάρτης αποτελεσμάτων", key="show_map"):
         from scout.ui import components
@@ -1577,26 +1585,6 @@ def page_shortlist(listings: list[dict]) -> None:
 # ---- starred -------------------------------------------------------------------------------
 
 
-def shortlist_lines(views: list[tuple[dict, dict]]) -> str:
-    """The favourites at a glance, best score first, one line each, the price linking to the
-    ad: «1. [220.000 €](…) · 50 τ.μ. · 3,1 % · Βαθμολογία 46 · Αμπελόκηποι»."""
-    lines = []
-    for i, (d, adv) in enumerate(views, start=1):
-        price = eur(d.get("price"))
-        head = f"[{price}]({d['url']})" if d.get("url") else price
-        parts = [f"{i}. {head}"]
-        if d.get("area_m2"):
-            parts.append(f"{_m2(d['area_m2'])} τ.μ.")
-        if (gy := gross_yield(d)) is not None:
-            parts.append(pct1(gy))
-        if adv.get("score") is not None:
-            parts.append(f"Βαθμολογία {adv['score']}")
-        if d.get("neighborhood"):
-            parts.append(html.escape(d["neighborhood"]).replace("[", "(").replace("]", ")"))
-        lines.append(" · ".join(parts))
-    return "  \n".join(lines)
-
-
 def _go_compare() -> None:
     st.session_state["page"] = "Σύγκριση"
 
@@ -1623,16 +1611,11 @@ def page_watchlist(listings: list[dict]) -> None:
         intel = market_intel.build(listings)
         views = [(d, buyer_view(d, intel)) for d in starred]
         views.sort(key=lambda v: (-(v[1].get("score") or 0), v[0]["price"]))
-        st.markdown(shortlist_lines(views))
         if len(views) >= 2:
             st.button(
                 "Σύγκρινε δύο από αυτά", key="watch_compare", on_click=_go_compare,
                 width="stretch",
             )  # fmt: skip
-        st.caption(
-            "Με τη σειρά της Βαθμολογίας. Πάτα την τιμή για να ανοίξεις την αγγελία. "
-            "Βγάλε όσα απέρριψες με «Αφαίρεση»."
-        )
         for d, adv in views:
             result_card(d, adv, "w", [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)])
     if rented:
@@ -1896,67 +1879,59 @@ def page_listing(listings: list[dict]) -> None:
         st.info("Άνοιξε μια αγγελία με «Λεπτομέρειες» από οποιαδήποτε λίστα.")
         st.button("Πίσω", key="listing-back", on_click=_back_from_detail)
         return
-    # One flat: the one that was opened. No picker of favourites here — any card opens its
-    # flat directly, favourite or not.
+    # Three blocks: the flat (photo, four lines, one button row), «Τι να κάνεις», then three
+    # collapsed sections — the price, the rent, the checks. No picker: any card opens its flat.
     intel = market_intel.build(listings)
     adv = buyer_view(d, intel)
-    ad_link(d, f"l-{d['id']}", primary=True)
-    with st.container(border=True, key=f"card-l-{d['id']}"):  # the same card as every list
-        st.markdown(card_html(d, adv, basis=True, hero=True), unsafe_allow_html=True)
+    with st.container(border=True, key=f"card-l-{d['id']}"):
+        st.markdown(compact_card_html(d, adv, hero=True), unsafe_allow_html=True)
+        with st.container(key=f"act-l-{d['id']}"):
+            cols = st.columns(3, gap="small")
+            cols[0].link_button(AD_SHORT, d["url"], width="stretch")
+            cols[1].button("Πίσω", key="listing-back", on_click=_back_from_detail, width="stretch")
+            star, toggle, args, kind = _star_action(d)
+            cols[2].button(
+                short_label(star),
+                key=f"l-1-{shortlist.lkey(d)}",
+                on_click=toggle,
+                args=args,
+                type=kind,
+                width="stretch",
+            )
     st.markdown(
         "**Τι να κάνεις**\n\n" + "\n".join(f"- {html.escape(x)}" for x in verdict_lines(d, adv))
     )
-    with st.container(key=f"act-l-{d['id']}"):
-        cols = st.columns(2, gap="small")
-        cols[0].button("Πίσω", key="listing-back", on_click=_back_from_detail, width="stretch")
-        star, toggle, args, kind = _star_action(d)
-        cols[1].button(
-            star,
-            key=f"l-1-{shortlist.lkey(d)}",
-            on_click=toggle,
-            args=args,
-            type=kind,
-            width="stretch",
-        )
 
-    with st.expander("Πώς βγαίνει η βαθμολογία"):
-        st.markdown("\n".join(f"- {html.escape(x)}" for x in score_how(d, adv)))
-    with st.expander("Ενοίκιο και απόδοση"):
-        _rent_section(d)
-    with st.expander(comps_text(adv)):
+    with st.expander(comps_text(adv)):  # 1. the price: neighbours, history, same flat elsewhere
         _comparison_section(d, adv)
-    with st.expander("Έξι έλεγχοι επενδυτή"):
-        _checks_section(d, intel, listings)
-    with st.expander("Τι λέει η αγγελία"):
-        st.caption(status_basis(d))
-        _description_section(d)
-    if twins := adv.get("twins"):
-        with st.expander(
-            f"Το ίδιο σπίτι σε {len(twins)} ακόμα "
-            f"{'αγγελία' if len(twins) == 1 else 'αγγελίες'}"
-        ):
-            st.caption(
-                "Ίδια περιοχή, τ.μ., όροφος και έτος, με τιμή που διαφέρει έως 10 %. Μάλλον είναι "
-                "το ίδιο διαμέρισμα από άλλο μεσίτη. Ξεκίνα από τη χαμηλότερη τιμή."
-            )
-            _listing_lines(twins)
-    with st.expander("Ιστορικό τιμής"):
+        st.markdown("**Ιστορικό τιμής**")
         history = queries.load_price_history(d["id"])
         if len({p for _, p in history}) > 1:
             st.markdown(
                 "  \n".join(f"{when:%d/%m/%Y}: **{eur(price)}**" for when, price in history)
             )
         elif history:
-            st.caption(
-                f"Η τιμή δεν έχει αλλάξει από τις {history[0][0]:%d/%m/%Y}, που την πρωτοείδαμε "
-                "στο XE.gr."
-            )
+            st.caption(f"Ίδια τιμή από τις {history[0][0]:%d/%m/%Y}, που την πρωτοείδαμε.")
         else:
             st.caption("Δεν έχουμε ιστορικό τιμής ακόμα.")
-    _area_line(d, listings)
+        if twins := adv.get("twins"):
+            st.markdown(
+                f"**Το ίδιο σπίτι σε {len(twins)} ακόμα "
+                f"{'αγγελία' if len(twins) == 1 else 'αγγελίες'}** (ξεκίνα από τη φθηνότερη)"
+            )
+            _listing_lines(twins)
+        _area_line(d, listings)
+    with st.expander("Ενοίκιο και απόδοση"):  # 2. the rent
+        _rent_section(d)
+    with st.expander("Έλεγχοι και βαθμολογία"):  # 3. the checks
+        st.markdown("\n".join(f"- {html.escape(x)}" for x in score_how(d, adv)))
+        _checks_section(d, intel, listings)
+        st.markdown("**Τι λέει η αγγελία**")
+        st.caption(status_basis(d))
+        _description_section(d)
 
     review = st.session_state.get("listing_advice", {}).get(shortlist.lkey(d))
-    if has_ai():
+    if has_ai() and owner_mode():
         st.button(
             AI_LABEL, key=f"l-2-{shortlist.lkey(d)}", on_click=_ask_listing, args=(d, adv, intel)
         )

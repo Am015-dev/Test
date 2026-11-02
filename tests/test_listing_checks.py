@@ -19,7 +19,7 @@ def test_listing_page_shows_the_six_investor_checks(env):  # noqa: F811
     next(b for b in at.button if b.label == "Ανάλυση").click().run()
     ok(at, "details")
     text = "\n".join(m.value for m in at.markdown)
-    assert any(e.label == "Έξι έλεγχοι επενδυτή" for e in at.expander)  # collapsed (C17)
+    assert any(e.label == "Έλεγχοι και βαθμολογία" for e in at.expander)  # collapsed
     for label in LABELS:
         assert f"**{label}" in text, label
     # every check carries a verdict word, never a bare value

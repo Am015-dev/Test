@@ -1450,7 +1450,7 @@ def _map_ranked(listings: list[dict]) -> tuple[dict, object]:
 def page_map(listings: list[dict]) -> None:
     st.subheader("Χάρτης")
     if not listings:
-        st.info("Δεν υπάρχουν αγγελίες ακόμα. Πάτα «Ανανέωση δεδομένων» στο μενού.")
+        st.info("Δεν υπάρχουν αγγελίες ακόμα. Ξαναδοκίμασε σε λίγο.")
         return
     base = listings
     ranked, intel = _map_ranked(base)
@@ -2339,10 +2339,7 @@ def page_compare(listings: list[dict]) -> None:
         pool, key=lambda d: shortlist.lkey(d) not in starred
     )
     if len(elig) < 2:
-        st.info(
-            "Δεν υπάρχουν ακόμα δύο αγγελίες για σύγκριση. Πάτα «Ανανέωση δεδομένων» στο "
-            "μενού ή δοκίμασε ξανά αργότερα."
-        )
+        st.info("Δεν υπάρχουν ακόμα δύο αγγελίες για σύγκριση. Δοκίμασε ξανά αργότερα.")
         return
 
     def _name(d: dict) -> str:
@@ -2501,8 +2498,9 @@ def main() -> None:
     page = st.session_state["page"]
     with st.sidebar:  # sign-in, refresh and the saved searches; the pages are the pills
         account.login_ui()
-        st.button("Ανανέωση δεδομένων", key="refresh", on_click=_refresh_data, width="stretch")
-        st.button(buyer.NAV_SAVED, key="nav_saved", type="tertiary", on_click=buyer.open_saved)
+        if admin:  # the data refreshes itself; saved searches are the owner's for now
+            st.button("Ανανέωση δεδομένων", key="refresh", on_click=_refresh_data, width="stretch")
+            st.button(buyer.NAV_SAVED, key="nav_saved", type="tertiary", on_click=buyer.open_saved)
         for label, target in (("Αναζήτηση με λέξεις", "Αναζήτηση"), ("Χάρτης", "Χάρτης"),
                               ("Σύγκριση", "Σύγκριση")):  # fmt: skip
             st.button(label, key=f"nav_{target}", type="tertiary", on_click=_goto, args=(target,))

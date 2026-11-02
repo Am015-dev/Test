@@ -94,12 +94,8 @@ def answer(field: str, value, next_step: int | None = None) -> None:
     _saved()
 
 
-def _set_where(value: str) -> None:
-    answer("where", value, None if value == "areas" else 4)
-
-
 def _other_budget() -> None:
-    answer("budget", int(st.session_state["rent_other"]), 2)
+    answer("budget", int(st.session_state["rent_other"]))
 
 
 def _areas_picked() -> None:
@@ -497,92 +493,73 @@ def mode_step(g: dict) -> None:
             guide._choice(label, f"guide-mode-{k}", set_mode, (k,), g.get("mode") == k)
 
 
-def _progress(step: int) -> None:
-    if step >= STEPS:
-        return guide.result_head(go)
-    with st.container(key="guide-progress"):
-        c = st.columns([1, 2], vertical_alignment="center")
-        c[0].button("Πίσω", key="guide-back", on_click=go, args=(step - 1,))
-        c[1].markdown(f"**Βήμα {step} από {STEPS}**")
-    st.progress(step / STEPS)
+def _finish() -> None:
+    r = rstate()
+    r["where"] = r.get("where") or "best"
+    answer("step", STEPS)
 
 
-def _step1(r: dict) -> None:
+def _questions(r: dict, rows: list[dict]) -> None:
+    """Every rent question on one screen; a tap selects, «Η πρότασή μου» shows the list."""
+    st.button("Πίσω", key="guide-back", on_click=go, args=(0,))
     st.markdown("### Πόσο τον μήνα;")
     with st.container(key="guide-rbudgets"):
-        for row in range(0, len(BUDGETS), 2):
-            cols = st.columns(2)
-            for c, k in zip(cols, BUDGETS[row : row + 2], strict=True):
+        for row in range(0, len(BUDGETS), 3):
+            cols = st.columns(3)
+            for c, k in zip(cols, BUDGETS[row : row + 3], strict=False):
                 with c:
                     guide._choice(
-                        eur(k), f"guide-rb{k}", answer, ("budget", k, 2), r.get("budget") == k
+                        eur(k), f"guide-rb{k}", answer, ("budget", k), r.get("budget") == k
                     )
     with st.expander("Άλλο ποσό"):
         st.session_state.setdefault("rent_other", r.get("budget") or 800)
         st.number_input("Ποσό (€/μήνα)", BUDGET_MIN, BUDGET_MAX, step=50, key="rent_other")
-        st.button("Συνέχεια", key="guide-rother-go", on_click=_other_budget, width="stretch")
-    st.caption(f"Δείχνω ενοίκια έως {round(picks_rent.BUDGET_BAND * 100)} % πάνω από το ποσό σου.")
-
-
-def _step2(r: dict) -> None:
+        st.button("Αυτό το ποσό", key="guide-rother-go", on_click=_other_budget, width="stretch")
     st.markdown("### Πόσα υπνοδωμάτια;")
     with st.container(key="guide-rbeds"):
-        keys = list(BEDS)
-        for row in range(0, len(keys), 2):
-            cols = st.columns(2)
-            for c, k in zip(cols, keys[row : row + 2], strict=True):
-                with c:
-                    guide._choice(
-                        BEDS[k], f"guide-rbd-{k}", answer, ("beds", k, 3), r.get("beds") == k
-                    )
-
-
-def _step3(r: dict, rows: list[dict]) -> None:
+        cols = st.columns(len(BEDS))
+        for c, (k, label) in zip(cols, BEDS.items(), strict=True):
+            with c:
+                guide._choice(label, f"guide-rbd-{k}", answer, ("beds", k), r.get("beds") == k)
     st.markdown("### Πού;")
+    where = r.get("where") or "best"
     with st.container(key="guide-rwhere"):
-        for k, label in guide.WHERE.items():
-            label = "Όλες οι περιοχές" if k == "best" else label
-            guide._choice(label, f"guide-rw-{k}", _set_where, (k,), r.get("where") == k)
+        cols = st.columns(3)
+        for c, (k, label) in zip(cols, guide.WHERE_SHORT.items(), strict=True):
+            with c:
+                guide._choice(label, f"guide-rw-{k}", answer, ("where", k), where == k)
     if r.get("where") == "areas":
-        options = covered_areas(rows)
-        count = dict(options)
+        count = dict(covered_areas(rows))
         st.session_state.setdefault("rent_areas", [a for a in r.get("areas", []) if a in count])
         st.pills(
             "Διάλεξε περιοχές",
             list(count),
             selection_mode="multi",
-            format_func=lambda a: f"{a} ({count[a]})",
             key="rent_areas",
             on_change=_areas_picked,
+            label_visibility="collapsed",
         )
-        st.caption("Σε παρένθεση: ενεργές αγγελίες ενοικίασης.")
-        with st.container(key="guide-rareas-go"):
-            st.button(
-                "Συνέχεια",
-                key="guide-rareas-next",
-                on_click=go,
-                args=(4,),
-                type="primary",
-                disabled=not r.get("areas"),
-                width="stretch",
-            )
-
-
-def _step4(r: dict) -> None:
     st.markdown("### Τι σπίτι;")
     st.session_state.setdefault("rent_furn", bool(r.get("furnished")))
     st.toggle("Επιπλωμένο", key="rent_furn", on_change=_furn_changed)
     st.session_state.setdefault("rent_age", _age_code(r.get("age")))
     st.segmented_control(
-        "Ηλικία κτιρίου", list(AGES), format_func=AGES.get, key="rent_age", on_change=_age_changed
-    )
+        "Ηλικία κτιρίου", list(AGES), format_func=guide.AGES_SHORT.get, key="rent_age",
+        on_change=_age_changed,
+    )  # fmt: skip
+    missing = (
+        "Διάλεξε πρώτα ποσό" if not r.get("budget")
+        else "Διάλεξε υπνοδωμάτια" if not r.get("beds")
+        else "Διάλεξε περιοχές" if r.get("where") == "areas" and not r.get("areas")
+        else ""
+    )  # fmt: skip
     with st.container(key="guide-rfinish"):
         st.button(
-            "Η πρότασή μου",
+            missing or "Η πρότασή μου",
             key="guide-rshow",
-            on_click=answer,
-            args=("step", 5),
+            on_click=_finish,
             type="primary",
+            disabled=bool(missing),
             width="stretch",
         )
 
@@ -771,7 +748,6 @@ def _results(r: dict, rows: list[dict]) -> None:
                     on_click=_more,
                     width="stretch",
                 )
-        st.caption(f"Βλέπεις {buyer._num(len(visible))} από {buyer._num(len(every))}.")
         if relax:  # below the list (C17), with the assistant's note and «Ρώτα με»
             _relax(
                 relax,
@@ -787,32 +763,19 @@ def _results(r: dict, rows: list[dict]) -> None:
     with st.expander("Πώς υπολογίζω"):
         st.markdown(METHOD)
     st.caption(coverage(rows))
-    if guide._store() is None:
-        st.caption("Οι απαντήσεις κρατιούνται μόνο σε αυτή τη συνεδρία.")
 
 
 def page(g: dict) -> None:
     """The rent flow (the guide's title, CSS and flash are already on the page)."""
     r = rstate()
     rows = rentals()
-    step = int(r.get("step") or 1)
-    if step > 1 and not r.get("budget"):
-        step = 1
-    if step > 2 and not r.get("beds"):
-        step = 2
-    if step > 3 and (not r.get("where") or (r["where"] == "areas" and not r.get("areas"))):
-        step = 3
-    _progress(step)
+    done = guide.at_result({**g, "mode": "rent"})
+    if done:
+        guide.result_head(go)
     if not rows:  # no loader, or no rental stored yet
         st.info(SOON)
         return
-    if step == 1:
-        _step1(r)
-    elif step == 2:
-        _step2(r)
-    elif step == 3:
-        _step3(r, rows)
-    elif step == 4:
-        _step4(r)
-    else:
+    if done:
         _results(r, rows)
+    else:
+        _questions(r, rows)
