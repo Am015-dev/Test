@@ -207,7 +207,7 @@ def test_listing_page_order_link_card_verdict_then_collapsed_sections(env):
 def test_accusative_of_every_area_name():
     from scout.area_insights import area_name
     from scout.place_names import SEARCH_AREA_GREEK
-    from scout.ui.guide import accusative
+    from scout.ui.guide import ACCUSATIVE, accusative
 
     assert accusative("Δάφνη Αττικής") == "Δάφνη Αττικής"
     assert accusative("Νέα Φιλαδέλφεια Αττικής") == "Νέα Φιλαδέλφεια Αττικής"
@@ -219,8 +219,5 @@ def test_accusative_of_every_area_name():
     for name in {area_name(v) for v in SEARCH_AREA_GREEK.values()}:
         out = accusative(name)
         assert not out.endswith(("Αττική", "ούς ")), (name, out)
-        # only masculine names change, and never more than their endings
-        assert out == name or name.split()[-1].endswith(("ος", "ός", "οι", "ας", "άς", "ης")), (
-            name,
-            out,
-        )
+        # only the names in the table (all masculine) change; every other name stays
+        assert out == name or name in ACCUSATIVE, (name, out)
