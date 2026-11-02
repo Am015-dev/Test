@@ -44,7 +44,7 @@ def walk(at, budget="guide-b250", goal="yield", where="best", age="any"):
     at.button(key="guide-show").click().run()
     ok(at, "step 4")
     # the result has no step line (C6): «Πίσω» and the title only
-    assert "Βήμα" not in _text(at) and "### Η πρότασή μου" in _text(at)
+    assert "Βήμα" not in _text(at) and "## Η πρότασή μου" in _text(at)
     return at
 
 
@@ -60,7 +60,7 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     ]  # fmt: skip
     text = _text(at)
     assert (
-        "Σου προτείνω: **" in text
+        "Σου προτείνω " in text
         and "Δόση ~" in text
         and "Πηγές: XE.gr · " in " ".join(c.value for c in at.caption)
     )
@@ -74,9 +74,10 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     ok(at, "more")
     after = _cards(at)
     assert after[: picks.PAGE] == first and len(after) == min(2 * picks.PAGE, total)
-    # two buttons per card; «Εγκρίνω» / «Δεν μου κάνει» only on the first ten (C3)
-    assert len(_verdict_rows(at)) == picks.PAGE
+    # C17: exactly two buttons per card, «Εγκρίνω» / «Δεν μου κάνει» are gone from the guide
+    assert not _verdict_rows(at) and not any(b.label == "Εγκρίνω" for b in at.button)
     assert sum(b.key.startswith("pick-fav-") for b in at.button if b.key) == len(after)
+    assert sum(b.key.startswith("pick-det-") for b in at.button if b.key) == len(after)
     assert not any(b.label in ("Στον χάρτη", "Άνοιγμα στο XE.gr") for b in at.main.button)
     # a chip reopens its question; answering it lands back on the result
     at.button_group(key="guide_chips").set_value("απόδοση").run()
@@ -110,7 +111,14 @@ def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env, monkeypatch
     assert f"**{added}** αγγελίες" in _text(at)
     cards = _cards(at)
     assert cards and "Δεν έχει ελεγχθεί ακόμα" in _text(at)
-    at.button(key=cards[0].replace("pick-det-", "pick-no-")).click().run()
+    # a «Δεν μου κάνει» verdict (saved-searches page) still drops the card from the guide
+    from scout import shortlist
+    from scout.ui import queries
+
+    lid = int(cards[0].removeprefix("pick-det-"))
+    d = next(x for x in queries.load_listings() if x["id"] == lid)
+    at.session_state["pick_review"] = {shortlist.lkey(d): "no"}
+    at.run()
     ok(at, "drop")
     assert cards[0] not in _cards(at)
     assert any(e.label == "Απέρριψες 1" for e in at.expander)
@@ -246,7 +254,7 @@ def test_near_matches_follow_with_their_label_counts_and_score(env, monkeypatch)
     at = walk(fresh(FIND), budget="guide-b200", where="rail", age="10")
     ok(at, "near")
     text = _text(at)
-    m = re.search(r"Καμία ακριβώς όπως ζήτησες \([^)]*\)· (.*?)\. Σε κάθε κάρτα", text)
+    m = re.search(r"Καμία ακριβώς όπως ζήτησες \([^)]*\)· (.*?)\.(?: |$)", text)
     assert m, text[-2000:]
     near = sum(int(n) for n in re.findall(r"\*\*(\d+)\*\*", m.group(1)))
     cards = [m.value for m in at.markdown if 'class="hg-card"' in m.value]

@@ -74,34 +74,30 @@ def test_buyer_card_has_the_five_fixed_lines_in_greek():
 
     html = card_html({**BUYER, "page_checked": True}, {"cmp": CMP})
     l1, l2, l3, l4, l5 = _lines(html)
-    assert re.fullmatch(r"245\.000 € Βαθμολογία \d{1,3} · 78 τ\.μ\. · 3\.141 €/τ\.μ\.", l1)
-    assert (
-        l2
-        == "3ος όροφος · κτίριο 2018 · Περισσός · Σταθμός ΗΣΑΠ Περισσός (από το όνομα της γειτονιάς)"
-    )
-    assert l3 == (
-        "Ελέγχθηκε η περιγραφή: δεν λέει ότι χτίζεται ακόμα"
-        " · Φωτογραφίες: δεν τις έχουμε δει ακόμα"
-    )
+    assert re.fullmatch(r"245\.000 € · 78 τ\.μ\. · 3\.141 €/τ\.μ\. · Βαθμολογία \d{1,3}", l1)
+    # C17: the name-based station leaves line 2 for «Από πού βγαίνουν»
+    assert l2 == "3ος όροφος · κτίριο 2018 · Περισσός"
+    assert "Σταθμός ΗΣΑΠ Περισσός: το βγάζουμε από το όνομα της γειτονιάς" in html
+    assert l3 == "Ελέγχθηκε η περιγραφή"  # one status chip; the photo clause is behind the card
+    assert "Φωτογραφίες: δεν τις έχουμε δει ακόμα" in html.split("hg-l4")[1]
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
-    assert l5 == "Παρόμοια: 13 % κάτω"
+    assert l5 == "13 % κάτω από τα διπλανά (12)"
 
 
 def test_buyer_card_status_unknowns_and_photos():
     from scout.ui.buyer import card_html
 
     unchecked = card_html({**BUYER, "floor": None, "year_built": None}, {})
-    # the photo clause is its own neutral chip (C6), never inside the status tone
-    assert (
-        'hg-st-unk">Δεν έχει ελεγχθεί ακόμα</span><span class="hg-sep" aria-hidden="true"> · '
-        '</span><span class="hg-st hg-st-neu">Φωτογραφίες: δεν τις έχουμε δει ακόμα<'
-    ) in unchecked
+    # one status chip on line 3 (C17); the photo clause is a fact behind the card
+    assert 'hg-st-unk">Δεν έχει ελεγχθεί ακόμα</span></div>' in unchecked
+    assert "Φωτογραφίες: δεν τις έχουμε δει ακόμα" in unchecked.split("hg-l5")[1]
     assert "όροφος: δεν δηλώνεται" in unchecked and "έτος: δεν δηλώνεται" in unchecked
-    assert "Λίγα παρόμοια" in unchecked
+    assert "Λίγα διπλανά" in unchecked
     shell = card_html(
         {**BUYER, "is_unfinished": True, "page_checked": True, "few_photos": True}, {}
     )
     assert 'hg-st-bad">Υπό κατασκευή<' in shell and "Έως 2 φωτογραφίες" in shell
+    assert "Έως 2 φωτογραφίες" not in shell.split("hg-l4")[0]  # not a second chip
     assert "Ελέγχθηκε" not in shell.split("<details>")[0]  # under construction wins
     norent = card_html({**BUYER, "area_m2": None, "est_monthly_rent": None}, {})
     assert "Ενοίκιο: χωρίς εκτίμηση" in norent
@@ -116,7 +112,8 @@ def test_buyer_card_every_number_has_its_basis_one_tap_away_and_the_score():
     assert "αυτό έχει 78 τ.μ." in basis and "τα διπλανά ζητούν συνήθως" in basis  # the rent
     assert "Παρόμοια: 12 L. Ζητούν συνήθως 3.600 €/τ.μ." in basis  # the comparables
     # C7: the score right of the price, its basis one tap away; never «Σκορ»
-    assert 'hg-rating">Βαθμολογία 81<' in head.split("hg-l2")[0]
+    line1 = head.split('<div class="hg-l1">')[1].split("</div>")[0]
+    assert line1.endswith('hg-rating">Βαθμολογία 81</span>')  # C17: last on line 1
     assert "Βαθμολογία 81 από 100: 60 %" in basis and "Σκορ" not in html
     # no emoji decoration, no English, no raw keys
     assert not re.search(r"[\U0001F300-\U0001FAFF]", html)
@@ -139,9 +136,11 @@ def test_near_match_chip_and_the_same_score_as_advise():
 def test_too_cheap_is_a_question_not_a_bonus():
     from scout.ui.buyer import comps_text
 
-    assert comps_text({"cmp": {**CMP, "pct": -0.45}}).endswith(
-        "45 % κάτω. Πολύ φθηνό, έλεγξε γιατί"
+    assert comps_text({"cmp": {**CMP, "pct": -0.45}}) == (
+        "45 % κάτω από τα διπλανά (12). Πολύ φθηνό, έλεγξε γιατί"
     )
+    assert comps_text({"cmp": {**CMP, "pct": 0.08}}) == "8 % πάνω από τα διπλανά (12)"
+    assert comps_text({"cmp": {**CMP, "pct": 0.0}}) == "Όσο τα διπλανά (12)"
 
 
 def _visible_before_expander(html: str) -> list[str]:
@@ -168,10 +167,10 @@ def test_compact_card_shows_at_most_five_lines_and_hides_the_rest_one_tap_away()
     visible = _visible_before_expander(html)
     assert visible == ["hg-l1", "hg-l2", "hg-l3", "hg-l4", "hg-l5"]
     l1, l2, l3, l4, l5 = _lines(html)
-    assert re.fullmatch(r"1\. 245\.000 € Βαθμολογία \d{1,3} · 78 τ\.μ\. · 3\.141 €/τ\.μ\.", l1)
+    assert re.fullmatch(r"1\. 245\.000 € · 78 τ\.μ\. · 3\.141 €/τ\.μ\. · Βαθμολογία \d{1,3}", l1)
     assert l3 == "Ελέγχθηκε η περιγραφή"  # the short glossary term; the sentence is inside
     assert l4 == "Ενοίκιο (εκτίμηση) ~900 €/μήνα · Μικτή απόδοση 4,4 %"
-    assert l5 == "Παρόμοια: 13 % κάτω"
+    assert l5 == "13 % κάτω από τα διπλανά (12)"
     inside = html.split("<details>", 1)[1]
     for fact in (
         *more,
@@ -180,6 +179,8 @@ def test_compact_card_shows_at_most_five_lines_and_hides_the_rest_one_tap_away()
         "Ενεργειακή κλάση A+",
         "Μείωση από 260.000 €",
         "δεν γράφει ότι χτίζεται ακόμα",
+        "Φωτογραφίες: δεν τις έχουμε δει ακόμα",
+        "Σταθμός ΗΣΑΠ Περισσός: το βγάζουμε από το όνομα της γειτονιάς",
         "12 × 900 € ÷ 245.000 € = 4,4 %",
         "Ζητούν συνήθως 3.600 €/τ.μ.",
     ):

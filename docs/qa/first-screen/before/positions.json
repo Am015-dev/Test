@@ -1,0 +1,61 @@
+{
+  "guide result": {
+    "ok": false,
+    "rows": [
+      {
+        "name": "counts line",
+        "top": 435,
+        "bottom": 619,
+        "verdict": "ok",
+        "text": "Πρόταση: Νέα Ιωνία · μικτή απόδοση 3,7 % Διάμεση στις 6 από τις 20 αγγελίες της λίστας εκε"
+      },
+      {
+        "name": "recommendation",
+        "top": 435,
+        "bottom": 619,
+        "verdict": "ok",
+        "text": "Πρόταση: Νέα Ιωνία · μικτή απόδοση 3,7 % Διάμεση στις 6 από τις 20 αγγελίες της λίστας εκε"
+      },
+      {
+        "name": "first card",
+        "top": 843,
+        "bottom": 1151,
+        "verdict": "BELOW FOLD (bottom 1151 > 844)",
+        "text": "Χωρίς φωτογραφία 1. 335.000 € Βαθμολογία 58 · 93 τ.μ. · 3.602 €/τ.μ. 1ος όροφος · κτίριο 2"
+      },
+      {
+        "name": "link to the ad",
+        "top": null,
+        "bottom": null,
+        "verdict": "MISSING",
+        "text": ""
+      }
+    ]
+  },
+  "listing page": {
+    "ok": false,
+    "rows": [
+      {
+        "name": "link to the ad",
+        "top": 2558,
+        "bottom": 2602,
+        "verdict": "BELOW FOLD (bottom 2602 > 844)",
+        "text": "Άνοιγμα στο XE.gr"
+      },
+      {
+        "name": "price line",
+        "top": -491,
+        "bottom": -439,
+        "verdict": "OUT OF ORDER (top -491 < 2558)",
+        "text": "170.000 € Βαθμολογία 63 · 50 τ.μ. · 3.400 €/τ.μ."
+      },
+      {
+        "name": "verdict («Τι να κάνεις»)",
+        "top": null,
+        "bottom": null,
+        "verdict": "MISSING",
+        "text": ""
+      }
+    ]
+  }
+}

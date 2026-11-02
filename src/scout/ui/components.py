@@ -503,10 +503,6 @@ def results_map(
         keep = sorted(pts, key=lambda d: d.get("score") or 0, reverse=True)[:_MAP_MAX_POINTS]
         sel = [d for d in pts if selected_id is not None and d.get("id") == selected_id]
         pts = keep + [d for d in sel if d not in keep]
-        st.caption(
-            f"Εμφανίζονται οι πρώτες {fmt._gr_int(_MAP_MAX_POINTS)} — "
-            "φίλτραρε περιοχή ή τιμή για να δεις όλες."
-        )
     import pandas as pd
     import pydeck as pdk
 
