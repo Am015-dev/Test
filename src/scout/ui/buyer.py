@@ -1480,6 +1480,30 @@ def page_shortlist(listings: list[dict]) -> None:
 # ---- starred -------------------------------------------------------------------------------
 
 
+def shortlist_lines(views: list[tuple[dict, dict]]) -> str:
+    """The favourites at a glance, best score first, one line each, the price linking to the
+    ad: «1. [220.000 €](…) · 50 τ.μ. · 3,1 % · Βαθμολογία 46 · Αμπελόκηποι»."""
+    lines = []
+    for i, (d, adv) in enumerate(views, start=1):
+        price = eur(d.get("price"))
+        head = f"[{price}]({d['url']})" if d.get("url") else price
+        parts = [f"{i}. {head}"]
+        if d.get("area_m2"):
+            parts.append(f"{_m2(d['area_m2'])} τ.μ.")
+        if (gy := gross_yield(d)) is not None:
+            parts.append(pct1(gy))
+        if adv.get("score") is not None:
+            parts.append(f"Βαθμολογία {adv['score']}")
+        if d.get("neighborhood"):
+            parts.append(html.escape(d["neighborhood"]).replace("[", "(").replace("]", ")"))
+        lines.append(" · ".join(parts))
+    return "  \n".join(lines)
+
+
+def _go_compare() -> None:
+    st.session_state["page"] = "Σύγκριση"
+
+
 def page_watchlist(listings: list[dict]) -> None:
     _css()
     _show_flash()
@@ -1501,8 +1525,17 @@ def page_watchlist(listings: list[dict]) -> None:
             st.markdown("### Για αγορά")
         intel = market_intel.build(listings)
         views = [(d, buyer_view(d, intel)) for d in starred]
-        views.sort(key=lambda v: SORTS[DEFAULT_SORT](100, v[1], v[0]))
-        st.caption("Σειρά: " + SORT_HELP[DEFAULT_SORT])
+        views.sort(key=lambda v: (-(v[1].get("score") or 0), v[0]["price"]))
+        st.markdown(shortlist_lines(views))
+        if len(views) >= 2:
+            st.button(
+                "Σύγκρινε δύο από αυτά", key="watch_compare", on_click=_go_compare,
+                width="stretch",
+            )  # fmt: skip
+        st.caption(
+            "Με τη σειρά της Βαθμολογίας. Πάτα την τιμή για να ανοίξεις την αγγελία. "
+            "Βγάλε όσα απέρριψες με «Αφαίρεση από αγαπημένα»."
+        )
         for d, adv in views:
             result_card(d, adv, "w", [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)])
     if rented:
@@ -1760,27 +1793,14 @@ def page_listing(listings: list[dict]) -> None:
     _css()
     _show_flash()
     by_id = {d["id"]: d for d in listings}
-    wanted = st.session_state.get("detail_id")
-    starred = watch_keys()
-    options = [d for d in listings if shortlist.lkey(d) in starred and d["id"] != wanted]
-    if wanted in by_id:
-        options.insert(0, by_id[wanted])
+    d = by_id.get(st.session_state.get("detail_id"))
     st.markdown(f"## {NAV_DETAIL}")
-    if not options:
-        st.info("Άνοιξε μια αγγελία με «Λεπτομέρειες» από την Αναζήτηση ή τα Αγαπημένα.")
+    if d is None:  # opened without a flat (an old link): say where flats are opened from
+        st.info("Άνοιξε μια αγγελία με «Λεπτομέρειες» από οποιαδήποτε λίστα.")
         st.button("Πίσω", key="listing-back", on_click=_back_from_detail)
         return
-    labels = {
-        f"{eur(d['price'])} · {_m2(d['area_m2']) if d.get('area_m2') else '—'} τ.μ. · "
-        f"{d.get('neighborhood') or ''}": d["id"]
-        for d in options
-    }
-    choice = list(labels)[0]
-    if len(options) > 1:  # the starred flats, one tap away; alone, the picker is noise
-        choice = st.selectbox(  # the page title above already says «Αγγελία»
-            "Αγγελία", list(labels), key=f"listing_pick_{wanted}", label_visibility="collapsed"
-        )
-    d = by_id[labels[choice]]
+    # One flat: the one that was opened. No picker of favourites here — any card opens its
+    # flat directly, favourite or not.
     intel = market_intel.build(listings)
     adv = buyer_view(d, intel)
     ad_link(d, f"l-{d['id']}", primary=True)

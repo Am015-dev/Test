@@ -43,21 +43,19 @@ def walk(at, budget="guide-b250", goal="yield", where="best", age="any"):
     at.button_group(key="guide_age").set_value(age).run()
     at.button(key="guide-show").click().run()
     ok(at, "step 4")
-    # the result has no step line (C6): «Πίσω» and the title only
+    # the result has no step line (C6) and no «Πίσω»: the title, then the answers editor
     assert "Βήμα" not in _text(at) and "## Η πρότασή μου" in _text(at)
     return at
 
 
 def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's app fixture
     at = walk(fresh(FIND))
-    chips = at.button_group(key="guide_chips")
-    assert list(chips.options) == [
-        "να αγοράσω",
-        "250 χιλ. · με δάνειο",
-        "απόδοση",
-        "όπου βγαίνει",
-        "οποιαδήποτε ηλικία",
-    ]  # fmt: skip
+    # the answers are one line on the result, opened to change any of them in place
+    assert any(
+        e.label == "Οι απαντήσεις σου: 250 χιλ. · με δάνειο · απόδοση · όπου βγαίνει · "
+        "οποιαδήποτε ηλικία"
+        for e in at.expander
+    )
     text = _text(at)
     assert (
         "Σου προτείνω " in text
@@ -80,15 +78,20 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
     assert sum(b.key.startswith("pick-fav-") for b in at.button if b.key) == len(after)
     assert sum(b.key.startswith("pick-det-") for b in at.button if b.key) == len(after)
     assert not any(b.label in ("Στον χάρτη", "Άνοιγμα στο XE.gr") for b in at.main.button)
-    # a chip reopens its question; answering it lands back on the result
-    at.button_group(key="guide_chips").set_value("απόδοση").run()
-    ok(at, "chip")
-    assert "Βήμα 2 από 5" in _text(at)
-    at.button(key="guide-g-safety").click().run()
+    # changing an answer on the result applies at once: no going back through the questions
+    at.button_group(key="guide_e_goal").set_value("Σιγουριά").run()
+    ok(at, "edit goal")
     assert at.session_state["guide"]["goal"] == "safety"
-    assert at.session_state["guide"]["step"] == 3  # the next question; the rest is kept
-    at.button(key="guide-back").click().run()
-    assert "Βήμα 2 από 5" in _text(at)
+    assert "Βήμα" not in _text(at) and "## Η πρότασή μου" in _text(at)
+    at.selectbox(key="guide_e_budget").set_value(300_000).run()
+    ok(at, "edit budget")
+    assert at.session_state["guide"]["budget"] == 300_000 and _cards(at)
+    at.button_group(key="guide_e_age").set_value("Νεόδμητο").run()
+    assert at.session_state["guide"]["age"] == picks.NEW_YEARS
+    # «Από την αρχή» clears the answers and starts at the first question
+    at.button(key="guide-restart").click().run()
+    ok(at, "restart")
+    assert "Βήμα 1 από 5" in _text(at) and at.session_state["guide"]["budget"] is None
 
 
 def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env, monkeypatch):  # noqa: F811
@@ -97,9 +100,8 @@ def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env, monkeypatch
     monkeypatch.setattr(picks, "NEAR_RAIL_M", 0)
     at = walk(fresh(FIND), budget="guide-b200", where="rail", age="10")
     text = _text(at)
-    assert (
-        at.session_state["guide"]["age"] == 10
-        and "νεόδμητο" in at.button_group(key="guide_chips").options
+    assert at.session_state["guide"]["age"] == 10 and any(
+        "νεόδμητο" in e.label for e in at.expander
     )
     # no seed flat is within the (zero) walking limit: no exact match, the near ones follow
     assert "Καμία αγγελία" in text or "Καμία ακριβώς" in text

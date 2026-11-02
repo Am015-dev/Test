@@ -161,11 +161,8 @@ def test_rent_flow_end_to_end(rent_env):
     at.button(key="guide-rmore-btn").click().run()
     ok(at, "more")
     assert len([b for b in at.button if (b.key or "").startswith("rent-star-")]) == min(20, total)
-    # the assistant note rendered from facts["listings"] with renter rules
-    assert "**Σημείωμα**" not in _text(at) and rent_env  # no model-written brief (C18)
-    req = rent_env[0]
-    assert "απόδοση" in req["system"] and "εγγύηση" in req["system"]  # «Δεν μιλάς για απόδοση»
-    assert '"mode": "rent"' in req["messages"][0]["content"]
+    # no model-written note on the result (C18): rendering the list calls no model at all
+    assert "**Σημείωμα**" not in _text(at) and not rent_env
     # a «Δεν μου κάνει» verdict (saved-searches page) drops the card and the next moves up
     from scout import shortlist
 

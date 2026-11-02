@@ -227,9 +227,114 @@ def _chip_jump() -> None:
             go(i)
 
 
+EDIT_KEYS = ("guide_e_budget", "guide_e_loan", "guide_e_goal", "guide_e_where", "guide_e_areas",
+             "guide_e_age", "guide_e_beds")  # fmt: skip
+WHERE_SHORT = {"rail": "Κοντά σε μετρό", "best": "Όπου βγαίνει", "areas": "Περιοχές"}
+GOAL_SHORT = {"yield": "Απόδοση", "safety": "Σιγουριά", "growth": "Ανατίμηση"}
+AGES_SHORT = {"10": "Νεόδμητο", "20": "Έως 20 ετών", "any": "Οτιδήποτε"}
+
+
+def _edit_sync() -> None:
+    """Drop the editor's widget state so it re-reads the answers (after a relax / restart)."""
+    for k in EDIT_KEYS:
+        st.session_state.pop(k, None)
+
+
+# The editor's options are the words on screen; these map them back to the answers.
+_GOAL_OF = {v: k for k, v in GOAL_SHORT.items()}
+_WHERE_OF = {v: k for k, v in WHERE_SHORT.items()}
+_AGE_OF = {"Νεόδμητο": picks.NEW_YEARS, "Έως 20 ετών": 20, "Οτιδήποτε": None}
+_BEDS_OF = {"Οποιαδήποτε": None, "1": 1, "2": 2, "3+": 3}
+
+
+def _age_word(age: int | None) -> str:
+    return {"10": "Νεόδμητο", "20": "Έως 20 ετών"}.get(_age_code(age), "Οτιδήποτε")
+
+
+def _beds_word(beds: int | None) -> str:
+    return BEDS[_beds_code(beds)]
+
+
+def _current(key: str, g: dict):
+    return {
+        "guide_e_budget": int(g.get("budget") or 0),
+        "guide_e_goal": GOAL_SHORT.get(g.get("goal") or "yield"),
+        "guide_e_where": WHERE_SHORT.get(g.get("where") or "best"),
+        "guide_e_age": _age_word(g.get("age")),
+        "guide_e_beds": _beds_word(g.get("bedrooms")),
+    }.get(key)
+
+
+def _edited(key: str) -> None:
+    """One answer changed on the result screen: apply it at once (the list reruns)."""
+    g = state()
+    v = st.session_state.get(key)
+    if v is None and key not in ("guide_e_loan", "guide_e_areas"):
+        st.session_state[key] = _current(key, g)  # tapping the chosen option: keep it
+        return
+    if key == "guide_e_budget":
+        g["budget"] = int(v)
+    elif key == "guide_e_loan":
+        g["loan"] = bool(v)
+    elif key == "guide_e_goal":
+        g["goal"] = _GOAL_OF[v]
+    elif key == "guide_e_where":
+        g["where"] = _WHERE_OF[v]
+    elif key == "guide_e_areas":
+        g["areas"] = list(v or [])
+    elif key == "guide_e_age":
+        g["age"] = _AGE_OF[v]
+    elif key == "guide_e_beds":
+        g["bedrooms"] = _BEDS_OF[v]
+    _resync()
+    _changed(g)
+
+
+def _restart() -> None:
+    """«Από την αρχή»: clear the buy answers and go back to the first question."""
+    st.session_state["guide"] = {**DEFAULTS, "mode": "buy"}
+    _resync()
+    _edit_sync()
+    _changed(st.session_state["guide"])
+
+
+def edit_answers(g: dict, listings: list[dict]) -> None:
+    """The answers as one panel on the result screen: change any of them and the list updates
+    at once; no going back through the questions. Closed it is one line with the answers."""
+    summary = " · ".join(answer_chips(g)[1:])
+    with st.expander(f"Οι απαντήσεις σου: {summary}", expanded=False):
+        budgets = sorted({k * 1000 for k in BUDGETS} | {int(g.get("budget") or 0)} - {0})
+        st.session_state.setdefault("guide_e_budget", _current("guide_e_budget", g) or budgets[0])
+        st.selectbox(
+            "Ποσό", budgets, format_func=thousands, key="guide_e_budget",
+            on_change=_edited, args=("guide_e_budget",),
+        )  # fmt: skip
+        st.session_state.setdefault("guide_e_loan", bool(g.get("loan")))
+        st.toggle("Με δάνειο", key="guide_e_loan", on_change=_edited, args=("guide_e_loan",))
+        for key, label, opts in (
+            ("guide_e_goal", "Στόχος", list(GOAL_SHORT.values())),
+            ("guide_e_where", "Πού", list(WHERE_SHORT.values())),
+            ("guide_e_age", "Ηλικία κτιρίου", list(_AGE_OF)),
+            ("guide_e_beds", "Υπνοδωμάτια", list(_BEDS_OF)),
+        ):
+            st.session_state.setdefault(key, _current(key, g))
+            st.segmented_control(label, opts, key=key, on_change=_edited, args=(key,))
+            if key == "guide_e_where" and st.session_state.get(key) == WHERE_SHORT["areas"]:
+                count = dict(covered_areas(listings))
+                st.session_state.setdefault(
+                    "guide_e_areas", [a for a in g.get("areas", []) if a in count]
+                )
+                st.pills(
+                    "Περιοχές", list(count), selection_mode="multi", key="guide_e_areas",
+                    on_change=_edited, args=("guide_e_areas",), label_visibility="collapsed",
+                )  # fmt: skip
+        st.button("Από την αρχή", key="guide-restart", on_click=_restart, width="stretch")
+
+
 def apply_relax(changes: dict) -> None:
     """A tapped relaxation (``picks.Relax.changes``) → the guide's answers."""
     _resync()
+    _edit_sync()
     g = state()
     for k, v in changes.items():
         if k == "budget":
@@ -576,13 +681,10 @@ def _more() -> None:
 
 
 def result_head(back) -> None:
-    """The result's header row (C6): «Πίσω» small and secondary next to the title, which is
-    the page title here (C17: the «Οδηγός» heading is not repeated above it); no step line
-    or bar — the answer chips below reopen any question."""
+    """The result's title (C17: the «Οδηγός» heading is not repeated above it). No «Πίσω» and
+    no step bar: the answers are changed in place right below it (``edit_answers``)."""
     with st.container(key="guide-result-head"):
-        c = st.columns([1, 3], vertical_alignment="center")
-        c[0].button("Πίσω", key="guide-back", on_click=back, args=(STEPS - 1,))
-        c[1].markdown("## Η πρότασή μου")
+        st.markdown("## Η πρότασή μου")
 
 
 def at_result(g: dict) -> bool:
@@ -875,14 +977,7 @@ def _assistant_panel(facts: dict) -> None:
 
 
 def _results(g: dict, listings: list[dict]) -> None:
-    st.session_state["guide_chips"] = None
-    st.pills(
-        "Οι απαντήσεις σου",
-        answer_chips(g),
-        key="guide_chips",
-        on_change=_chip_jump,
-        label_visibility="collapsed",
-    )
+    edit_answers(g, listings)
     budget = int(g.get("budget") or area_insights.DEFAULT_BUDGET)
     year = date.today().year
     rents = _rent_rows()
