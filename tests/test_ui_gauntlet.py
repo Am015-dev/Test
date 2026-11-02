@@ -217,7 +217,7 @@ def fresh(page: str):
             goto(at, page)
         else:  # «Αγγελία» is not a menu item: open it from a card, like a user does
             goto(at, SEARCH)
-            next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+            next(b for b in at.button if b.label == "Ανάλυση").click().run()
             assert at.session_state["page"] == page
     return at
 
@@ -251,13 +251,13 @@ def test_buyer_journey(env):
     # star the first result
     next(b for b in at.button if b.label == "Αγαπημένο").click().run()
     ok(at, "star")
-    assert any(b.label == "Αφαίρεση από αγαπημένα" for b in at.button)
+    assert any(b.label == "Αφαίρεση" for b in at.button)  # the card row's short label
     # it is on the favourites page and persisted in the gist
     goto(at, STARRED)
     ok(at, "favourites")
     assert any(m.value == "## Αγαπημένα (1)" for m in at.markdown)
     # open its details from the favourites page
-    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+    next(b for b in at.button if b.label == "Ανάλυση").click().run()
     ok(at, "details")
     assert at.session_state["page"] == DETAIL
     # the listing page (C17): the verdict first, then what the listing says, rent & yield and
@@ -553,13 +553,12 @@ def test_one_score_on_map_and_cards(env):
     cards = _cards(at)
     assert 0 < len(cards) <= 11 and not any("hg-score" in c or "Σκορ" in c for c in cards)
     assert not any("Σκορ 0–100" in c.value for c in at.caption)
-    # the search cards carry no score number (its parts are not figures), but every card carries
-    # the basis of each of its numbers one tap away
+    # list cards are four short lines; the basis of every number is on the flat's own page
     at = fresh(SEARCH)
     cards = _cards(at)
     assert cards and not any("hg-score" in c or "Σκορ" in c for c in cards)
-    assert all("<details><summary>Από πού βγαίνουν</summary>" in c for c in cards)
-    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+    assert not any("<details>" in c for c in cards)
+    next(b for b in at.button if b.label == "Ανάλυση").click().run()
     ok(at, "details")
     assert not any("hg-score" in m.value for m in at.markdown if "<style" not in m.value)
 
@@ -568,7 +567,7 @@ def test_yield_line_on_cards(env):
     at = fresh(SEARCH)
     cards = _cards(at)
     text = [re.sub(r"<[^>]+>", "", c) for c in cards]
-    assert text and all("Ενοίκιο (εκτίμηση) ~" in c and "/μήνα · Μικτή απόδοση " in c for c in text)
+    assert text and all("Ενοίκιο ~" in c and "/μήνα · απόδοση " in c for c in text)
     assert any("~900 €/μήνα" in c for c in cards)
     assert "Υψηλότερη απόδοση" in at.selectbox(key="sort").options
     assert "Καλύτερη αντιστοιχία" not in at.selectbox(key="sort").options
@@ -672,7 +671,7 @@ def test_no_developer_text_without_keys(env, monkeypatch):
     at = fresh(SEARCH)
     assert any("Τα αγαπημένα κρατιούνται" in c.value for c in fresh(STARRED).caption)
     # the listing page has no AI button either
-    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+    next(b for b in at.button if b.label == "Ανάλυση").click().run()
     ok(at, "details")
     assert not any("τεχνητή νοημοσύνη" in b.label for b in at.button)
     found = [(w, t[:80]) for t in texts(at) for w in DEV_WORDS if w in t]

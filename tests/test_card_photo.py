@@ -87,7 +87,7 @@ def test_search_and_listing_page_show_the_thumbnail_markup(env):  # noqa: F811
     assert not any('class="hg-thumb hg-thumb-empty"' in c for c in cards)
 
     idx = next(i for i, c in enumerate(cards) if "<img " in c)  # a card that has a photo
-    [b for b in at.button if b.label == "Λεπτομέρειες"][idx].click().run()
+    [b for b in at.button if b.label == "Ανάλυση"][idx].click().run()
     ok(at, "listing page")
     assert at.session_state["page"] == "Αγγελία"
-    assert any('<figure class="hg-thumb">' in c for c in _cards(at))  # the same card, its thumb
+    assert any('<figure class="hg-thumb hg-thumb-hero">' in c for c in _cards(at))  # full width

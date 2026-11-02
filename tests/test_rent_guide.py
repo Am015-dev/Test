@@ -150,11 +150,9 @@ def test_rent_flow_end_to_end(rent_env):
     assert total > 10 and "Σου προτείνω " in text
     # C17: exactly two buttons per card, no «Εγκρίνω» / «Δεν μου κάνει» in the guide
     assert not any(b.label in ("Εγκρίνω", "Δεν μου κάνει") for b in at.button)
-    assert "από τα διπλανά (" in text and "Ιδιώτης ή μεσιτικό" in text
-    assert "/μήνα" in text and "Από πού βγαίνουν" in text
+    assert re.search(r"(Καλή τιμή|Κανονική τιμή|Ακριβό|Έλεγξε)", text) and "/μήνα" in text
     assert "Δεν έχει ελεγχθεί ακόμα" not in text  # no rental page is read: no page-check chip
     assert 'hg-st-neu">Επιπλωμένο<' in text and 'hg-st-neu">Διαθέσιμο από 01/12<' in text
-    assert "Ενεργειακή κλάση" in text and "Φρεσκάδα" in text and "Τιμή έναντι παρόμοιων" in text
     assert "απόδοση" not in text.lower()  # no yield talk for renters
     first = _cards(at)
     assert len(first) == 10
@@ -385,7 +383,7 @@ def test_rent_flow_on_the_real_loader(env):  # noqa: F811
     text = _text(at)
     want = len(picks_rent.find(real, 1000, bedrooms=2, furnished=True, top=10**6))
     assert want and (f"**{want}** αγγελίες ενοικίασης" in text or f"**{want}** ακριβώς" in text)
-    assert "από τα διπλανά (" in text and "Επιπλωμένο" in text
+    assert "Επιπλωμένο" in text
 
 
 def test_rent_card_has_the_value_score_its_basis_and_the_near_chip():
@@ -396,8 +394,6 @@ def test_rent_card_has_the_value_score_its_basis_and_the_near_chip():
     p = next(x for x in got if x.listing["id"] == 10_090)
     assert p.relaxed == "ποσό +15 %"
     html = buyer.card_html(p.listing, rent_guide.card_adv(p), False, compact=True)
-    assert f">Βαθμολογία {p.score}<" in html.split("hg-l2")[0]
-    assert (
-        f"Βαθμολογία {p.score} από 100: " in html and "για την τιμή σε σχέση με τα παρόμοια" in html
-    )
+    assert "Βαθμολογία" not in html  # list cards: four lines; the value score is in the details
+    assert any("Βαθμολογία" in x for x in rent_guide.card_more(p))
     assert f"Ξεφεύγει: {p.relaxed}" in html

@@ -846,8 +846,8 @@ METHOD = """
 def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> None:
     """The compact card (five lines, C3): everything else — the title, net yield, loan,
     offer, the risks to check and the listing's own words — sits in «Από πού βγαίνουν».
-    Under it the link to the ad, full width, then exactly two buttons, «Λεπτομέρειες» and
-    «Αγαπημένο» (C17: «Εγκρίνω» / «Δεν μου κάνει» live on the saved-searches page only).
+    Under it one row: «Αγγελία» (the ad on the portal), «Λεπτομέρειες», «Αγαπημένο»
+    («Εγκρίνω» / «Δεν μου κάνει» live on the saved-searches page only).
     ``approved`` and ``has_map`` are kept for the caller."""
     d = p.listing
     shown = d  # one rent, one yield, one score: the row's own fields, as on every other page
@@ -870,18 +870,23 @@ def _card(i: int, p: picks.Pick, approved: bool, adv: dict, has_map: bool) -> No
             buyer.card_html(shown, adv, compact=True, lead=f"{i}.", more=more),
             unsafe_allow_html=True,
         )
-        buyer.ad_link(d, f"pick-{d['id']}")
         star, toggle, args, kind = buyer._star_action(d)
-        cols = st.columns(2)
-        cols[0].button(
-            "Λεπτομέρειες",
+        cols = st.columns(3, gap="small")  # one row: the ad, the details, the favourite
+        cols[0].link_button(buyer.AD_SHORT, d["url"], width="stretch")
+        cols[1].button(
+            buyer.DETAILS,
             key=f"pick-det-{d['id']}",
             on_click=buyer.open_detail,
             args=(d["id"],),
             width="stretch",
         )
-        cols[1].button(
-            star, key=f"pick-fav-{d['id']}", on_click=toggle, args=args, type=kind, width="stretch"
+        cols[2].button(
+            buyer.short_label(star),
+            key=f"pick-fav-{d['id']}",
+            on_click=toggle,
+            args=args,
+            type=kind,
+            width="stretch",
         )
 
 

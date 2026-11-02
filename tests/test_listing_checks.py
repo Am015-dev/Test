@@ -16,7 +16,7 @@ LABELS = (
 
 def test_listing_page_shows_the_six_investor_checks(env):  # noqa: F811
     at = fresh(SEARCH)
-    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+    next(b for b in at.button if b.label == "Ανάλυση").click().run()
     ok(at, "details")
     text = "\n".join(m.value for m in at.markdown)
     assert any(e.label == "Έξι έλεγχοι επενδυτή" for e in at.expander)  # collapsed (C17)

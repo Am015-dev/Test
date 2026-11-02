@@ -64,22 +64,22 @@ def test_station_on_line_two_only_for_a_short_measured_walk():
     assert buyer.station_basis(named).startswith(
         "Σταθμός "
     ) and "όνομα της γειτονιάς" in buyer.station_basis(named)
-    html = buyer.card_html(named, {"cmp": CMP}, compact=True)
+    html = buyer.card_html(named, {"cmp": CMP})  # the flat's own page
     l2 = html.split('<div class="hg-l2">')[1].split("</div>")[0]
     assert "Σταθμός" not in l2 and "όνομα της γειτονιάς" in html.split("<details>")[1]
+    assert "Σταθμός" not in buyer.card_html(named, {"cmp": CMP}, compact=True)
 
 
-def test_line_three_is_one_status_chip():
-    html = buyer.card_html({**FLAT, "few_photos": True}, {"cmp": CMP}, compact=True)
+def test_line_three_is_one_status_chip():  # the flat's own page; list cards carry no status
+    html = buyer.card_html({**FLAT, "few_photos": True}, {"cmp": CMP})
     l3 = html.split('<div class="hg-l3">')[1].split("</div>")[0]
     assert l3.count('class="hg-st') == 1 and "Ελέγχθηκε η περιγραφή" in l3
-    # the photo clause and «≤ 2 photos» are facts behind the card, not chips
-    inside = html.split("<details>")[1]
-    assert "Φωτογραφίες:" in inside and "Έως 2 φωτογραφίες" in inside
+    # the photo clause and «≤ 2 photos» are extra facts, not chips
+    assert "Φωτογραφίες:" in html and "Έως 2 φωτογραφίες" in html
 
 
-def test_line_one_ends_with_the_score():
-    html = buyer.card_html(FLAT, {"cmp": CMP, "score": 71}, compact=True)
+def test_line_one_ends_with_the_score():  # the flat's own page; list cards drop the score
+    html = buyer.card_html(FLAT, {"cmp": CMP, "score": 71})
     l1 = re.sub(r"<[^>]+>", "", html.split('<div class="hg-l1">')[1].split("</div>")[0])
     assert l1 == "245.000 € · 78 τ.μ. · 3.141 €/τ.μ. · Βαθμολογία 71"
 
@@ -181,12 +181,12 @@ def test_saved_searches_keep_their_verdict_buttons(env):
     ok(at, "save")
     at = fresh(SHORTLIST)
     labels = {b.label for b in at.button}
-    assert "Έγκριση" in labels and "Απόρριψη" in labels and "Λεπτομέρειες" in labels
+    assert "Έγκριση" in labels and "Απόρριψη" in labels and "Ανάλυση" in labels
 
 
 def test_listing_page_order_link_card_verdict_then_collapsed_sections(env):
     at = fresh(SEARCH)
-    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+    next(b for b in at.button if b.label == "Ανάλυση").click().run()
     ok(at, "details")
     assert at.session_state["page"] == DETAIL
     md = [m.value for m in at.markdown if not m.value.startswith("<style")]

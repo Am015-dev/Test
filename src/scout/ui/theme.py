@@ -632,14 +632,10 @@ footer {{ visibility: hidden; height: 0; }}
     .st-key-filters label p {{ font-size: var(--hg-fs-footnote) !important; }}
     /* actions: a 2-up grid instead of a tall stack; a lone first button (3 total) spans. */
     [class*="st-key-act-"] [data-testid="stHorizontalBlock"] {{
-        flex-direction: row !important; flex-wrap: wrap !important; gap: 8px !important;
+        flex-direction: row !important; flex-wrap: nowrap !important; gap: 8px !important;
     }}
     [class*="st-key-act-"] [data-testid="stColumn"] {{
-        flex: 1 1 calc(50% - 8px) !important; min-width: calc(50% - 8px) !important;
-        width: auto !important;
-    }}
-    [class*="st-key-act-"] [data-testid="stColumn"]:first-child:nth-last-child(3) {{
-        flex-basis: 100% !important; min-width: 100% !important;
+        flex: 1 1 0 !important; min-width: 0 !important; width: auto !important;
     }}
 }}
 
@@ -966,6 +962,28 @@ footer {{ visibility: hidden; height: 0; }}
     justify-content: center; text-align: center; padding: var(--hg-s1);
     font-size: var(--hg-fs-footnote); line-height: 1.25; color: var(--hg-muted); }}
 .hg-card details {{ clear: both; }}
+.hg-card .hg-l3:last-child {{ margin-bottom: var(--hg-s2); }}  /* air above the button row */
+
+/* A list card's one button row (Αγγελία · Ανάλυση · Αγαπημένο): three across a phone,
+ * so tighter padding and the subhead size keep every label whole. */
+[data-testid="stMain"] [class*="st-key-pick-"] [data-testid="stHorizontalBlock"],
+[data-testid="stMain"] [class*="st-key-act-"] [data-testid="stHorizontalBlock"] {{
+    flex-wrap: nowrap; gap: var(--hg-s2);
+}}
+[data-testid="stMain"] [class*="st-key-pick-"] [data-testid="stColumn"],
+[data-testid="stMain"] [class*="st-key-act-"] [data-testid="stColumn"] {{
+    min-width: 0; width: auto; flex: 1 1 0;
+}}
+[data-testid="stMain"] [class*="st-key-pick-"] button,
+[data-testid="stMain"] [class*="st-key-pick-"] a[data-testid="stBaseLinkButton-secondary"],
+[data-testid="stMain"] [class*="st-key-act-"] button,
+[data-testid="stMain"] [class*="st-key-act-"] a[data-testid="stBaseLinkButton-secondary"] {{
+    padding-left: 4px; padding-right: 4px; font-size: var(--hg-fs-subhead); min-height: var(--hg-target);
+}}
+[data-testid="stMain"] [class*="st-key-pick-"] button p,
+[data-testid="stMain"] [class*="st-key-act-"] button p,
+[data-testid="stMain"] [class*="st-key-pick-"] a p,
+[data-testid="stMain"] [class*="st-key-act-"] a p {{ font-size: var(--hg-fs-subhead); }}
 
 /* The compact card's text roles. */
 [data-testid="stMain"] .hg-card {{ font-size: var(--hg-fs-subhead); line-height: 1.45; }}
@@ -1085,7 +1103,9 @@ header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {{
 [data-testid="stMain"] [data-testid="stVerticalBlockBorderWrapper"]:has(.hg-card[data-rank="1"]) {{
     border-color: var(--hg-accent);
 }}
-[data-testid="stMain"] .hg-card[data-rank="1"] .hg-price {{ font-size: var(--hg-fs-large); }}
+@media (min-width: 641px) {{
+    [data-testid="stMain"] .hg-card[data-rank="1"] .hg-price {{ font-size: var(--hg-fs-large); }}
+}}
 
 /* Map legend (components.map legend): footnote role. */
 [data-testid="stMain"] .hg-legend {{ font-size: var(--hg-fs-footnote); }}

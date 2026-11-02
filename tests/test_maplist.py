@@ -61,7 +61,9 @@ def at():
 
 def _cards(a) -> list[int]:
     return [
-        int(x) for m in a.markdown for x in re.findall(r'class="hg-card" data-lid="(\d+)"', m.value)
+        int(x)
+        for m in a.markdown
+        for x in re.findall(r'class="hg-card"[^>]*? data-lid="(\d+)"', m.value)
     ]
 
 

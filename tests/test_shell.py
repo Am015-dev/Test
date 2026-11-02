@@ -8,22 +8,19 @@ import pytest
 
 pytest.importorskip("streamlit.testing.v1")
 
-from .test_ui_gauntlet import APP, AppTest, env, ok  # noqa: E402,F401
+from .test_ui_gauntlet import APP, AppTest, env, goto, ok  # noqa: E402,F401
 
 try:  # the home page is the guide (W8) once it lands, «Βρες μου σπίτι» before
     from scout.ui.guide import TITLE as HOME
 
-    HOME_PILL = "Οδηγός"
+    HOME_PILL = "Βρες σπίτι"
 except ImportError:
     HOME = HOME_PILL = "Βρες μου σπίτι"
 
-SHORT_TO_KEY = {
+SHORT_TO_KEY = {  # three pages in the bar; search, map and compare open from the menu
     HOME_PILL: HOME,
-    "Περιοχές": "Πού να αγοράσω",
-    "Αναζήτηση": "Αναζήτηση",
-    "Χάρτης": "Χάρτης",
     "Αγαπημένα": "Αγαπημένα",
-    "Σύγκριση": "Σύγκριση",
+    "Περιοχές": "Πού να αγοράσω",
 }
 
 
@@ -67,20 +64,20 @@ def test_deep_link_via_session_state_selects_page_and_pill(env):  # noqa: F811
     at.session_state["page"] = "Σύγκριση"
     at.run()
     ok(at, "deep link")
-    assert at.pills(key="nav_pill").value == "Σύγκριση"
+    assert at.pills(key="nav_pill").value is None  # not in the bar
     assert any(s.value == "Σύγκριση" for s in at.subheader)
 
 
 def test_detail_page_is_not_a_menu_item_but_opens_from_a_card(env):  # noqa: F811
     at = _app()
     assert "Αγγελία" not in at.pills(key="nav_pill").options
-    at.pills(key="nav_pill").set_value("Αναζήτηση").run()
-    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+    goto(at, "Αναζήτηση")
+    next(b for b in at.button if b.label == "Ανάλυση").click().run()
     ok(at, "detail")
     assert at.session_state["page"] == "Αγγελία"
     assert at.pills(key="nav_pill").value is None
     assert "Αγγελία" not in at.pills(key="nav_pill").options  # never a pill, even while open
-    at.pills(key="nav_pill").set_value("Χάρτης").run()
+    goto(at, "Χάρτης")
     assert at.session_state["page"] == "Χάρτης"
 
 
@@ -91,7 +88,10 @@ def test_detail_page_is_not_a_menu_item_but_opens_from_a_card(env):  # noqa: F81
 def test_one_navigation_no_page_menu_in_the_sidebar(env):  # noqa: F811
     at = _app()
     assert not at.radio  # the old sidebar menu is gone everywhere
-    assert [b.key for b in at.sidebar.button] == ["login_go", "login_new", "refresh", "nav_saved"]
+    assert [b.key for b in at.sidebar.button] == [
+        "login_go", "login_new", "refresh", "nav_saved", "nav_Αναζήτηση", "nav_Χάρτης",
+        "nav_Σύγκριση",
+    ]  # fmt: skip
     assert not any(b.label in SHORT_TO_KEY for b in at.sidebar.button)
     assert at.sidebar.button(key="nav_saved").label == "Αποθηκευμένες αναζητήσεις"
     assert at.sidebar.button(key="nav_saved").proto.type == "tertiary"  # link-style
@@ -104,7 +104,7 @@ def test_saved_searches_open_from_the_sidebar_and_from_search(env):  # noqa: F81
     assert at.session_state["page"] == "Αποθηκευμένες αναζητήσεις"
     assert any(m.value == "## Αποθηκευμένες αναζητήσεις" for m in at.markdown)
     assert at.pills(key="nav_pill").value is None
-    at.pills(key="nav_pill").set_value("Αναζήτηση").run()
+    goto(at, "Αναζήτηση")
     assert at.button(key="to_saved").label == "Αποθηκευμένες"
     at.button(key="to_saved").click().run()
     ok(at, "search saved")
@@ -136,8 +136,8 @@ def test_admin_pages_are_pills_after_the_buyer_pages(env):  # noqa: F811
 
 def test_listing_page_back_returns_where_it_was_opened(env):  # noqa: F811
     at = _app()
-    at.pills(key="nav_pill").set_value("Αναζήτηση").run()
-    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+    goto(at, "Αναζήτηση")
+    next(b for b in at.button if b.label == "Ανάλυση").click().run()
     ok(at, "detail")
     assert at.session_state["page"] == "Αγγελία"
     assert any(m.value == "## Αγγελία" for m in at.markdown)
@@ -145,7 +145,7 @@ def test_listing_page_back_returns_where_it_was_opened(env):  # noqa: F811
     ok(at, "back")
     assert at.session_state["page"] == "Αναζήτηση"
     # nothing to return to: «Πίσω» goes home
-    next(b for b in at.button if b.label == "Λεπτομέρειες").click().run()
+    next(b for b in at.button if b.label == "Ανάλυση").click().run()
     at.session_state["detail_from"] = None
     at.button(key="listing-back").click().run()
     assert at.session_state["page"] == HOME
@@ -161,16 +161,16 @@ def test_empty_favourites_offer_the_guide(env):  # noqa: F811
 
 def test_tapping_the_selected_pill_again_keeps_the_page(env):  # noqa: F811
     at = _app()
-    at.pills(key="nav_pill").set_value("Χάρτης").run()
+    goto(at, "Χάρτης")
     at.pills(key="nav_pill").set_value(None).run()
     ok(at, "deselect")
     assert at.session_state["page"] == "Χάρτης"
-    assert at.pills(key="nav_pill").value == "Χάρτης"
+    assert at.pills(key="nav_pill").value is None  # not in the bar
 
 
 def test_compare_is_a_three_column_facts_table_for_two_flats(env):  # noqa: F811
     at = _app()
-    at.pills(key="nav_pill").set_value("Σύγκριση").run()
+    goto(at, "Σύγκριση")
     ok(at, "compare")
     opts = at.selectbox(key="compare_a").options
     at.selectbox(key="compare_a").set_value(opts[0]).run()
@@ -196,7 +196,7 @@ def test_compare_is_a_three_column_facts_table_for_two_flats(env):  # noqa: F811
     for r in rows[2:-1]:  # «Μετρό Χολαργός · 360 μ.» (the station row) is one value
         assert all(" · " not in c for c in r.split("|")[2:4]), r
     # then the two compact cards, two buttons each
-    assert sum(1 for b in at.button if b.label == "Λεπτομέρειες") == 2
+    assert sum(1 for b in at.button if b.label == "Ανάλυση") == 2
     assert not any(b.label.startswith("Άνοιγμα") for b in at.main.button)
     # two flats at most: exactly two pickers, no multiselect (its notice is English)
     assert len(at.selectbox) == 2 and not at.multiselect
@@ -206,7 +206,7 @@ def test_compare_is_a_three_column_facts_table_for_two_flats(env):  # noqa: F811
 
 def test_compare_opens_filled_with_top_picks_when_no_favourites(env):  # noqa: F811
     at = _app()
-    at.pills(key="nav_pill").set_value("Σύγκριση").run()
+    goto(at, "Σύγκριση")
     ok(at, "compare")
     a, b = at.selectbox(key="compare_a").value, at.selectbox(key="compare_b").value
     assert a and b and a != b
@@ -215,7 +215,7 @@ def test_compare_opens_filled_with_top_picks_when_no_favourites(env):  # noqa: F
 
 def test_map_page_is_the_map_with_the_ranked_list_under_it(env):  # noqa: F811
     at = _app()
-    at.pills(key="nav_pill").set_value("Χάρτης").run()
+    goto(at, "Χάρτης")
     ok(at, "map")
     assert not at.dataframe  # no table to scroll to in order to understand a dot
     # the filters stay in one place; the counts behind the map's one fact line are one tap away
@@ -280,7 +280,7 @@ def test_wrong_pin_is_refused_without_echoing_it(env):  # noqa: F811
 
 def test_favourites_follow_the_profile(env):  # noqa: F811
     at = _sign_up(_app(), "Ελένη", "1111")
-    at.pills(key="nav_pill").set_value("Αναζήτηση").run()
+    goto(at, "Αναζήτηση")
     star = next(b for b in at.main.button if b.label == "Αγαπημένο")
     star.click().run()
     ok(at, "star")
@@ -303,4 +303,4 @@ def test_deep_link_still_works_when_signed_in(env):  # noqa: F811
     at.session_state["page"] = "Σύγκριση"
     at.run()
     ok(at, "deep link")
-    assert at.pills(key="nav_pill").value == "Σύγκριση"
+    assert at.pills(key="nav_pill").value is None  # not in the bar

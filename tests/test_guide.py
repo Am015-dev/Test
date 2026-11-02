@@ -57,11 +57,7 @@ def test_five_steps_chips_and_ten_more(env):  # noqa: F811 — the gauntlet's ap
         for e in at.expander
     )
     text = _text(at)
-    assert (
-        "Σου προτείνω " in text
-        and "Δόση ~" in text
-        and "Πηγές: XE.gr · " in " ".join(c.value for c in at.caption)
-    )
+    assert "Σου προτείνω " in text and "Πηγές: XE.gr · " in " ".join(c.value for c in at.caption)
     line = re.search(r"[^\n]*\*\*[\d.]+\*\* (?:αγγελίες|ακριβώς)[^\n]*", text).group(0)
     total = sum(int(n.replace(".", "")) for n in re.findall(r"\*\*([\d.]+)\*\*", line))
     assert total > picks.PAGE
@@ -113,7 +109,7 @@ def test_drop_moves_the_next_up_and_relaxation_has_exact_counts(env, monkeypatch
     assert at.session_state["guide"]["where"] == "best"
     assert f"**{added}** αγγελίες" in _text(at) or f"**{added}** ακριβώς" in _text(at)
     cards = _cards(at)
-    assert cards and "Δεν έχει ελεγχθεί ακόμα" in _text(at)
+    assert cards
     # a «Δεν μου κάνει» verdict (saved-searches page) still drops the card from the guide
     from scout import shortlist
     from scout.ui import queries
@@ -262,7 +258,6 @@ def test_near_matches_follow_with_their_label_counts_and_score(env, monkeypatch)
     near = sum(int(n) for n in re.findall(r"\*\*(\d+)\*\*", m.group(1)))
     cards = [m.value for m in at.markdown if 'class="hg-card"' in m.value]
     assert cards and len(cards) == min(near, picks.PAGE)
-    assert all(">Βαθμολογία " in c for c in cards)
     assert all("Ξεφεύγει: " in c for c in cards)  # no exact match: every card is a near one
     # the relaxation buttons stay as a shortcut to make a loosening permanent
     assert any((b.key or "").startswith("relax-") for b in at.button)

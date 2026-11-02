@@ -2447,15 +2447,16 @@ ADMIN_NAV = {  # open with ?admin=1
 # The one navigation (every width): one tap, short labels. Each maps to a NAV key (never
 # renamed). «Αποθηκευμένες αναζητήσεις» opens from the sidebar and from «Αναζήτηση»;
 # «Αγγελία» opens from cards only, so neither is a pill.
-SHORT_NAV = {
-    ("Οδηγός" if guide is not None else HOME): HOME,
-    "Περιοχές": "Πού να αγοράσω",
-    "Αναζήτηση": "Αναζήτηση",
-    "Χάρτης": "Χάρτης",
+SHORT_NAV = {  # three pages in the bar; search, map and compare open from the menu or a page
+    ("Βρες σπίτι" if guide is not None else HOME): HOME,
     "Αγαπημένα": "Αγαπημένα",
-    "Σύγκριση": "Σύγκριση",
+    "Περιοχές": "Πού να αγοράσω",
 }
 _PILL_OF = {key: short for short, key in SHORT_NAV.items()}
+
+
+def _goto(page: str) -> None:
+    st.session_state["page"] = page
 
 
 def _pick_page() -> None:
@@ -2502,6 +2503,9 @@ def main() -> None:
         account.login_ui()
         st.button("Ανανέωση δεδομένων", key="refresh", on_click=_refresh_data, width="stretch")
         st.button(buyer.NAV_SAVED, key="nav_saved", type="tertiary", on_click=buyer.open_saved)
+        for label, target in (("Αναζήτηση με λέξεις", "Αναζήτηση"), ("Χάρτης", "Χάρτης"),
+                              ("Σύγκριση", "Σύγκριση")):  # fmt: skip
+            st.button(label, key=f"nav_{target}", type="tertiary", on_click=_goto, args=(target,))
     # One header line, the data line under it, then the pills (every page).
     listings = get_listings()
     with st.container(key="app-head"):  # theme.py: the wordmark alone; the data line is the footer

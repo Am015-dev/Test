@@ -515,6 +515,75 @@ def _basis_lines(d: dict, adv: dict) -> list[str]:
     return lines
 
 
+def verdict_chip(adv: dict) -> tuple[str, str] | None:
+    """One word for the price against the neighbours, the card's last line:
+    («ok», «Καλή τιμή») · («warn», «Ακριβό») · («warn», «Έλεγξε») when far too cheap · («neu»,
+    «Κανονική τιμή»); None without enough comparables."""
+    cmp = adv.get("cmp")
+    if not cmp or cmp.get("pct") is None:
+        return None
+    pct = cmp["pct"]
+    if pct < -BAIT:
+        return "warn", "Έλεγξε: πολύ φθηνό"
+    if pct <= -0.05:
+        return "ok", f"Καλή τιμή: {pct_int(-pct)} κάτω"
+    if pct >= 0.10:
+        return "warn", f"Ακριβό: {pct_int(pct)} πάνω"
+    return "neu", "Κανονική τιμή"
+
+
+def short_place(name: str) -> str:
+    """«Αθήνα (Αμπελόκηποι)» → «Αμπελόκηποι»: central Athens by its quarter; the rest as is."""
+    head, _, rest = name.partition(" (")
+    return rest.rstrip(")") if head == "Αθήνα" and rest else name
+
+
+def compact_card_html(d: dict, adv: dict, *, lead: str = "") -> str:
+    """The list card, four short lines and the photo: 1 price · τ.μ.; 2 place · floor · year;
+    3 rent · yield; 4 one word for the price against the neighbours (and, for a near match,
+    what it is outside of). Everything else is on the flat's own page («Λεπτομέρειες»)."""
+    e = html.escape
+    rent_row = _is_rent(d)
+    price = eur(d.get("price")) + ("/μήνα" if rent_row else "")
+    l1 = [f'<span class="hg-price">{price}</span>']
+    if lead:
+        l1[0] = f'<span class="hg-rank">{e(lead)}</span> ' + l1[0]
+    if d.get("area_m2"):
+        l1.append(f"{_m2(d['area_m2'])} τ.μ.")
+    l2 = [e(short_place(d["neighborhood"]))] if d.get("neighborhood") else []
+    l2.append(_floor(d["floor"]) if d.get("floor") is not None else "όροφος: δεν δηλώνεται")
+    l2.append(f"κτίριο {d['year_built']}" if d.get("year_built") else "έτος: δεν δηλώνεται")
+    if rent_row:
+        l3 = _rent_line(d)
+    else:
+        rent = _rent(d)
+        gy = gross_yield(d)
+        l3 = (
+            f"Ενοίκιο ~{eur(_r(rent, 10))}/μήνα · απόδοση {pct1(gy)}"
+            if rent and gy is not None
+            else ""
+        )
+    chips = []
+    if _unfinished(d):  # the one status a list must never hide
+        chips.append('<span class="hg-st hg-st-bad">Υπό κατασκευή</span>')
+    if v := verdict_chip(adv):
+        chips.append(f'<span class="hg-st hg-st-{v[0]}">{e(v[1])}</span>')
+    if rent_row:
+        chips += [f'<span class="hg-st hg-st-neu">{e(x)}</span>' for x in rent_chips(d)]
+    if adv.get("relaxed"):
+        chips.append(f'<span class="hg-st hg-st-neu">Ξεφεύγει: {e(adv["relaxed"])}</span>')
+    rank = f' data-rank="{e(lead.rstrip("."))}"' if lead else ""
+    return (
+        f'<div class="hg-card" data-compact="1"{rank} data-lid="{d.get("id")}">'
+        + photo_html(d)
+        + f'<div class="hg-l1">{_join(l1)}</div>'
+        + (f'<div class="hg-l2">{_join(l2)}</div>' if l2 else "")
+        + (f'<div class="hg-l4">{l3}</div>' if l3 else "")
+        + (f'<div class="hg-l3">{" ".join(chips)}</div>' if chips else "")
+        + "</div>"
+    )
+
+
 def card_html(
     d: dict,
     adv: dict,
@@ -534,6 +603,8 @@ def card_html(
     (listing page) shows the extras as a sixth line. ``lead`` prefixes line 1 (the rank).
     The card's photo sits in a fixed 4:3 box left of line 1; ``hero`` (listing page) puts it
     full width above line 1 instead."""
+    if compact:  # the list card (round 6+): four short lines, the rest on the flat's page
+        return compact_card_html(d, adv, lead=lead)
     e = html.escape
     rent_row = _is_rent(d)
     price = eur(d.get("price")) + ("/μήνα" if rent_row else "")
@@ -733,6 +804,32 @@ def open_label(d: dict) -> str:
     return f"Δες την αγγελία στο {source_label(d)}"
 
 
+AD_SHORT = "Αγγελία"  # the link to the ad in a card's button row
+DETAILS = "Ανάλυση"  # opens the flat's own page (the full card, «Τι να κάνεις», the checks)
+
+
+def short_label(label: str) -> str:
+    """Card-row labels short enough for three buttons on a phone."""
+    return {"Αφαίρεση από αγαπημένα": "Αφαίρεση", "Λεπτομέρειες": DETAILS}.get(label, label)
+
+
+def card_row(d: dict, key: str) -> None:
+    """The one button row under a list card: «Αγγελία» (the ad on the portal), «Λεπτομέρειες»,
+    «Αγαπημένο» / «Αφαίρεση»."""
+    star, toggle, args, kind = _star_action(d)
+    with st.container(key=f"act-{key}"):
+        cols = st.columns(3, gap="small")
+        cols[0].link_button(AD_SHORT, d["url"], width="stretch")
+        cols[1].button(
+            DETAILS, key=f"{key}-det", on_click=open_detail, args=(d["id"],),
+            width="stretch",
+        )  # fmt: skip
+        cols[2].button(
+            short_label(star), key=f"{key}-fav", on_click=toggle, args=args, type=kind,
+            width="stretch",
+        )  # fmt: skip
+
+
 def ad_link(d: dict, key: str, *, primary: bool = False) -> None:
     """The link to the ad (C14), full width: under every card and, as the primary control,
     at the top of the listing page."""
@@ -743,7 +840,7 @@ def ad_link(d: dict, key: str, *, primary: bool = False) -> None:
 
 
 def result_card(
-    d: dict, adv: dict, k: str, actions: list, advice=None, *, compact: bool = False
+    d: dict, adv: dict, k: str, actions: list, advice=None, *, compact: bool = True
 ) -> None:
     """One listing. ``actions`` = [(label, callback, args[, type])], each rendered as a button.
     The link to the ad on the portal is always the first thing under the card, full width
@@ -756,12 +853,12 @@ def result_card(
         st.markdown(card_html(d, adv, compact=compact), unsafe_allow_html=True)
         if advice is not None:
             st.markdown(_advice_html(advice), unsafe_allow_html=True)
-        ad_link(d, uid)
-        with st.container(key=f"act-{uid}"):
-            cols = st.columns(len(actions), gap="small")
+        with st.container(key=f"act-{uid}"):  # one row: the ad, then the actions
+            cols = st.columns(len(actions) + 1, gap="small")
+            cols[0].link_button(AD_SHORT, d["url"], width="stretch")
             for i, (label, cb, args, *kind) in enumerate(actions, start=1):
-                cols[i - 1].button(
-                    label,
+                cols[i].button(
+                    short_label(label),
                     key=f"{k}-{i}-{key}",
                     on_click=cb,
                     args=args,
@@ -1534,7 +1631,7 @@ def page_watchlist(listings: list[dict]) -> None:
             )  # fmt: skip
         st.caption(
             "Με τη σειρά της Βαθμολογίας. Πάτα την τιμή για να ανοίξεις την αγγελία. "
-            "Βγάλε όσα απέρριψες με «Αφαίρεση από αγαπημένα»."
+            "Βγάλε όσα απέρριψες με «Αφαίρεση»."
         )
         for d, adv in views:
             result_card(d, adv, "w", [("Λεπτομέρειες", open_detail, (d["id"],)), _star_action(d)])
@@ -1805,7 +1902,7 @@ def page_listing(listings: list[dict]) -> None:
     adv = buyer_view(d, intel)
     ad_link(d, f"l-{d['id']}", primary=True)
     with st.container(border=True, key=f"card-l-{d['id']}"):  # the same card as every list
-        st.markdown(card_html(d, adv, compact=True), unsafe_allow_html=True)
+        st.markdown(card_html(d, adv, basis=True, hero=True), unsafe_allow_html=True)
     st.markdown(
         "**Τι να κάνεις**\n\n" + "\n".join(f"- {html.escape(x)}" for x in verdict_lines(d, adv))
     )

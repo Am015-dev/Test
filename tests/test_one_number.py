@@ -18,22 +18,22 @@ from .test_ui_gauntlet import FIND, SEARCH, env, fresh, goto, ok  # noqa: F401
 
 pytest.importorskip("streamlit.testing.v1")
 
-RENT = re.compile(r"Ενοίκιο \((?:εκτίμηση|από την αγγελία)\) ~?([\d.]+) €/μήνα")
-YIELD = re.compile(r"Μικτή απόδοση ([\d,]+ %)")
-SCORE = re.compile(r"Βαθμολογία (\d+)")
+RENT = re.compile(r"Ενοίκιο (?:\((?:εκτίμηση|από την αγγελία)\) )?~?([\d.]+) €/μήνα")
+YIELD = re.compile(r"(?:Μικτή απόδοση|απόδοση) ([\d,]+ %)")
 
 
-def _numbers(at) -> dict[int, tuple[str, str, str]]:
-    """listing id → (rent, gross yield, score) as printed on every card of the page."""
+def _numbers(at) -> dict[int, tuple[str, str]]:
+    """listing id → (rent, gross yield) as printed on every card of the page (list cards no
+    longer print the score; the flat's own page does, and it is the advise score)."""
     out = {}
     for m in at.markdown:
         if 'class="hg-card' not in m.value:
             continue
         text = re.sub(r"<[^>]+>", " ", m.value)
         lid = int(re.search(r'data-lid="(\d+)"', m.value).group(1))
-        rent, gy, sc = RENT.search(text), YIELD.search(text), SCORE.search(text)
-        assert rent and gy and sc, text[:300]
-        out[lid] = (rent.group(1), gy.group(1), sc.group(1))
+        rent, gy = RENT.search(text), YIELD.search(text)
+        assert rent and gy, text[:300]
+        out[lid] = (rent.group(1), gy.group(1))
     return out
 
 

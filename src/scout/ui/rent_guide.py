@@ -627,6 +627,8 @@ def card_more(p: picks_rent.RentPick) -> list[str]:
             f"Παρόμοια ενοίκια: τόσο ζητούν συνήθως ανά τ.μ. οι {p.comps_n} άλλες αγγελίες "
             f"ενοικίασης ({p.comps_where})."
         )
+    if p.score_basis:
+        more.append(f"Βαθμολογία {p.score} από 100: {p.score_basis}")
     more.append("Ενοίκιο: αυτό που ζητά η αγγελία, όχι συμβόλαιο.")
     return more
 
@@ -655,20 +657,21 @@ def card(i: int | None, p: picks_rent.RentPick, k: str, verdicts: bool = False,
             unsafe_allow_html=True,
         )
         if lid in st.session_state.get("rent_details", set()):
-            _details(d)
-        buyer.ad_link(d, f"{k}-{lid}")
+            _details(d, card_more(p))
         star, toggle, args, kind = buyer._star_action(d)
-        cols = st.columns(2)
-        cols[0].button(
-            "Λεπτομέρειες", key=f"{k}-det-{lid}", on_click=_toggle_details, args=(lid,),
+        cols = st.columns(3, gap="small")  # one row: the ad, the details, the favourite
+        cols[0].link_button(buyer.AD_SHORT, d["url"], width="stretch")
+        cols[1].button(
+            buyer.DETAILS, key=f"{k}-det-{lid}", on_click=_toggle_details, args=(lid,),
             width="stretch",
         )  # fmt: skip
-        cols[1].button(
-            star, key=f"{k}-star-{lid}", on_click=toggle, args=args, type=kind, width="stretch"
-        )
+        cols[2].button(
+            buyer.short_label(star), key=f"{k}-star-{lid}", on_click=toggle, args=args,
+            type=kind, width="stretch",
+        )  # fmt: skip
 
 
-def _details(d: dict) -> None:
+def _details(d: dict, more: list[str] | None = None) -> None:
     facts = [
         ("Υπνοδωμάτια", str(d["bedrooms"]) if d.get("bedrooms") else "άγνωστο"),
         ("Ανακαίνιση", str(d["renovated_year"]) if d.get("renovated_year") else "άγνωστο"),
@@ -679,6 +682,7 @@ def _details(d: dict) -> None:
     st.markdown(
         '<div class="hg-card">'
         + "".join(f"<div>{html.escape(k)}: {html.escape(v)}</div>" for k, v in facts)
+        + "".join(f"<div>{html.escape(x)}</div>" for x in (more or []))
         + "</div>",
         unsafe_allow_html=True,
     )
